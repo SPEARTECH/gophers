@@ -1,0 +1,173 @@
+
+
+ <!-- Documentation:
+   https://daisyui.com/
+   https://tailwindcss.com/
+   https://www.highcharts.com/
+   https://vuejs.org/
+   https://pyodide.org/en/stable/
+   https://www.papaparse.com/
+   https://danfo.jsdata.org/
+   https://axios-http.com/docs/intro -->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gupy App</title>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/danfojs@1.1.2/lib/bundle.min.js"></script>
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="https://code.highcharts.com/modules/boost.js"></script>
+  <script src="https://code.highcharts.com/modules/exporting.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <link rel="icon" href="./gupy_logo.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  </head>
+<body>
+  <div id="app" style="text-align: center;">
+    <center>
+      <div class="h-full">
+        <img class="mt-4 mask mask-squircle h-96 hover:-translate-y-2 ease-in-out transition" src="./gupy_logo.png" />
+        <br>
+        <button class="btn bg-blue-500 stroke-blue-500 hover:bg-blue-500 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/50 text-base-100">[[ message ]] </button>
+        <br>
+        <br>
+        <!-- This block only appears on https apps for installing as a PWA standalone on your device -->
+        <div v-if="pwa_install" role="alert" class="alert shadow-lg">
+            <!--<div role="alert" class="alert shadow-lg">-->
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+            class="stroke-info shrink-0 w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span>Install this app on your device!</span>
+            <div>
+            <button
+                class=" btn btn-sm bg-blue-500  text-white  shadow-lg  hover:bg-blue-500/50 shadow-blue-500/50 hover:shadow-xl hover:shadow-blue-500/50 hover:-translate-y-0.5 no-animation"
+                @Click="prompt" id="install">Install</button>
+            </div>
+            
+        </div>
+        <br>
+
+      </div>
+    </center>
+  </div>
+</body>
+<!-- <script>
+  // Disable right-clicking
+document.addEventListener('contextmenu', function(event) {
+    event.preventDefault();
+});
+</script> -->
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js', { scope: '/' });
+  }
+</script>
+<script src="go_wasm/wasm_exec.js"></script>
+  <script>
+    const { createApp } = Vue
+    
+    createApp({
+      delimiters : ['[[', ']]'],
+        data(){
+          return {
+            message: 'Welcome to Gupy!',
+            pyodide_msg: 'This is from Pyodide!',
+            data: {},
+            pwa_install: '',
+          }
+        },
+        methods: {
+
+        },
+        watch: {
+
+        },
+        created(){
+            // This variable will save the event for later use.
+              window.addEventListener('beforeinstallprompt', (e) => {
+                  // Prevents the default mini-infobar or install dialog from appearing on mobile
+                  //   e.preventDefault();
+                  // Save the event because you'll need to trigger it later.
+                  this.pwa_install = e;
+                  // Show your customized install prompt for your PWA
+                  // Your own UI doesn't have to be a single element, you
+                  // can have buttons in different locations, or wait to prompt
+                  // as part of a critical journey.
+                  showInAppInstallPromotion();
+              });
+
+            // Make a request for a user with a given ID
+            axios.get('/api/example_api_endpoint')
+            .then(function (response) {
+                // handle success
+                console.log(response);
+                this.data = JSON.parse(JSON.stringify(response['data']))
+                console.log(this.data)
+            })
+            .catch(function (error) {
+                // handle error
+                console.log(error);
+
+          try {
+            // use pyodide instead of api example
+            async function main(){
+              const pyodide = await loadPyodide();
+              pyodide.registerJsModule("mymodule", {
+                pyodide_msg: this.pyodide_msg,
+              })
+              await pyodide.loadPackage("numpy")
+              const result = await pyodide.runPython(`
+#import variables
+import mymodule
+
+# use variable
+pyodide_msg = mymodule.pyodide_msg
+
+# change variable
+pyodide_msg = 'This is the changed pyodide message!'
+
+# output response
+response = {'new_msg':pyodide_msg}
+`)
+              return JSON.parse(response)
+          }
+            response = main()
+            console.log(response.new_msg)
+          } catch (error) {
+            console.log('An error occurred: ', error);
+          }
+
+        })
+        .finally(function () {
+          // always executed
+        });
+
+      },
+        mounted() {
+          const go = new Go();
+          WebAssembly.instantiateStreaming(fetch("go_wasm/gophers.wasm"), go.importObject).then((result) => {
+            go.run(result.instance);
+          });
+
+          let worker = new Worker('worker.js');
+          worker.postMessage({ message: '' });
+          worker.onmessage = function (message) {
+            console.log(message.data)
+          }
+
+        },
+        computed:{
+
+        }
+
+    }).mount('#app')
+  </script>
+</html>      
