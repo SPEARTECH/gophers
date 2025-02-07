@@ -1,34 +1,4 @@
-// // index.mjs
-// import { readFile } from 'fs/promises';
-// import { fileURLToPath } from 'url';
-
-// (async () => {
-//   // Load wasm_exec.js so that the global `Go` class is defined.
-//   await import('./go_wasm/wasm_exec.js');
-
-//   // Ensure that wasm_exec.js has defined the global Go.
-//   if (typeof Go === "undefined") {
-//     throw new Error("Go is not defined. Check if wasm_exec.js loaded correctly.");
-//   }
-
-//   const go = new Go();
-
-//   // Convert the relative URL to an absolute file URL,
-//   // then convert that URL to a local file system path.
-//   const wasmFileUrl = new URL('./go_wasm/gophers.wasm', import.meta.url);
-//   const wasmFilePath = fileURLToPath(wasmFileUrl);
-
-//   // Read the WASM file as a buffer.
-//   const wasmBuffer = await readFile(wasmFilePath);
-
-//   // Instantiate the WebAssembly module from the buffer.
-//   const result = await WebAssembly.instantiate(wasmBuffer, go.importObject);
-
-//   // Run the Go WebAssembly module.
-//   go.run(result.instance);
-// })();
-
-// index.mjs
+// gophers.js
 // This function initializes the Go WASM module and returns an object with exported functions.
 export async function loadGoWasm() {
   // Dynamically import wasm_exec.js. (Make sure it’s included in your package.)

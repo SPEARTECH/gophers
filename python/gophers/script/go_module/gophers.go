@@ -15,4 +15,5 @@ func go_module() *C.char {
 func main() {
     // c_module()
 }    
-    
+
+// create go version of pandas functions (most need to return a dataframe)

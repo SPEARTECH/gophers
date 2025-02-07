@@ -1,9 +1,9 @@
 {
-    "name": "my-go-wasm-package",
+    "name": "gophers",
     "version": "0.0.1",
-    "main": "index.mjs",
+    "main": "gophers.js",
     "files": [
-      "index.mjs",
+      "gophers.js",
       "go_wasm/wasm_exec.js",
       "go_wasm/gophers.wasm"
     ],

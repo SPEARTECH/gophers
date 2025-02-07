@@ -1,8 +1,8 @@
 {
   "name": "gophers",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "description": "Go dataframe library available for Go, Python, and Javascript.",
-  "main": "index.mjs",
+  "main": "gophers.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/speartech/gophers#readme",
   "files": [
-    "index.mjs",
+    "gophers.js",
     "go_wasm/wasm_exec.js",
     "go_wasm/gophers.wasm"
   ],

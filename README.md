@@ -5,6 +5,7 @@
 Gophers Dataframe Library (not for Pandas or Polar Bears; Gophers only)
 
 - Go Package
+-- go run .\main.go
 
 - Python Package
 -- python -m pip install gophers
