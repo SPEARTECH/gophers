@@ -10,7 +10,7 @@ def main():
 
     # Load the shared library
     try:
-        gophers = cdll.LoadLibrary(path+'/gophers.so')
+        gophers = cdll.LoadLibrary(path+'/go_module/gophers.so')
     except Exception as e:
         print(str(e))
         return
