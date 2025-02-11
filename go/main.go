@@ -6,48 +6,24 @@ import (
     "fmt"
 )
 
-type Data struct{
-    Name string
-    Age int
-    City string
-}
-
 func main() {
-    // // Define the struct within the main function
-    // var people []struct {
-    //     Name string
-    //     Age  int
-    //     City string
-    // }
-    var data []gophers.Data
+	// Example JSON string.
+	// Make sure your JSON uses double quotes.
+	jsonStr := `
+	  {"name": "Alice", "age": "30", "score": 85.5}
+	  {"name": "Bob",   "age": "25", "score": 90.0}
+      `
 
-    // Add rows to the slice
-    data = append(data, gophers.Data {
-        Name: "Alice",
-        Age:  30,
-        City: "New York",
-    })
 
-    data = append(data, gophers.Data {
-        Name: "Bob",
-        Age:  25,
-        City: "San Francisco",
-    })
+	// Create a DataFrame from the unmarshalled rows.
+	df := gophers.READNDJSON(jsonStr)
 
-    data = append(data, gophers.Data{
-        Name: "Charlie",
-        Age:  35,
-        City: "Los Angeles",
-    })
+	// Print the DataFrame.
+	df.SHOW()
 
-    df := gophers.DATAFRAME(data)
-    fmt.Println(df)
+    df.HEAD()
 
-    // // Print the data
-    // fmt.Print("name\tage\tcity")
-    // for _, person := range people {
-    //     fmt.Println(person.Name, "\t", person.Age, "\t", person.City)
-    // }
-}    
+    df.TAIL()
 
-// create go version of pandas functions (most need to return a dataframe)
+    fmt.Println(df.COLUMNS())
+}

@@ -1,8 +1,15 @@
 package gophers
 
-import (
-	"fmt"
-)
+// import (
+// 	"fmt"
+// )
+
+// DataFrame represents a very simple dataframe structure.
+type DataFrame struct {
+	Columns []string
+	Data    map[string][]interface{}
+	Rows    int
+}
 
 // functions for manipulating dataframes, take in and return dataframe
 // .iloc = select column of the dataframe by name
@@ -30,6 +37,9 @@ func FILLNA(df map[string]string, value string) map[string]string {
 // join
 
 // columns
+func COLUMNS(df DataFrame) *DataFrame {
+	return df.Columns()
+}
 
 // joins
 

@@ -43,10 +43,10 @@
     </center>
   </div>
 </body>
-
+<!-- <script src="https://unpkg.com/gophers@0.0.1/gophers.js"></script> -->
  <script type="module">
     const { createApp } = Vue
-     import { loadGoWasm } from './gophers.js';
+     import { Gophers } from 'https://unpkg.com/gophers@0.0.1/gophers.js';
     createApp({
       delimiters : ['[[', ']]'],
         data(){
@@ -69,8 +69,8 @@
 
         async mounted() {
           try {
-            const goExports = await loadGoWasm();
-            this.addResult = "Go WebAssembly ran add(5,7) and returned:" + goExports.add(5, 7);
+            const gophers = await Gophers();
+            this.addResult = "Go WebAssembly ran add(5,7) and returned:" + gophers.add(5, 7);
             console.log(this.addResult);
           } catch (error) {
             console.error("Error loading Go WASM:", error);
