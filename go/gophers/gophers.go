@@ -102,7 +102,7 @@ func ReadNDJSON(jsonStr string) *DataFrame {
 	return Dataframe(rows)
 }
 // Read parquet and output dataframe
-func read_parquet(jsonStr string) map[string]string {
+func ReadParquet(jsonStr string) map[string]string {
 	df := map[string]string{}
 	return df
 }
@@ -257,4 +257,9 @@ func DisplayHTML(html string) map[string]interface{} {
 	return map[string]interface{}{
 		"text/html": html,
 	}
+}
+
+func (df *DataFrame) Display(){
+	// display an html table of the dataframe for analysis, filtering, sorting, etc
+	return
 }
