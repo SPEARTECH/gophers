@@ -2,28 +2,30 @@
 package main
 
 import (
-    "gophers/gophers/source"
-    "fmt"
+    gf "gophers/gophers"
+	"fmt"
 )
 
 func main() {
 	// Example JSON string.
 	// Make sure your JSON uses double quotes.
 	jsonStr := `
-	  {"name": "Alice", "age": "30", "score": 85.5}
-	  {"name": "Bob",   "age": "25", "score": 90.0}
+	  {"namythingamajigya": "Alicandro", "age": "30", "score": 85.5}
+	  {"namythingamajigya": "Bob", "age": "25", "score": 90.0}
       `
 
 
 	// Create a DataFrame from the unmarshalled rows.
-	df := gophers.READNDJSON(jsonStr)
+	df := gf.ReadNDJSON(jsonStr)
 
 	// Print the DataFrame.
-	df.SHOW()
+	df.Show(5)
 
-    df.HEAD()
+    // df.head()
 
-    df.TAIL()
+    // df.Tail()
 
-    fmt.Println(df.COLUMNS())
+    // fmt.Println(df.Columns())
+
+	// df.Vertical(80,1) // sort alphabetically?
 }

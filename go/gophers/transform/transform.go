@@ -4,13 +4,6 @@ package gophers
 // 	"fmt"
 // )
 
-// DataFrame represents a very simple dataframe structure.
-type DataFrame struct {
-	Columns []string
-	Data    map[string][]interface{}
-	Rows    int
-}
-
 // functions for manipulating dataframes, take in and return dataframe
 // .iloc = select column of the dataframe by name
 func ILOC(df map[string]string, index int) map[string]string {
