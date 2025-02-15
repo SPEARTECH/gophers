@@ -1,5 +1,0 @@
-package gophers
-
-import (
-	"fmt"
-)
