@@ -15,6 +15,21 @@ func LOC(df map[string]string, index int) map[string]string {
 	return df
 }
 
+// ColumnFunc is a function type that takes a row and returns a value.
+type ColumnFunc func(row map[string]interface{}) interface{}
+
+// Example function to calculate new column values.
+func Values(col string) ColumnFunc {
+	return func(row map[string]interface{}) interface{} {
+		return row[col]
+	}
+}
+
+// lit
+func Lit(str string) string {
+	return str
+}
+
 // groupy by
 
 // join
@@ -26,12 +41,12 @@ func LOC(df map[string]string, index int) map[string]string {
 // concat
 
 // append dataframes
+// union
+// union_all
 
 // drop rows
 
 // drop columns
-
-// select columns
 
 // corr()
 
