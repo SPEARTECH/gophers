@@ -6,29 +6,52 @@ package gophers
 
 // functions for manipulating dataframes, take in and return dataframe
 // .iloc = select column of the dataframe by name
-func ILOC(df map[string]string, index int) map[string]string {
+func Iloc(df map[string]string, index int) map[string]string {
 	return df
 }
 
 // .loc = select columns of the dataframe by index
-func LOC(df map[string]string, index int) map[string]string {
+func Loc(df map[string]string, index int) map[string]string {
 	return df
 }
 
 // ColumnFunc is a function type that takes a row and returns a value.
 type ColumnFunc func(row map[string]interface{}) interface{}
 
-// Example function to calculate new column values.
-func Values(col string) ColumnFunc {
-	return func(row map[string]interface{}) interface{} {
-		return row[col]
+// Column represents a column in the DataFrame.
+type Column struct {
+	cf ColumnFunc
+}
+
+// Col returns a Column for the specified column name.
+func Col(col string) Column {
+	return Column{
+		cf: func(row map[string]interface{}) interface{} {
+			return row[col]
+		},
 	}
 }
 
-// lit
-func Lit(str string) string {
-	return str
+// Lit returns a Column that always returns the provided literal value.
+func Lit(value interface{}) Column {
+	return Column{
+		cf: func(row map[string]interface{}) interface{} {
+			return value
+		},
+	}
 }
+
+// is in
+
+// starts with
+
+// ends with
+
+// contains
+
+// like - sql %%
+
+// rlike - regex
 
 // groupy by
 

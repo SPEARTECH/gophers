@@ -1,8 +1,7 @@
 package main
 
 import (
-	"fmt"
-	g "gophers/gophers"
+	. "gophers/gophers"
 )
 
 func main() {
@@ -15,13 +14,13 @@ func main() {
 	jsonStr := "test_data/jsontest.json"
 	// Create a DataFrame from the unmarshalled rows.
 	// df := gf.ReadNDJSON(jsonStr)
-	df := g.ReadJSON(jsonStr)
+	df := ReadJSON(jsonStr)
 	// df := gf.ReadCSV(jsonStr)
 
 	// Print the DataFrame.
 	// df.Show(7, 1)
 
-	df.Head(5)
+	// df.Head(5)
 
 	// df.Tail(8)
 
@@ -35,11 +34,12 @@ func main() {
 	// df = df.Select("age", "score")
 
 	df = df.Rename("namythingamajigya", "name")
-	df = df.Column("name2", g.Values("name"))
-	data := df.ToJSON()
-	fmt.Println(data)
+	// df = df.Column("name2", g.ValueFrom("name"))
+	// data := df.ToJSON()
+	// fmt.Println(data)
 	// df = df.FillNA("tyler")
-	df.BrowserDisplay()
+	// df.BrowserDisplay()
 	// df = df.DropNA()
+	df = df.Column("age", When(Col("age").IsNull(), Lit("tyler"), Col("age")))
 	df.Show(10)
 }

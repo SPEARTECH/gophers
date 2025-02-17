@@ -2,25 +2,6 @@ package gophers
 
 import "encoding/json"
 
-// select
-func (df *DataFrame) Select(columns ...string) *DataFrame {
-	newDF := &DataFrame{
-		Cols: columns,
-		Data: make(map[string][]interface{}),
-		Rows: df.Rows,
-	}
-
-	for _, col := range columns {
-		if data, exists := df.Data[col]; exists {
-			newDF.Data[col] = data
-		} else {
-			newDF.Data[col] = make([]interface{}, df.Rows)
-		}
-	}
-
-	return newDF
-}
-
 func (df *DataFrame) Columns() []string {
 	return df.Cols
 }
@@ -57,4 +38,24 @@ func (df *DataFrame) CountDuplicates() int {
 	}
 
 	return duplicateCount
+}
+
+// CountDistinct returns the count of unique values in given column(s)
+func (df *DataFrame) CountDistinct(columns ...string) int {
+	newDF := &DataFrame{
+		Cols: columns,
+		Data: make(map[string][]interface{}),
+		Rows: df.Rows,
+	}
+	for _, col := range newDF.Cols {
+		if data, exists := df.Data[col]; exists {
+			newDF.Data[col] = data
+		} else {
+			newDF.Data[col] = make([]interface{}, df.Rows)
+		}
+	}
+	dups := newDF.CountDuplicates()
+	count := newDF.Rows - dups
+
+	return count
 }

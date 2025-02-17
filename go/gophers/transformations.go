@@ -6,15 +6,17 @@ import (
 	"strings"
 )
 
-// Column adds or modifies a column in the DataFrame using a ColumnFunc.
-func (df *DataFrame) Column(column string, fn ColumnFunc) *DataFrame {
+// Column adds or modifies a column in the DataFrame using a Column.
+// This version accepts a Column (whose underlying function is applied to each row).
+func (df *DataFrame) Column(column string, col Column) *DataFrame {
 	values := make([]interface{}, df.Rows)
 	for i := 0; i < df.Rows; i++ {
 		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
+		for _, c := range df.Cols {
+			row[c] = df.Data[c][i]
 		}
-		values[i] = fn(row)
+		// Use the underlying ColumnFunc.
+		values[i] = col.cf(row)
 	}
 
 	// Add or modify the column.
@@ -22,8 +24,8 @@ func (df *DataFrame) Column(column string, fn ColumnFunc) *DataFrame {
 
 	// Add the column to the list of columns if it doesn't already exist.
 	exists := false
-	for _, col := range df.Cols {
-		if col == column {
+	for _, c := range df.Cols {
+		if c == column {
 			exists = true
 			break
 		}
@@ -119,6 +121,25 @@ func (df *DataFrame) DropDuplicates() *DataFrame {
 	return df
 }
 
+// select
+func (df *DataFrame) Select(columns ...string) *DataFrame {
+	newDF := &DataFrame{
+		Cols: columns,
+		Data: make(map[string][]interface{}),
+		Rows: df.Rows,
+	}
+
+	for _, col := range columns {
+		if data, exists := df.Data[col]; exists {
+			newDF.Data[col] = data
+		} else {
+			newDF.Data[col] = make([]interface{}, df.Rows)
+		}
+	}
+
+	return newDF
+}
+
 // concat
 
 // concat_ws
@@ -146,5 +167,11 @@ func (df *DataFrame) DropDuplicates() *DataFrame {
 // sha512
 
 // from_json ?
+
+// split
+
+// pivot (row to column)
+
+// replace
 
 //
