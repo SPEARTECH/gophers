@@ -16,28 +16,24 @@ func Loc(df map[string]string, index int) map[string]string {
 }
 
 // ColumnFunc is a function type that takes a row and returns a value.
-type ColumnFunc func(row map[string]interface{}) interface{}
+type Column func(row map[string]interface{}) interface{}
 
-// Column represents a column in the DataFrame.
-type Column struct {
-	cf ColumnFunc
-}
+// // Column represents a column in the DataFrame.
+// type Column struct {
+// 	cf ColumnFunc
+// }
 
 // Col returns a Column for the specified column name.
 func Col(col string) Column {
-	return Column{
-		cf: func(row map[string]interface{}) interface{} {
-			return row[col]
-		},
+	return func(row map[string]interface{}) interface{} {
+		return row[col]
 	}
 }
 
 // Lit returns a Column that always returns the provided literal value.
 func Lit(value interface{}) Column {
-	return Column{
-		cf: func(row map[string]interface{}) interface{} {
-			return value
-		},
+	return func(row map[string]interface{}) interface{} {
+		return value
 	}
 }
 

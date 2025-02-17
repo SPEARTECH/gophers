@@ -3,6 +3,7 @@ package gophers
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -16,7 +17,7 @@ func (df *DataFrame) Column(column string, col Column) *DataFrame {
 			row[c] = df.Data[c][i]
 		}
 		// Use the underlying ColumnFunc.
-		values[i] = col.cf(row)
+		values[i] = col(row)
 	}
 
 	// Add or modify the column.
@@ -66,6 +67,8 @@ func (df *DataFrame) Rename(column string, newcol string) *DataFrame {
 
 	return newDF
 }
+
+// alias
 
 // fillna
 func (df *DataFrame) FillNA(replacement string) *DataFrame {
@@ -148,7 +151,103 @@ func (df *DataFrame) Select(columns ...string) *DataFrame {
 
 // explode
 
-// cast
+// Cast takes in an existing Column and a desired datatype ("int", "float", "string"),
+// and returns a new Column that casts the value returned by the original Column to that datatype.
+func Cast(col Column, datatype string) Column {
+	return func(row map[string]interface{}) interface{} {
+		val := col(row)
+		switch datatype {
+		case "int":
+			casted, err := toInt(val)
+			if err != nil {
+				fmt.Printf("cast to int error: %v\n", err)
+				return nil
+			}
+			return casted
+		case "float":
+			casted, err := toFloat64(val)
+			if err != nil {
+				fmt.Printf("cast to float error: %v\n", err)
+				return nil
+			}
+			return casted
+		case "string":
+			casted, err := toString(val)
+			if err != nil {
+				fmt.Printf("cast to string error: %v\n", err)
+				return nil
+			}
+			return casted
+		default:
+			fmt.Printf("unsupported cast type: %s\n", datatype)
+			return nil
+		}
+	}
+}
+
+// toFloat64 attempts to convert an interface{} to a float64.
+func toFloat64(val interface{}) (float64, error) {
+	switch v := val.(type) {
+	case int:
+		return float64(v), nil
+	case int32:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case float32:
+		return float64(v), nil
+	case float64:
+		return v, nil
+	default:
+		return 0, fmt.Errorf("unsupported numeric type: %T", val)
+	}
+}
+
+// toInt tries to convert the provided value to an int.
+// It supports int, int32, int64, float32, float64, and string.
+func toInt(val interface{}) (int, error) {
+	switch v := val.(type) {
+	case int:
+		return v, nil
+	case int32:
+		return int(v), nil
+	case int64:
+		return int(v), nil
+	case float32:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("cannot convert string %q to int: %v", v, err)
+		}
+		return i, nil
+	default:
+		return 0, fmt.Errorf("unsupported type %T", v)
+	}
+}
+
+// toString attempts to convert an interface{} to a string.
+// It supports string, int, int32, int64, float32, and float64.
+func toString(val interface{}) (string, error) {
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case int:
+		return strconv.Itoa(v), nil
+	case int32:
+		return strconv.Itoa(int(v)), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	default:
+		return "", fmt.Errorf("unsupported type %T", val)
+	}
+}
 
 // groupby
 

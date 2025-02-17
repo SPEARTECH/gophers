@@ -23,7 +23,7 @@ func (df *DataFrame) Show(chars int, record_count ...int) {
 	}
 
 	for _, col := range df.Cols {
-		if len(col) >= chars {
+		if len(col) > chars {
 			fmt.Printf("%-15s", col[:chars-3]+"...")
 		} else {
 			fmt.Printf("%-15s", col)

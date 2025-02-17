@@ -5,10 +5,18 @@ type Dashboard struct {
 	pages map[string]interface{}
 }
 
-// create page
+// dashboard create
+
+// create page & add a column
 func (dash *Dashboard) AddPage(name string) {
 
 }
+
+// add row
+
+// add column
+
+// spacing for stuff? card or no card? background?
 
 // add text input
 

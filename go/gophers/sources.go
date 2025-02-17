@@ -130,7 +130,7 @@ func ReadJSON(jsonStr string) *DataFrame {
 		}
 		jsonStr = string(bytes)
 	}
-	fmt.Println(jsonStr)
+	// fmt.Println(jsonStr)
 	// Unmarshal the JSON into a slice of maps.
 	var rows []map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &rows); err != nil {
