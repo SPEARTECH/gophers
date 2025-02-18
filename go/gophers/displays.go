@@ -245,70 +245,74 @@ func QuoteArray(arr []string) string {
 }
 
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
-func (df *DataFrame) BrowserDisplay() error {
+func (df *DataFrame) Browser() error {
 	// display an html table of the dataframe for analysis, filtering, sorting, etc
 	html := `
-<!DOCTYPE html>
-<html>
-	<head>
-		<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-		<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-		<script src="https://cdn.tailwindcss.com"></script>
-		<script src="https://code.highcharts.com/highcharts.js"></script>
-		<script src="https://code.highcharts.com/modules/boost.js"></script>
-		<script src="https://code.highcharts.com/modules/exporting.js"></script>
-		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
-	</head>
-	<body>
-		<div id="app" style="text-align: center;" class="overflow-x-auto">
-			<table class="table">				
-  				<thead>
-					<tr>
-						<th></th>
-						<th v-for="col in cols">[[ col ]]</th>
-					</tr>
-				</thead>
-				<tbody>
-				<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
-						<th>[[ i ]]</th>
-						<td v-for="col in cols" :key="col">[[ data[col][i] ]]</td>
-					</tr>
-				</tbody>
-			</table>
-		</div>
-	</body>
-	<script>
-		const { createApp } = Vue
-		createApp({
-		delimiters : ['[[', ']]'],
-			data(){
-				return {
-					cols: ` + QuoteArray(df.Cols) + `,
-					data: ` + mapToString(df.Data) + `,
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script src="https://code.highcharts.com/highcharts.js"></script>
+			<script src="https://code.highcharts.com/modules/boost.js"></script>
+			<script src="https://code.highcharts.com/modules/exporting.js"></script>
+			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+		</head>
+		<body>
+			<div id="app" style="text-align: center;" class="overflow-x-auto">
+				<table class="table table-xs">
+	  				<thead>
+						<tr>
+							<th></th>
+							<th v-for="col in cols"><a class="btn btn-sm btn-ghost justify justify-start">[[ col ]]<span class="material-symbols-outlined">arrow_drop_down</span></a></th>
+						</tr>
+					</thead>
+					<tbody>
+					<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
+							<th class="pl-5">[[ i ]]</th>
+							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col][i] ]]</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</body>
+		<script>
+			const { createApp } = Vue
+			createApp({
+			delimiters : ['[[', ']]'],
+				data(){
+					return {
+						cols: ` + QuoteArray(df.Cols) + `,
+						data: ` + mapToString(df.Data) + `,
+						selected_col: {},
+						page: 1,
+						pages: []
+						total_pages: this.data[0].length/100
+					}
+				},
+				methods: {
+
+				},
+				watch: {
+
+				},
+				created(){
+					for (var )
+				},
+
+				mounted() {
+
+				},
+				computed:{
+
 				}
-			},
-			methods: {
 
-			},
-			watch: {
-
-			},
-			created(){
-
-			},
-
-			mounted() {
-
-			},
-			computed:{
-
-			}
-
-		}).mount('#app')
-	</script>
-</html>	
-`
+			}).mount('#app')
+		</script>
+	</html>
+	`
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
 	if err != nil {
@@ -448,5 +452,7 @@ func (df *DataFrame) DisplayToFile(path string) error {
 
 	return nil
 }
+
+// DataTypes ?
 
 // Create and display an example dataframe; the smallest dataframe possible to display a value for each column

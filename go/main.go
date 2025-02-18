@@ -2,7 +2,6 @@ package main
 
 import (
 	. "gophers/gophers"
-	"strings"
 )
 
 func main() {
@@ -49,25 +48,37 @@ func main() {
 		If(Col("age").IsNotNull(), Lit("not null"),
 			Lit("idk"))))
 
-	// Example of passing anonymous function to perform logical operations
-	df = df.Column("age", func(row map[string]interface{}) interface{} {
-		value := row["age"]
-		// Check if the value is nil or an empty/"null" string.
-		if value == nil {
-			return "is null"
-		}
-		if s, ok := value.(string); ok {
-			if s == "" || strings.ToLower(s) == "null" {
-				return "is null"
-			}
-			// You can add any other condition here.
-			return "not null"
-		}
-		// Default case if value is non-string.
-		return "idk"
-	})
+	// // Example of passing anonymous function to perform logical operations
+	// df = df.Column("age", func(row map[string]interface{}) interface{} {
+	// 	value := row["age"]
+	// 	// Check if the value is nil or an empty/"null" string.
+	// 	if value == nil {
+	// 		return "is null"
+	// 	}
+	// 	if s, ok := value.(string); ok {
+	// 		if s == "" || strings.ToLower(s) == "null" {
+	// 			return "is null"
+	// 		}
+	// 		// You can add any other condition here.
+	// 		return "not null"
+	// 	}
+	// 	// Default case if value is non-string.
+	// 	return "idk"
+	// })
 
-	df = df.Column("age", If(Col("age").Eq("not null"), Lit("is not null"),
-		Lit("idk")))
-	df.Show(10)
+	// df = df.Column("age", If(Col("age").Eq(Col("age")), Lit("is not null"),
+	// 	Lit("idk")))
+	// df.Show(10)
+
+	// // Example filtering with or condition and multiline formatting
+	// df.Filter(
+	// 	Or(
+	// 		Col("age").Ne("is null"),
+	// 		Col("age").Eq("is stuff null"))).
+	// 	Show(10)
+
+	// Example concatenating columns
+	df = df.Column("newcol", Concat_ws("-", Col("name"), Col("age")))
+
+	df.Browser()
 }

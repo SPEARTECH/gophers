@@ -153,3 +153,25 @@ func (c Column) Eq(threshold interface{}) Column {
 		return val == threshold
 	}
 }
+
+// Ne returns a Column that, when evaluated on a row,
+// checks if the value from col is NOT equal (diff type or value) to threshold.
+func (c Column) Ne(threshold interface{}) Column {
+	return func(row map[string]interface{}) interface{} {
+		val := c(row)
+		// If either is nil, return equality directly.
+		if val == nil || threshold == nil {
+			return val != threshold
+		}
+		// Check that both values are of the same type.
+		if reflect.TypeOf(val) != reflect.TypeOf(threshold) {
+			return true
+		}
+		// Use Go's native equality.
+		return val != threshold
+	}
+}
+
+// Require - data source check for necessary columns and datatypes to prevent errors in etl process
+
+//

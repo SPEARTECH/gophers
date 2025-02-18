@@ -69,6 +69,9 @@ func (df *DataFrame) Rename(column string, newcol string) *DataFrame {
 }
 
 // alias
+// func (c Column) Alias(newname string) Column{
+// 	return
+// }
 
 // fillna
 func (df *DataFrame) FillNA(replacement string) *DataFrame {
@@ -90,7 +93,6 @@ func (df *DataFrame) FillNA(replacement string) *DataFrame {
 	return df
 }
 
-// dropduplicates
 // DropDuplicates removes duplicate rows from the DataFrame.
 func (df *DataFrame) DropDuplicates() *DataFrame {
 	seen := make(map[string]bool)
@@ -143,11 +145,80 @@ func (df *DataFrame) Select(columns ...string) *DataFrame {
 	return newDF
 }
 
-// concat
+// Concat returns a Column that, when applied to a row,
+// concatenates the string representations of the provided Columns.
+// It converts each value to a string using toString.
+// If conversion fails, it uses an empty string.
+func Concat(cols ...Column) Column {
+	return func(row map[string]interface{}) interface{} {
+		var parts []string
+		for _, col := range cols {
+			val := col(row)
+			str, err := toString(val)
+			if err != nil {
+				str = ""
+			}
+			parts = append(parts, str)
+		}
+		// Customize the delimiter as needed.
+		return strings.Join(parts, "")
+	}
+}
 
-// concat_ws
+// Concat_ws returns a Column that, when applied to a row,
+// concatenates the string representations of the provided Columns using the specified delimiter.
+// It converts each value to a string using toString. If conversion fails for a value, it uses an empty string.
+func Concat_ws(delim string, cols ...Column) Column {
+	return func(row map[string]interface{}) interface{} {
+		var parts []string
+		for _, col := range cols {
+			val := col(row)
+			str, err := toString(val)
+			if err != nil {
+				str = ""
+			}
+			parts = append(parts, str)
+		}
+		return strings.Join(parts, delim)
+	}
+}
 
-// filter
+// Filter returns a new DataFrame containing only the rows for which
+// the condition (a Column that evaluates to a bool) is true.
+func (df *DataFrame) Filter(condition Column) *DataFrame {
+	// Create new DataFrame with the same columns.
+	newDF := &DataFrame{
+		Cols: df.Cols,
+		Data: make(map[string][]interface{}),
+	}
+	for _, col := range df.Cols {
+		newDF.Data[col] = []interface{}{}
+	}
+
+	// Iterate over each row.
+	for i := 0; i < df.Rows; i++ {
+		// Build a row (as a map) for evaluation.
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			row[col] = df.Data[col][i]
+		}
+		// Evaluate the condition.
+		cond := condition(row)
+		if b, ok := cond.(bool); ok && b {
+			// If true, append data from this row to newDF.
+			for _, col := range df.Cols {
+				newDF.Data[col] = append(newDF.Data[col], row[col])
+			}
+		}
+	}
+
+	// Set new row count.
+	if len(df.Cols) > 0 {
+		newDF.Rows = len(newDF.Data[df.Cols[0]])
+	}
+
+	return newDF
+}
 
 // explode
 
