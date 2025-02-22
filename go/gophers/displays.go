@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"runtime"
 )
 
 // Print displays the DataFrame in a simple tabular format.
@@ -235,6 +236,13 @@ func DisplayHTML(html string) map[string]interface{} {
 	}
 }
 
+func DisplayChart(chart Chart) map[string]interface{} {
+	html := chart.htmlpreid + chart.htmldivid + chart.htmlpostid + chart.jspreid + chart.htmldivid + chart.jspostid
+	return map[string]interface{}{
+		"text/html": html,
+	}
+}
+
 // QuoteArray returns a string representation of a Go array with quotes around the values.
 func QuoteArray(arr []string) string {
 	quoted := make([]string, len(arr))
@@ -245,7 +253,7 @@ func QuoteArray(arr []string) string {
 }
 
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
-func (df *DataFrame) Browser() error {
+func (df *DataFrame) DisplayBrowser() error {
 	// display an html table of the dataframe for analysis, filtering, sorting, etc
 	html := `
 	<!DOCTYPE html>
@@ -288,8 +296,8 @@ func (df *DataFrame) Browser() error {
 						data: ` + mapToString(df.Data) + `,
 						selected_col: {},
 						page: 1,
-						pages: []
-						total_pages: this.data[0].length/100
+						pages: [],
+						total_pages: 0
 					}
 				},
 				methods: {
@@ -299,7 +307,7 @@ func (df *DataFrame) Browser() error {
 
 				},
 				created(){
-					for (var )
+					this.total_pages = Math.ceil(Object.keys(this.data).length / 100)
 				},
 
 				mounted() {
@@ -313,22 +321,32 @@ func (df *DataFrame) Browser() error {
 		</script>
 	</html>
 	`
-	// Create a temporary file
-	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file: %v", err)
-	}
-	defer tmpFile.Close()
+    // Create a temporary file
+    tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
+    if err != nil {
+        return fmt.Errorf("failed to create temporary file: %v", err)
+    }
+    defer tmpFile.Close()
 
-	// Write the HTML string to the temporary file
-	if _, err := tmpFile.Write([]byte(html)); err != nil {
-		return fmt.Errorf("failed to write to temporary file: %v", err)
-	}
+    // Write the HTML string to the temporary file
+    if _, err := tmpFile.Write([]byte(html)); err != nil {
+        return fmt.Errorf("failed to write to temporary file: %v", err)
+    }
 
-	// Open the temporary file in the default web browser
-	if err := exec.Command("open", tmpFile.Name()).Start(); err != nil {
-		return fmt.Errorf("failed to open file in browser: %v", err)
-	}
+    // Open the temporary file in the default web browser
+    var cmd *exec.Cmd
+    switch runtime.GOOS {
+    case "windows":
+        cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
+    case "darwin":
+        cmd = exec.Command("open", tmpFile.Name())
+    default: // "linux", "freebsd", "openbsd", "netbsd"
+        cmd = exec.Command("xdg-open", tmpFile.Name())
+    }
+
+    if err := cmd.Start(); err != nil {
+        return fmt.Errorf("failed to open file in browser: %v", err)
+    }
 
 	return nil
 }
@@ -383,7 +401,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 	</head>
 	<body>
-		<div id="app" style="text-align: center;" class="overflow-x-auto">
+		<div id="table" style="text-align: center;" class="overflow-x-auto">
 			<table class="table">
 				<thead>
 					<tr>
@@ -403,10 +421,10 @@ func (df *DataFrame) Display() map[string]interface{} {
 	<script>
 		const { createApp } = Vue
 		createApp({
-		delimiters : ['[[', ']]'],
+		delimiters :  ["[[", "]]"],
 			data(){
 				return {
-					cols: ` + QuoteArray(df.Cols) + `
+					cols: ` + QuoteArray(df.Cols) + `,
 					data: ` + mapToString(df.Data) + `,
 				}
 			},
@@ -427,7 +445,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 
 			}
 
-		}).mount('#app')
+		}).mount("#table")
 	</script>
 </html>	
 `

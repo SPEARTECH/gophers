@@ -31,6 +31,7 @@ func Col(col string) Column {
 }
 
 // Lit returns a Column that always returns the provided literal value.
+// check if same type for column?
 func Lit(value interface{}) Column {
 	return func(row map[string]interface{}) interface{} {
 		return value

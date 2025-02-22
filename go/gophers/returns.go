@@ -59,3 +59,10 @@ func (df *DataFrame) CountDistinct(columns ...string) int {
 
 	return count
 }
+
+func (df *DataFrame) Collect(c string) []interface{} {
+    if values, exists := df.Data[c]; exists {
+        return values
+    }
+    return []interface{}{}
+}
