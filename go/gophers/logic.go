@@ -20,16 +20,6 @@ func If(condition Column, fn1 Column, fn2 Column) Column {
 	}
 }
 
-// // Filter returns dataframe rows based on logic provided
-// func Filter(){
-
-// }
-
-// // Where returns dataframe rows based on logic provided
-// func Where(){
-
-// }
-
 // IsNull returns a new Column that, when applied to a row,
 // returns true if the original column value is nil, an empty string, or "null".
 func (c Column) IsNull() Column {
@@ -174,4 +164,26 @@ func (c Column) Ne(threshold interface{}) Column {
 
 // Require - data source check for necessary columns and datatypes to prevent errors in etl process
 
-//
+// Or returns a Column that evaluates to true if either of the two provided Conditions is true.
+func Or(c1, c2 Column) Column {
+	return func(row map[string]interface{}) interface{} {
+		cond1, ok1 := c1(row).(bool)
+		cond2, ok2 := c2(row).(bool)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return cond1 || cond2
+	}
+}
+
+// And returns a Column that evaluates to true if both of the two provided Conditions is true.
+func And(c1, c2 Column) Column {
+	return func(row map[string]interface{}) interface{} {
+		cond1, ok1 := c1(row).(bool)
+		cond2, ok2 := c2(row).(bool)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return cond1 && cond2
+	}
+}

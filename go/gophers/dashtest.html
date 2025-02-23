@@ -1,70 +1,62 @@
 <!DOCTYPE html>
 <html>
-    <head>
+	<head>
 		<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-		<script src="https://cdn.tailwindcss.com"></script>
-
 		<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+		<script src="https://cdn.tailwindcss.com"></script>
 		<script src="https://code.highcharts.com/highcharts.js"></script>
 		<script src="https://code.highcharts.com/modules/boost.js"></script>
 		<script src="https://code.highcharts.com/modules/exporting.js"></script>
 		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
-    </head>
+	</head>
 	<body>
-		<div id="app" style="text-align: center;" class="drawer w-full lg:drawer-open">
-            <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
-            <div class="drawer-content flex flex-col">
-              <!-- Navbar -->
-              <div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
-                  <div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="ml-14 text-4xl">Certain learning</a></div>
-                  <div class="flex-none lg:hidden">
-                    <label for="my-drawer-2" class="btn btn-neutral btn-square shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                        class="inline-block w-6 h-6 stroke-current">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-                      </svg>
-                    </label>
-                    </div>
-                </div>
-                <!-- content goes here! -->
-                <div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">
-               
-                    <iframe class="flex justify-self-center" srcdoc='
-                    <h1 class="flex justify-self-center">hey there!</h1>
-                    '>
-                </iframe>
-            
-                </div>
-            </div>
-            <!-- <br> -->
-            <div class="drawer-side">
-                <label for="my-drawer-2" class="drawer-overlay bg-neutral"></label>
-                <ul class="menu p-4 w-80 bg-neutral h-full overflow-y-auto min-h-screen text-base-content shadow-none space-y-2 ">
-                <div class="card w-72 bg-base-100 shadow-xl">
-                    <div class="card-body">
-                        <div class="flex space-x-6 place-content-center">
-                            <h2 class="card-title black-text-shadow-sm flex justify">Pages</h2>
-                        </div>
-                    <div class="flex flex-col w-full h-1px">
-                    <div class="divider"></div>
-                    </div>
-                    <div class="space-y-4">
-                        <button v-if="page == '' " @click="page = '' " class="btn btn-block btn-sm btn-neutral text-white bg-neutral shadow-lg  hover:shadow-xl hover:-translate-y-0.5 no-animation " >test</button>
-                        <button v-else @click="page = '' " class="btn btn-block btn-sm bg-base-100 text-black btn-neutral hover:text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation " >test</button>
-                    </div>
-                </div>
-            </div>  
-        </div>
+		<div id="table" style="text-align: center;" class="overflow-x-auto">
+			<table class="table">
+				<thead>
+					<tr>
+						<th></th>
+						<th v-for="col in cols">[[ col ]]</th>
+					</tr>
+				</thead>
+				<tbody>
+				<tr v-for="i in Array.from({length:2}).keys()" :key="i">
+						<th>[[ i ]]</th>
+						<td v-for="col in cols">[[ data[col][i] ]]</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
 	</body>
 	<script>
 		const { createApp } = Vue
 		createApp({
-		delimiters : ['[[', ']]'],
+		delimiters :  ["[[", "]]"],
 			data(){
 				return {
-                }
-            }
-            }).mount('#app')
-                    </script>
-</html>
+					cols: ["name","age","gender"],
+					data: {"name":["tyler","sarah"],"age":[35,35],"gender":["m","f"]},
+                    tablepage: 1,
+                    tabletotalpages: this.data[this.data.keys()[0]].length / 1
+				}
+			},
+			methods: {
+
+			},
+			watch: {
+
+			},
+			created(){
+                
+			},
+
+			mounted() {
+
+			},
+			computed:{
+
+			}
+
+		}).mount("#table")
+	</script>
+</html>	

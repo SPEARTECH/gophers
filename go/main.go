@@ -84,15 +84,19 @@ func main() {
 	dash := df.CreateDashboard("My Analysis")
 	dash.AddPage("page1")
 	dash.AddPage("page2")
-	dash.AddHTML("page2","<h1>NEW HTML!</h1>")
+	dash.AddHTML("page2", "<h1>NEW HTML!</h1>")
 	dash.AddText("page2", "this is example text")
 	dash.AddHeading("page1", "heading", 1)
 	dash.AddText("page1", "This is a lot of text that I cannot really think of right now to populate something meaningful yet here i am typing stuff anyways to test this")
-	dash.AddChart(df.BarChart("name", "score", "name age title", "subtitle"), "page1", "bar chart")
+	dash.AddChart(df.BarChart("name age title", "subtitle", "name", Unique("age"), Sum("score")), "page1", "bar chart")
 	dash.AddSubText("page1", "This is a subtext for the chart above maybe")
-	dash.AddText("page1",  `Here is some test text to see if this works well 
+	dash.AddText("page1", `Here is some test text to see if this works well 
 but if not then ill try something else`)
 	dash.AddBullets("page1", "bullets", "This is a bullet point", "This is another bullet point")
 	dash.AddDataframe("page2", df)
 	dash.Open()
+
+	// join example
+	// df2 := df
+	// df = df.Join(df2, "name", "name", "inner")
 }

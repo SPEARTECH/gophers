@@ -4,7 +4,10 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	// "github.com/xitongsys/parquet-go/ParquetFile"
@@ -206,4 +209,80 @@ func ReadParquet(jsonStr string) *DataFrame {
 
 // read iceberg table?
 
-//
+// GetAPIJSON performs a GET request to the specified API endpoint.
+// 'endpoint' is the URL string for the request.
+// 'headers' is a map of header keys and values (e.g., authentication tokens).
+// 'queryParams' is a map of query parameter keys and values.
+// endpoint := "https://api.example.com/data"
+
+// headers := map[string]string{
+// 	"Authorization": "Bearer your_access_token",
+// 	"Accept":        "application/json",
+// }
+
+//	queryParams := map[string]string{
+//		"limit":  "10",
+//		"offset": "0",
+//	}
+
+// df := GetAPIJSON(endpoint, headers, queryParams)
+func GetAPIJSON(endpoint string, headers map[string]string, queryParams map[string]string) (*DataFrame, error) {
+	// Parse the endpoint URL.
+	parsedURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse endpoint url: %v", err)
+	}
+
+	// Add query parameters.
+	q := parsedURL.Query()
+	for key, value := range queryParams {
+		q.Add(key, value)
+	}
+	parsedURL.RawQuery = q.Encode()
+
+	// Create a new GET request.
+	req, err := http.NewRequest("GET", parsedURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Add headers.
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	// Execute the request.
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for non-200 status codes.
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	// Read and return the response body.
+	jsonBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %v", err)
+	}
+	// Unmarshal JSON into an interface{}.
+	var result interface{}
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		return nil, fmt.Errorf("Error unmarshalling JSON: %v\n", err)
+	}
+
+	// Re-marshal the result into a JSON string.
+	jsonStr, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("Error re-marshalling JSON: %v", err)
+	}
+
+	df := ReadJSON(string(jsonStr))
+	return df, nil
+}
+
+// javascript request source? (django/flask?)

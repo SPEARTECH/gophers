@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
-	"runtime"
 )
 
 // Print displays the DataFrame in a simple tabular format.
@@ -321,32 +321,32 @@ func (df *DataFrame) DisplayBrowser() error {
 		</script>
 	</html>
 	`
-    // Create a temporary file
-    tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
-    if err != nil {
-        return fmt.Errorf("failed to create temporary file: %v", err)
-    }
-    defer tmpFile.Close()
+	// Create a temporary file
+	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %v", err)
+	}
+	defer tmpFile.Close()
 
-    // Write the HTML string to the temporary file
-    if _, err := tmpFile.Write([]byte(html)); err != nil {
-        return fmt.Errorf("failed to write to temporary file: %v", err)
-    }
+	// Write the HTML string to the temporary file
+	if _, err := tmpFile.Write([]byte(html)); err != nil {
+		return fmt.Errorf("failed to write to temporary file: %v", err)
+	}
 
-    // Open the temporary file in the default web browser
-    var cmd *exec.Cmd
-    switch runtime.GOOS {
-    case "windows":
-        cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
-    case "darwin":
-        cmd = exec.Command("open", tmpFile.Name())
-    default: // "linux", "freebsd", "openbsd", "netbsd"
-        cmd = exec.Command("xdg-open", tmpFile.Name())
-    }
+	// Open the temporary file in the default web browser
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
+	case "darwin":
+		cmd = exec.Command("open", tmpFile.Name())
+	default: // "linux", "freebsd", "openbsd", "netbsd"
+		cmd = exec.Command("xdg-open", tmpFile.Name())
+	}
 
-    if err := cmd.Start(); err != nil {
-        return fmt.Errorf("failed to open file in browser: %v", err)
-    }
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to open file in browser: %v", err)
+	}
 
 	return nil
 }

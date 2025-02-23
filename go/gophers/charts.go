@@ -13,11 +13,36 @@ type Chart struct {
 	jspostid   string
 }
 
-// return Bar Chart html for dataframe
-// pass columns for x and y
-// if columns are strings, they will be
-func (df *DataFrame) BarChart(x string, y string, title string, subtitle string) Chart { // add functionality for grouped bar chart + counting values if string
-	GroupedSeriesJSON := df.GroupedSeriesJSON(x, y)
+// BarChart returns Bar Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, aggs ...Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
 	htmlpreid := `<div id="`
 	htmldivid := `barchart`
 	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
@@ -33,7 +58,7 @@ func (df *DataFrame) BarChart(x string, y string, title string, subtitle string)
         text: '%s'
     },
     xAxis: {
-        categories: '',
+        categories: %s,
         title: {
             text: '%s'
         },
@@ -52,7 +77,7 @@ func (df *DataFrame) BarChart(x string, y string, title string, subtitle string)
         gridLineWidth: 0
     },
     tooltip: {
-        valueSuffix: ' millions'
+        valueSuffix: ''
     },
     plotOptions: {
         bar: {
@@ -63,26 +88,17 @@ func (df *DataFrame) BarChart(x string, y string, title string, subtitle string)
             groupPadding: 0.1
         }
     },
-    // legend: {
-    //     layout: 'vertical',
-    //     align: 'right',
-    //     verticalAlign: 'top',
-    //     x: -5,
-    //     y: 20,
-    //     floating: true,
-    //     borderWidth: 1,
-    //     backgroundColor:
-    //         Highcharts.defaultOptions.legend.backgroundColor || '#FFFFFF',
-    //     shadow: true
-    // },
     credits: {
         enabled: false
     },
     series: %s
-});	`, title, subtitle, x, y, GroupedSeriesJSON) // need to show chart within app div + fix series data (make function for this?)
+});`, title, subtitle, categoriesJSON, groupcol, groupcol, seriesJSON)
+
 	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
 	return newChart
 }
+
+// column chart
 
 func (df *DataFrame) GroupedSeriesJSON(x string, y string) string {
 	// Assume df.Collect returns a slice for the given column
@@ -470,7 +486,7 @@ Highcharts.chart('container', {
 	return html
 }
 
-func (df *DataFrame) WordCloud(columns ...string) string {
+func (df *DataFrame) TreeMap(columns ...string) string {
 	html := ``
 	return html
 }
@@ -574,6 +590,6 @@ Highcharts.chart('container', {
 }
 
 func (df *DataFrame) DataTable(columns ...string) string {
-	html := ``
+	html := `` // call display with only html return
 	return html
 }

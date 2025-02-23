@@ -16,18 +16,27 @@ func (df *DataFrame) Count() int {
 }
 
 // CountDuplicates returns the count of duplicate rows in the DataFrame.
-func (df *DataFrame) CountDuplicates() int {
+// If one or more columns are provided, only those columns are used to determine uniqueness.
+// If no columns are provided, the entire row (all columns) is used.
+func (df *DataFrame) CountDuplicates(columns ...string) int {
+	// If no columns are specified, use all columns.
+	uniqueCols := columns
+	if len(uniqueCols) == 0 {
+		uniqueCols = df.Cols
+	}
+
 	seen := make(map[string]bool)
 	duplicateCount := 0
 
 	for i := 0; i < df.Rows; i++ {
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
+		// Build a subset row only with the uniqueCols.
+		rowSubset := make(map[string]interface{})
+		for _, col := range uniqueCols {
+			rowSubset[col] = df.Data[col][i]
 		}
 
-		// Convert the row to a JSON string to use as a key in the map.
-		rowBytes, _ := json.Marshal(row)
+		// Convert the subset row to a JSON string to use as a key.
+		rowBytes, _ := json.Marshal(rowSubset)
 		rowStr := string(rowBytes)
 
 		if seen[rowStr] {
@@ -61,8 +70,8 @@ func (df *DataFrame) CountDistinct(columns ...string) int {
 }
 
 func (df *DataFrame) Collect(c string) []interface{} {
-    if values, exists := df.Data[c]; exists {
-        return values
-    }
-    return []interface{}{}
+	if values, exists := df.Data[c]; exists {
+		return values
+	}
+	return []interface{}{}
 }

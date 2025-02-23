@@ -38,7 +38,23 @@ func Lit(value interface{}) Column {
 	}
 }
 
-// is in
+// datetime
+
+// epoch
+
+// sha256
+
+// sha512
+
+// from_json ?
+
+// split
+
+// pivot (row to column)
+
+// replace
+
+// regexp_replace
 
 // starts with
 
@@ -50,29 +66,9 @@ func Lit(value interface{}) Column {
 
 // rlike - regex
 
-// groupy by
-
-// join
-
-// joins
-
-// merge
-
-// append dataframes
-// union
-// union_all
-
-// drop rows
-
-// drop columns
+// regexp
 
 // corr()
-
-// mean()
-
-// median()
-
-// mode()
 
 // describe()
 
@@ -84,30 +80,6 @@ func Lit(value interface{}) Column {
 
 // query()
 
-// Or returns a Column that evaluates to true if either of the two provided Conditions is true.
-func Or(c1, c2 Column) Column {
-	return func(row map[string]interface{}) interface{} {
-		cond1, ok1 := c1(row).(bool)
-		cond2, ok2 := c2(row).(bool)
-		if !ok1 || !ok2 {
-			return false
-		}
-		return cond1 || cond2
-	}
-}
-
-// And returns a Column that evaluates to true if both of the two provided Conditions is true.
-func And(c1, c2 Column) Column {
-	return func(row map[string]interface{}) interface{} {
-		cond1, ok1 := c1(row).(bool)
-		cond2, ok2 := c2(row).(bool)
-		if !ok1 || !ok2 {
-			return false
-		}
-		return cond1 && cond2
-	}
-}
-
 // dropna()
 
 // rolling()
@@ -116,6 +88,16 @@ func And(c1, c2 Column) Column {
 
 // astype()
 
-// to_datetime()
+// ToDatetime()
+
+// DateFormat() ?
+
+// ToDate()
+
+// DateDiff()
+
+// ToEpoch()
+
+// FromEpoch()
 
 // sql?

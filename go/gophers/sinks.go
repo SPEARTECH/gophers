@@ -157,3 +157,4 @@ func (df *DataFrame) ToParquetFile(filename string) error {
 }
 
 // write to table? (mongo, postgres, mysql, sqlite, etc)
+// JDBC?
