@@ -398,7 +398,7 @@ func (dash *Dashboard) AddDataframe(page string, df *DataFrame) {
 }
 
 // add chart to dashboard page
-func (dash *Dashboard) AddChart(chart Chart, page string, description string) {
+func (dash *Dashboard) AddChart(page string, chart Chart) {
 	// add html to page map
 	if _, exists := dash.pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
@@ -545,6 +545,10 @@ func (dash *Dashboard) AddBullets(page string, text ...string) {
 	dash.pageshtml[page] = pageHTML
 
 }
+
+// AddRow() - take in any amt of text, image, bullets, charts, etc. - flex & justify
+
+// AddCol() - take in any amt of text, image, bullets, charts, etc. - flex & justify
 
 // add button
 

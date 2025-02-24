@@ -16,7 +16,12 @@ package gophers
 // }
 
 // ColumnFunc is a function type that takes a row and returns a value.
-type Column func(row map[string]interface{}) interface{}
+// type Column func(row map[string]interface{}) interface{}
+// Column represents a column in the DataFrame.
+type Column struct {
+	Name string
+	Fn   func(row map[string]interface{}) interface{}
+}
 
 // // Column represents a column in the DataFrame.
 // type Column struct {
@@ -24,17 +29,54 @@ type Column func(row map[string]interface{}) interface{}
 // }
 
 // Col returns a Column for the specified column name.
-func Col(col string) Column {
-	return func(row map[string]interface{}) interface{} {
-		return row[col]
+func Col(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			return row[name]
+		},
 	}
 }
 
 // Lit returns a Column that always returns the provided literal value.
-// check if same type for column?
 func Lit(value interface{}) Column {
-	return func(row map[string]interface{}) interface{} {
-		return value
+	return Column{
+		Name: "lit",
+		Fn: func(row map[string]interface{}) interface{} {
+			return value
+		},
+	}
+}
+
+// CollectList returns a Column that is an array of the given column's values.
+func CollectList(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			values := []interface{}{}
+			for _, val := range row[name].([]interface{}) {
+				values = append(values, val)
+			}
+			return values
+		},
+	}
+}
+
+// CollectSet returns a Column that is a set of unique values from the given column.
+func CollectSet(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			valueSet := make(map[interface{}]bool)
+			for _, val := range row[name].([]interface{}) {
+				valueSet[val] = true
+			}
+			values := []interface{}{}
+			for val := range valueSet {
+				values = append(values, val)
+			}
+			return values
+		},
 	}
 }
 
@@ -42,35 +84,31 @@ func Lit(value interface{}) Column {
 
 // epoch
 
-// sha256
+// sha256 *
 
-// sha512
+// sha512 *
 
-// from_json ?
+// from_json ? *
 
-// split
+// split *
 
-// pivot (row to column)
+// pivot (row to column) *
 
 // replace
 
-// regexp_replace
+// regexp_replace *
 
 // starts with
 
 // ends with
 
-// contains
+// contains *
 
 // like - sql %%
 
 // rlike - regex
 
 // regexp
-
-// corr()
-
-// describe()
 
 // sort_values()
 
@@ -88,15 +126,15 @@ func Lit(value interface{}) Column {
 
 // astype()
 
-// ToDatetime()
+// ToDatetime() *
 
-// DateFormat() ?
+// DateFormat() ? *
 
-// ToDate()
+// ToDate() *
 
-// DateDiff()
+// DateDiff() *
 
-// ToEpoch()
+// ToEpoch() *
 
 // FromEpoch()
 

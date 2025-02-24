@@ -78,7 +78,9 @@ func main() {
 	// 	Show(10)
 
 	// Example concatenating columns
-	df = df.Column("newcol", Concat_ws("-", Col("name"), Col("age")))
+	df = df.Column("newcol", Concat_WS("-", Col("name"), Col("age")))
+	// df = df.Column("collected_col", Lit(df.Collect("name")))
+	// df = df.Explode("collected_col")
 	df.Show(10)
 	// df.DisplayBrowser()
 	dash := df.CreateDashboard("My Analysis")
@@ -88,14 +90,18 @@ func main() {
 	dash.AddText("page2", "this is example text")
 	dash.AddHeading("page1", "heading", 1)
 	dash.AddText("page1", "This is a lot of text that I cannot really think of right now to populate something meaningful yet here i am typing stuff anyways to test this")
-	dash.AddChart(df.BarChart("name age title", "subtitle", "name", Unique("age"), Sum("score")), "page1", "bar chart")
+	dash.AddChart("page1", df.StackedPercentChart("name age title", "subtitle", "name", Agg(Unique("age"), Sum("score"))))
 	dash.AddSubText("page1", "This is a subtext for the chart above maybe")
 	dash.AddText("page1", `Here is some test text to see if this works well 
 but if not then ill try something else`)
 	dash.AddBullets("page1", "bullets", "This is a bullet point", "This is another bullet point")
 	dash.AddDataframe("page2", df)
 	dash.Open()
-
+	// df.Show(10)
+	// df.Select("collected_col").Show(25)
+	// df = df.DropDuplicates()
+	// df = df.Explode("collected_col")
+	// df.Vertical(50)
 	// join example
 	// df2 := df
 	// df = df.Join(df2, "name", "name", "inner")

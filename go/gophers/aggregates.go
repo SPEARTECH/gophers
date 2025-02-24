@@ -14,222 +14,238 @@ type Aggregation struct {
 	Fn         AggregatorFn
 }
 
-// Sum returns an Aggregation for summing numeric values from the specified column.
-func Sum(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         SumAggregator,
-	}
-}
-
-// Sum returns an Aggregation for summing numeric values from the specified column.
-func Max(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         MaxAggregator,
-	}
-}
-
-// Min returns an Aggregation for smallest numeric values from the specified column.
-func Min(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         MinAggregator,
-	}
-}
-
-// Median returns an Aggregation for middle numeric value from the specified column.
-func Median(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         MedianAggregator,
-	}
-}
-
-// Avg returns an Aggregation for average numeric values from the specified column.
-func Avg(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         MeanAggregator,
-	}
-}
-
-// Mean returns an Aggregation for average numeric values from the specified column.
-func Mean(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         MeanAggregator,
-	}
-}
-
-// Mode returns an Aggregation for most occured numeric values from the specified column.
-func Mode(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         ModeAggregator,
-	}
-}
-
-// Unique returns an Aggregation for counting unique values from the specified column.
-func Unique(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         UniqueAggregator,
-	}
-}
-
-// First returns an Aggregation for getting the first value from the specified column.
-func First(col string) Aggregation {
-	return Aggregation{
-		ColumnName: col,
-		Fn:         FirstAggregator,
-	}
-}
-
-// UniqueAggregator counts the number of unique values in the column.
-func UniqueAggregator(vals []interface{}) interface{} {
-	uniqueSet := make(map[interface{}]bool)
-	for _, val := range vals {
-		uniqueSet[val] = true
-	}
-	return len(uniqueSet)
-}
-
-// SumAggregator converts each value to float64 and returns their sum.
-func SumAggregator(vals []interface{}) interface{} {
-	sum := 0.0
-	for _, val := range vals {
-		fVal, err := toFloat64(val)
-		if err != nil {
-			fmt.Printf("sum conversion error: %v\n", err)
-			continue
+// Agg converts multiple Column functions to a slice of Aggregation structs for use in aggregation.
+func Agg(cols ...Column) []Aggregation {
+	aggs := []Aggregation{}
+	for _, col := range cols {
+		agg := Aggregation{
+			ColumnName: col.Name,
+			Fn: func(vals []interface{}) interface{} {
+				row := make(map[string]interface{})
+				row[col.Name] = vals
+				return col.Fn(row)
+			},
 		}
-		sum += fVal
+		aggs = append(aggs, agg)
 	}
-	return sum
+	return aggs
 }
 
-// MinAggregator converts each value to float64 and returns the minimum.
-func MinAggregator(vals []interface{}) interface{} {
-	minSet := false
-	var min float64
-	for _, val := range vals {
-		fVal, err := toFloat64(val)
-		if err != nil {
-			fmt.Printf("min conversion error: %v\n", err)
-			continue
-		}
-		if !minSet || fVal < min {
-			min = fVal
-			minSet = true
-		}
+// Sum returns a Column that sums numeric values from the specified column.
+func Sum(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return 0.0
+			}
+			sum := 0.0
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("sum conversion error: %v\n", err)
+					continue
+				}
+				sum += fVal
+			}
+			return sum
+		},
 	}
-	if !minSet {
-		return nil
-	}
-	return min
 }
 
-// MeanAggregator calculates the mean (average) of values.
-func MeanAggregator(vals []interface{}) interface{} {
-	sum := 0.0
-	count := 0
-	for _, val := range vals {
-		fVal, err := toFloat64(val)
-		if err != nil {
-			fmt.Printf("mean conversion error: %v\n", err)
-			continue
-		}
-		sum += fVal
-		count++
+// Max returns a Column that finds the maximum numeric value from the specified column.
+func Max(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			maxSet := false
+			var max float64
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("max conversion error: %v\n", err)
+					continue
+				}
+				if !maxSet || fVal > max {
+					max = fVal
+					maxSet = true
+				}
+			}
+			if !maxSet {
+				return nil
+			}
+			return max
+		},
 	}
-	if count == 0 {
-		return nil
-	}
-	return sum / float64(count)
 }
 
-// MedianAggregator calculates the median value.
-func MedianAggregator(vals []interface{}) interface{} {
-	var nums []float64
-	for _, val := range vals {
-		fVal, err := toFloat64(val)
-		if err != nil {
-			fmt.Printf("median conversion error: %v\n", err)
-			continue
-		}
-		nums = append(nums, fVal)
+// Min returns a Column that finds the minimum numeric value from the specified column.
+func Min(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			minSet := false
+			var min float64
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("min conversion error: %v\n", err)
+					continue
+				}
+				if !minSet || fVal < min {
+					min = fVal
+					minSet = true
+				}
+			}
+			if !minSet {
+				return nil
+			}
+			return min
+		},
 	}
-
-	n := len(nums)
-	if n == 0 {
-		return nil
-	}
-
-	// Sort the numbers.
-	sort.Float64s(nums)
-
-	if n%2 == 1 {
-		// Odd count; return middle element.
-		return nums[n/2]
-	}
-	// Even count; return average of two middle elements.
-	median := (nums[n/2-1] + nums[n/2]) / 2.0
-	return median
 }
 
-// ModeAggregator finds the mode (most frequent value) among the values.
-// If there are ties, it returns one of the most frequent values.
-func ModeAggregator(vals []interface{}) interface{} {
-	// Use a map to count frequencies.
-	freq := make(map[float64]int)
-	var mode float64
-	maxCount := 0
+// Median returns a Column that finds the median numeric value from the specified column.
+func Median(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			var nums []float64
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("median conversion error: %v\n", err)
+					continue
+				}
+				nums = append(nums, fVal)
+			}
 
-	for _, val := range vals {
-		fVal, err := toFloat64(val)
-		if err != nil {
-			fmt.Printf("mode conversion error: %v\n", err)
-			continue
-		}
-		freq[fVal]++
-		if freq[fVal] > maxCount {
-			maxCount = freq[fVal]
-			mode = fVal
-		}
+			n := len(nums)
+			if n == 0 {
+				return nil
+			}
+
+			// Sort the numbers.
+			sort.Float64s(nums)
+
+			if n%2 == 1 {
+				// Odd count; return middle element.
+				return nums[n/2]
+			}
+			// Even count; return average of two middle elements.
+			median := (nums[n/2-1] + nums[n/2]) / 2.0
+			return median
+		},
 	}
-	// If no valid values, return nil.
-	if maxCount == 0 {
-		return nil
-	}
-	return mode
 }
 
-// MaxAggregator converts each value to float64 and returns the maximum.
-func MaxAggregator(vals []interface{}) interface{} {
-	maxSet := false
-	var max float64
-	for _, val := range vals {
-		fVal, err := toFloat64(val)
-		if err != nil {
-			fmt.Printf("max conversion error: %v\n", err)
-			continue
-		}
-		if !maxSet || fVal > max {
-			max = fVal
-			maxSet = true
-		}
+// Mean returns a Column that calculates the mean (average) of numeric values from the specified column.
+func Mean(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			sum := 0.0
+			count := 0
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("mean conversion error: %v\n", err)
+					continue
+				}
+				sum += fVal
+				count++
+			}
+			if count == 0 {
+				return nil
+			}
+			return sum / float64(count)
+		},
 	}
-	if !maxSet {
-		return nil
-	}
-	return max
 }
 
-// FirstAggregator returns the first value in the column.
-func FirstAggregator(vals []interface{}) interface{} {
-	if len(vals) == 0 {
-		return nil
+// Mode returns a Column that finds the mode (most frequent value) among the numeric values from the specified column.
+func Mode(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			// Use a map to count frequencies.
+			freq := make(map[float64]int)
+			var mode float64
+			maxCount := 0
+
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("mode conversion error: %v\n", err)
+					continue
+				}
+				freq[fVal]++
+				if freq[fVal] > maxCount {
+					maxCount = freq[fVal]
+					mode = fVal
+				}
+			}
+			// If no valid values, return nil.
+			if maxCount == 0 {
+				return nil
+			}
+			return mode
+		},
 	}
-	return vals[0]
+}
+
+// Unique returns a Column that counts the number of unique values from the specified column.
+func Unique(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return 0
+			}
+			uniqueSet := make(map[interface{}]bool)
+			for _, v := range val.([]interface{}) {
+				uniqueSet[v] = true
+			}
+			return len(uniqueSet)
+		},
+	}
+}
+
+// First returns a Column that gets the first value from the specified column.
+func First(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			if len(val.([]interface{})) == 0 {
+				return nil
+			}
+			return val.([]interface{})[0]
+		},
+	}
 }

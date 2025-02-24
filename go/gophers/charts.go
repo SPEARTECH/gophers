@@ -15,10 +15,10 @@ type Chart struct {
 
 // BarChart returns Bar Chart HTML for the DataFrame.
 // It takes a title, subtitle, group column, and one or more aggregations.
-func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, aggs ...Aggregation) Chart {
+func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
 	// Group the DataFrame by the specified column and apply the aggregations.
 	df = df.GroupBy(groupcol, aggs...)
-	df.Show(25)
+	// df.Show(25)
 
 	// Extract categories and series data.
 	categories := []string{}
@@ -68,7 +68,7 @@ func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, ag
     yAxis: {
         min: 0,
         title: {
-            text: '%s',
+            text: '',
             align: 'middle'
         },
         labels: {
@@ -92,13 +92,96 @@ func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, ag
         enabled: false
     },
     series: %s
-});`, title, subtitle, categoriesJSON, groupcol, groupcol, seriesJSON)
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
 	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
 	return newChart
 }
 
-// column chart
+// ColumnChart returns Column Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) ColumnChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `columnchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'column'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: '',
+            align: 'middle'
+        },
+        labels: {
+            overflow: 'justify'
+        },
+        gridLineWidth: 0
+    },
+    tooltip: {
+        valueSuffix: ''
+    },
+    plotOptions: {
+        bar: {
+            borderRadius: '50%%',
+            dataLabels: {
+                enabled: true
+            },
+            groupPadding: 0.1
+        }
+    },
+    credits: {
+        enabled: false
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
+}
 
 func (df *DataFrame) GroupedSeriesJSON(x string, y string) string {
 	// Assume df.Collect returns a slice for the given column
@@ -128,15 +211,164 @@ func (df *DataFrame) GroupedSeriesJSON(x string, y string) string {
 	return string(jsonBytes)
 }
 
-func (df *DataFrame) StackedBarChart(x string, y string, avg string) string {
-	html := ``
-	return html
+// StackedBarChart returns Stacked Bar Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) StackedBarChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `stackedbarchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'bar'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: '',
+            align: 'middle'
+        },
+    },
+    plotOptions: {
+        series: {
+            stacking: 'normal',
+            dataLabels: {
+                enabled: true
+            }
+        }
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
 }
 
-func (df *DataFrame) MixedBarChart(x string, y string, avg string) string {
-	html := ``
-	return html
+// StackedPercentChart returns Stacked Percent Column Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `stackedpercentchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'column'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: 'Percent',
+            align: 'middle'
+        },
+    },
+    tooltip: {
+        pointFormat: '<span style="color:{series.color}">{series.name}</span>' +
+            ': <b>{point.y}</b> ({point.percentage:.0f}%%)<br/>',
+        shared: true
+    },
+    plotOptions: {
+        column: {
+            stacking: 'percent',
+            dataLabels: {
+                enabled: true,
+                format: '{point.percentage:.0f}%%'
+            }
+        }
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
 }
+
+// func (df *DataFrame) MixedBarChart(x string, y string, avg string) string {
+// 	html := ``
+// 	return html
+// }
 
 func (df *DataFrame) PieChart(columns ...string) string {
 	html := `
@@ -213,58 +445,7 @@ Highcharts.chart('container', {
 	return html
 }
 
-func (df *DataFrame) ColumnChart(x string, y string) string {
-	html := `
-Highcharts.chart('container', {
-    chart: {
-        type: 'column'
-    },
-    title: {
-        text: 'Corn vs wheat estimated production for 2023'
-    },
-    subtitle: {
-        text:
-            'Source: <a target="_blank" ' +
-            'href="https://www.indexmundi.com/agriculture/?commodity=corn">indexmundi</a>'
-    },
-    xAxis: {
-        categories: ['USA', 'China', 'Brazil', 'EU', 'Argentina', 'India'],
-        crosshair: true,
-        accessibility: {
-            description: 'Countries'
-        }
-    },
-    yAxis: {
-        min: 0,
-        title: {
-            text: '1000 metric tons (MT)'
-        }
-    },
-    tooltip: {
-        valueSuffix: ' (1000 MT)'
-    },
-    plotOptions: {
-        column: {
-            pointPadding: 0.2,
-            borderWidth: 0
-        }
-    },
-    series: [
-        {
-            name: 'Corn',
-            data: [387749, 280000, 129000, 64300, 54000, 34300]
-        },
-        {
-            name: 'Wheat',
-            data: [45321, 140000, 10000, 140500, 19500, 113500]
-        }
-    ]
-});
-
-    `
-	return html
-}
-
+// *
 func (df *DataFrame) LineChart(x string, y string) string {
 	html := `
 Highcharts.chart('container', {
@@ -320,6 +501,7 @@ Highcharts.chart('container', {
 	return html
 }
 
+// *
 func (df *DataFrame) ScatterPlot(x string, y string) string {
 	html := `
 Highcharts.setOptions({
@@ -404,6 +586,7 @@ getData().then(data => {
 	return html
 }
 
+// *
 func (df *DataFrame) BubbleChart(x string, y string) string {
 	html := `
 Highcharts.chart('container', {
@@ -486,11 +669,13 @@ Highcharts.chart('container', {
 	return html
 }
 
+// *
 func (df *DataFrame) TreeMap(columns ...string) string {
 	html := ``
 	return html
 }
 
+// *
 func (df *DataFrame) AreaChart(x string, y string) string {
 	html := `
 // Data retrieved from https://fas.org/issues/nuclear-weapons/status-world-nuclear-forces/
@@ -589,7 +774,18 @@ Highcharts.chart('container', {
 	return html
 }
 
+// stacked area chart
+
+// stacked percent area chart
+
+// donut chart
+
+// *
 func (df *DataFrame) DataTable(columns ...string) string {
 	html := `` // call display with only html return
 	return html
 }
+
+// histogram *
+
+//

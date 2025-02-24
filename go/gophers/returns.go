@@ -6,8 +6,6 @@ func (df *DataFrame) Columns() []string {
 	return df.Cols
 }
 
-// dataframe example function used with pyspark flattener (all available values)
-
 // schema of json ?
 
 // count
