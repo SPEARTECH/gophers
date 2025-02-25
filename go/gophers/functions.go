@@ -1,8 +1,12 @@
 package gophers
 
-// import (
-// 	"fmt"
-// )
+import (
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
+	"fmt"
+	"strings"
+)
 
 // // functions for manipulating dataframes, take in and return dataframe
 // // .iloc = select column of the dataframe by name
@@ -31,7 +35,7 @@ type Column struct {
 // Col returns a Column for the specified column name.
 func Col(name string) Column {
 	return Column{
-		Name: name,
+		Name: fmt.Sprintf("Col(%s)", name),
 		Fn: func(row map[string]interface{}) interface{} {
 			return row[name]
 		},
@@ -65,7 +69,7 @@ func CollectList(name string) Column {
 // CollectSet returns a Column that is a set of unique values from the given column.
 func CollectSet(name string) Column {
 	return Column{
-		Name: name,
+		Name: fmt.Sprintf("CollectSet(%s)", name),
 		Fn: func(row map[string]interface{}) interface{} {
 			valueSet := make(map[interface{}]bool)
 			for _, val := range row[name].([]interface{}) {
@@ -84,13 +88,64 @@ func CollectSet(name string) Column {
 
 // epoch
 
-// sha256 *
+// SHA256 returns a Column that concatenates the values of the specified columns,
+// computes the SHA-256 checksum of the concatenated string, and returns it as a string.
+func SHA256(cols ...Column) Column {
+	return Column{
+		Name: "SHA256",
+		Fn: func(row map[string]interface{}) interface{} {
+			var concatenated string
+			for _, col := range cols {
+				val := col.Fn(row)
+				str, err := toString(val)
+				if err != nil {
+					str = ""
+				}
+				concatenated += str
+			}
+			hash := sha256.Sum256([]byte(concatenated))
+			return hex.EncodeToString(hash[:])
+		},
+	}
+}
 
-// sha512 *
+// SHA512 returns a Column that concatenates the values of the specified columns,
+// computes the SHA-512 checksum of the concatenated string, and returns it as a string.
+func SHA512(cols ...Column) Column {
+	return Column{
+		Name: "SHA512",
+		Fn: func(row map[string]interface{}) interface{} {
+			var concatenated string
+			for _, col := range cols {
+				val := col.Fn(row)
+				str, err := toString(val)
+				if err != nil {
+					str = ""
+				}
+				concatenated += str
+			}
+			hash := sha512.Sum512([]byte(concatenated))
+			return hex.EncodeToString(hash[:])
+		},
+	}
+}
 
 // from_json ? *
 
-// split *
+// Split returns a Column that splits the string value of the specified column by the given delimiter.
+func Split(name string, delimiter string) Column {
+	return Column{
+		Name: fmt.Sprintf("Split(%s, %s)", name, delimiter),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := row[name]
+			str, err := toString(val)
+			if err != nil {
+				return []string{}
+			}
+			return strings.Split(str, delimiter)
+		},
+	}
+}
 
 // pivot (row to column) *
 
