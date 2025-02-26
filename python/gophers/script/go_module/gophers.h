@@ -74,7 +74,57 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
-extern __declspec(dllexport) char* go_module();
+extern char* ReadCSV(char* csvFile);
+extern char* ReadJSON(char* jsonStr);
+extern char* ReadNDJSON(char* jsonStr);
+extern char* GetAPIJSON(char* endpoint, char* headers, char* queryParams);
+
+// Print displays the DataFrame in a simple tabular format.
+//
+extern char* Show(char* dfJson, int chars, int record_count);
+extern char* Head(char* dfJson, int chars);
+extern char* Tail(char* dfJson, int chars);
+extern char* Vertical(char* dfJson, int chars, int record_count);
+
+// ColumnOp applies an operation (identified by opName) to the columns
+// specified in colsJson (a JSON array of strings) and stores the result in newCol.
+// The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
+//
+extern char* ColumnOp(char* dfJson, char* newCol, char* opName, char* colsJson);
+
+// ColumnCollectList applies CollectList on the specified source column
+// and creates a new column.
+//
+extern char* ColumnCollectList(char* dfJson, char* newCol, char* source);
+
+// ColumnCollectSet applies CollectSet on the specified source column
+// and creates a new column.
+//
+extern char* ColumnCollectSet(char* dfJson, char* newCol, char* source);
+
+// ColumnSplit applies Split on the specified source column with the given delimiter
+// and creates a new column.
+//
+extern char* ColumnSplit(char* dfJson, char* newCol, char* source, char* delim);
+extern char* DFColumns(char* dfJson);
+
+// DFCount returns the number of rows in the DataFrame.
+//
+extern int DFCount(char* dfJson);
+
+// DFCountDuplicates returns the count of duplicate rows.
+// It accepts a JSON array of column names (or an empty array to use all columns).
+//
+extern int DFCountDuplicates(char* dfJson, char* colsJson);
+
+// DFCountDistinct returns the count of unique rows (or unique values in the provided columns).
+// Accepts a JSON array of column names (or an empty array to use all columns).
+//
+extern int DFCountDistinct(char* dfJson, char* colsJson);
+
+// DFCollect returns the collected values from a specified column as a JSON-array.
+//
+extern char* DFCollect(char* dfJson, char* colName);
 
 #ifdef __cplusplus
 }
