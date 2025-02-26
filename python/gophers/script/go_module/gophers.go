@@ -21,6 +21,8 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"os/exec"
+	"runtime"
 )
 
 // DataFrame represents a very simple dataframe structure.
@@ -37,6 +39,8 @@ type Column struct {
 	Name string
 	Fn   func(row map[string]interface{}) interface{}
 }
+
+// SOURCES --------------------------------------------------
 
 // Create dataframe function
 func Dataframe(rows []map[string]interface{}) *DataFrame {
@@ -201,6 +205,53 @@ func ReadNDJSON(jsonStr *C.char) *C.char {
 	return C.CString(string(jsonBytes))
 }
 
+// ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
+// It accepts a C string representing the path (or content) of a parquet file,
+// calls ReadParquet, marshals the resulting DataFrame back to JSON, and returns it as a C string.
+//
+//export ReadParquetWrapper
+func ReadParquetWrapper(parquetPath *C.char) *C.char {
+	goPath := C.GoString(parquetPath)
+	df := ReadParquet(goPath)
+	jsonBytes, err := json.Marshal(df)
+	if err != nil {
+		log.Fatalf("ReadParquetWrapper: error marshalling DataFrame: %v", err)
+	}
+	return C.CString(string(jsonBytes))
+}
+
+// Read parquet and output dataframe
+func ReadParquet(jsonStr string) *DataFrame {
+	if fileExists(jsonStr) {
+		bytes, err := os.ReadFile(jsonStr)
+		if err != nil {
+			fmt.Println(err)
+		}
+		jsonStr = string(bytes)
+	}
+
+	var rows []map[string]interface{}
+
+	// Split the string by newline.
+	lines := strings.Split(jsonStr, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			// Skip empty lines.
+			continue
+		}
+
+		var row map[string]interface{}
+		if err := json.Unmarshal([]byte(trimmed), &row); err != nil {
+			log.Fatalf("Error unmarshalling JSON on line %d: %v", i+1, err)
+		}
+		rows = append(rows, row)
+	}
+
+	return Dataframe(rows)
+
+}
+
 //export GetAPIJSON
 func GetAPIJSON(endpoint *C.char, headers *C.char, queryParams *C.char) *C.char {
 	goEndpoint := C.GoString(endpoint)
@@ -261,6 +312,8 @@ func GetAPIJSON(endpoint *C.char, headers *C.char, queryParams *C.char) *C.char 
 
 	return ReadJSON(C.CString(string(jsonStr)))
 }
+
+// DISPLAYS --------------------------------------------------
 
 // Print displays the DataFrame in a simple tabular format.
 //
@@ -529,6 +582,172 @@ func Vertical(dfJson *C.char, chars C.int, record_count C.int) *C.char {
 
 	return C.CString(builder.String())
 }
+
+// DisplayBrowserWrapper is an exported function that wraps the DisplayBrowser method.
+// It takes a JSON-string representing the DataFrame, calls DisplayBrowser, and
+// returns an empty string on success or an error message on failure.
+//
+//export DisplayBrowserWrapper
+func DisplayBrowserWrapper(dfJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("DisplayBrowserWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	if err := df.DisplayBrowser(); err != nil {
+		errStr := fmt.Sprintf("DisplayBrowserWrapper: error displaying in browser: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	// Return an empty string to denote success.
+	return C.CString("")
+}
+
+// QuoteArray returns a string representation of a Go array with quotes around the values.
+func QuoteArray(arr []string) string {
+	quoted := make([]string, len(arr))
+	for i, v := range arr {
+		quoted[i] = fmt.Sprintf("%q", v)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// mapToString converts the DataFrame data to a JSON-like string with quoted values.
+func mapToString(data map[string][]interface{}) string {
+	var builder strings.Builder
+
+	builder.WriteString("{")
+	first := true
+	for key, values := range data {
+		if !first {
+			builder.WriteString(", ")
+		}
+		first = false
+
+		builder.WriteString(fmt.Sprintf("%q: [", key))
+		for i, value := range values {
+			if i > 0 {
+				builder.WriteString(", ")
+			}
+			switch v := value.(type) {
+			case int, float64, bool:
+				builder.WriteString(fmt.Sprintf("%v", v))
+			case string:
+				builder.WriteString(fmt.Sprintf("%q", v))
+			default:
+				builder.WriteString(fmt.Sprintf("%q", fmt.Sprintf("%v", v)))
+			}
+		}
+		builder.WriteString("]")
+	}
+	builder.WriteString("}")
+
+	return builder.String()
+}
+
+// DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
+func (df *DataFrame) DisplayBrowser() error {
+	// display an html table of the dataframe for analysis, filtering, sorting, etc
+	html := `
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script src="https://code.highcharts.com/highcharts.js"></script>
+			<script src="https://code.highcharts.com/modules/boost.js"></script>
+			<script src="https://code.highcharts.com/modules/exporting.js"></script>
+			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+		</head>
+		<body>
+			<div id="app" style="text-align: center;" class="overflow-x-auto">
+				<table class="table table-xs">
+	  				<thead>
+						<tr>
+							<th></th>
+							<th v-for="col in cols"><a class="btn btn-sm btn-ghost justify justify-start">[[ col ]]<span class="material-symbols-outlined">arrow_drop_down</span></a></th>
+						</tr>
+					</thead>
+					<tbody>
+					<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
+							<th class="pl-5">[[ i ]]</th>
+							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col][i] ]]</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</body>
+		<script>
+			const { createApp } = Vue
+			createApp({
+			delimiters : ['[[', ']]'],
+				data(){
+					return {
+						cols: ` + QuoteArray(df.Cols) + `,
+						data: ` + mapToString(df.Data) + `,
+						selected_col: {},
+						page: 1,
+						pages: [],
+						total_pages: 0
+					}
+				},
+				methods: {
+
+				},
+				watch: {
+
+				},
+				created(){
+					this.total_pages = Math.ceil(Object.keys(this.data).length / 100)
+				},
+
+				mounted() {
+
+				},
+				computed:{
+
+				}
+
+			}).mount('#app')
+		</script>
+	</html>
+	`
+	// Create a temporary file
+	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %v", err)
+	}
+	defer tmpFile.Close()
+
+	// Write the HTML string to the temporary file
+	if _, err := tmpFile.Write([]byte(html)); err != nil {
+		return fmt.Errorf("failed to write to temporary file: %v", err)
+	}
+
+	// Open the temporary file in the default web browser
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
+	case "darwin":
+		cmd = exec.Command("open", tmpFile.Name())
+	default: // "linux", "freebsd", "openbsd", "netbsd"
+		cmd = exec.Command("xdg-open", tmpFile.Name())
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to open file in browser: %v", err)
+	}
+
+	return nil
+}
+
+// FUNCTIONS --------------------------------------------------
 
 // ColumnOp applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
@@ -841,7 +1060,7 @@ func toString(val interface{}) (string, error) {
 	}
 }
 
-// RETURNS
+// RETURNS --------------------------------------------------
 
 // DFColumns returns the DataFrame columns as a JSON array.
 

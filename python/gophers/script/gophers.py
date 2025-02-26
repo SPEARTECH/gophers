@@ -63,7 +63,8 @@ class DataFrame:
         self.gophers.DFCountDuplicates.restype = c_int
         self.gophers.DFCountDistinct.restype = c_int
         self.gophers.DFCollect.restype = c_char_p
-
+        self.gophers.DisplayBrowserWrapper.restype = c_char_p
+        
     def ReadJSON(self, json_data):
         # Store the JSON representation of DataFrame from Go.
         self.df_json = self.gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
@@ -110,6 +111,12 @@ class DataFrame:
     def Vertical(self, chars, record_count=100):
         result = self.gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
         print(result)
+
+    def DisplayBrowser(self):
+        err = self.gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        if err:
+            print("Error displaying in browser:", err)
+        return self
 
     def Column(self, col_name, col_spec):
         # If col_spec is an instance of ColumnExpr, use ColumnFrom.
@@ -165,6 +172,7 @@ def main():
     df.Vertical(25, record_count=3)
     print("Columns:")
     print(df.Columns())
+    df.DisplayBrowser()
 
 if __name__ == '__main__':
     main()

@@ -77,6 +77,12 @@ extern "C" {
 extern char* ReadCSV(char* csvFile);
 extern char* ReadJSON(char* jsonStr);
 extern char* ReadNDJSON(char* jsonStr);
+
+// ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
+// It accepts a C string representing the path (or content) of a parquet file,
+// calls ReadParquet, marshals the resulting DataFrame back to JSON, and returns it as a C string.
+//
+extern char* ReadParquetWrapper(char* parquetPath);
 extern char* GetAPIJSON(char* endpoint, char* headers, char* queryParams);
 
 // Print displays the DataFrame in a simple tabular format.
@@ -85,6 +91,12 @@ extern char* Show(char* dfJson, int chars, int record_count);
 extern char* Head(char* dfJson, int chars);
 extern char* Tail(char* dfJson, int chars);
 extern char* Vertical(char* dfJson, int chars, int record_count);
+
+// DisplayBrowserWrapper is an exported function that wraps the DisplayBrowser method.
+// It takes a JSON-string representing the DataFrame, calls DisplayBrowser, and
+// returns an empty string on success or an error message on failure.
+//
+extern char* DisplayBrowserWrapper(char* dfJson);
 
 // ColumnOp applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
