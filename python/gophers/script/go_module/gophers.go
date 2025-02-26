@@ -747,7 +747,111 @@ func (df *DataFrame) DisplayBrowser() error {
 	return nil
 }
 
-// FUNCTIONS --------------------------------------------------
+// Display
+
+// DisplayToFile
+
+// DisplayChart
+
+// DisplayHTML
+
+// CHARTS --------------------------------------------------
+
+// BarChart
+
+// ColumnChart
+
+// StackedColumnChart
+
+// StackedPercentChart
+
+// PieChart
+
+// AreaChart
+
+// DataTable
+
+// ScatterPlot
+
+// BubbleChart
+
+// TreeMap
+
+// LineChart
+
+// DASHBOARDS --------------------------------------------------
+
+// CreateDashboard
+
+// Open
+
+// Save
+
+// AddPage
+
+// AddHTML
+
+// AddDataframe
+
+// AddChart
+
+// AddHeading
+
+// AddText
+
+// AddSubtext
+
+// AddBullets
+
+// AddImage ?
+
+// AGGREGATES --------------------------------------------------
+
+// Agg
+
+// Sum
+
+// Avg
+
+// Min
+
+// Max
+
+// Median
+
+// Mean
+
+// Mode
+
+// Unique
+
+// First
+
+// LOGIC --------------------------------------------------
+
+// If
+
+// IsNull
+
+//IsNotNull
+
+// Gt
+
+// Ge
+
+// Lt
+
+// Le
+
+// Or
+
+// And
+
+// Eq
+
+// Ne
+
+// TRANSFORMS --------------------------------------------------
 
 // ColumnOp applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
@@ -829,6 +933,40 @@ func (df *DataFrame) Column(column string, col Column) *DataFrame {
 
 	return df
 }
+
+// Concat
+
+// Concat_WS
+
+// Filter
+
+// Explode
+
+// Cast
+
+// Rename
+
+// FillNA
+
+// - ToFloat64
+// - ToInt
+// - ToString
+
+// DropDuplicates
+
+// Select
+
+// GroupBy
+
+// Join
+
+// Union
+
+// Drop
+
+// OrderBy
+
+// FUNCTIONS --------------------------------------------------
 
 // Col returns a Column for the specified column name.
 func Col(name string) Column {
@@ -1214,5 +1352,7 @@ func (df *DataFrame) Collect(c string) []interface{} {
 	}
 	return []interface{}{}
 }
+
+// END --------------------------------------------------
 
 func main() {}
