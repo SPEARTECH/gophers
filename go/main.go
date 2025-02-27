@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	. "gophers/gophers"
 )
 
@@ -106,4 +107,5 @@ but if not then ill try something else`)
 	// join example
 	// df2 := df
 	// df = df.Join(df2, "name", "name", "inner")
+	fmt.Println(df.Display())
 }

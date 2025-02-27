@@ -98,11 +98,141 @@ extern char* Vertical(char* dfJson, int chars, int record_count);
 //
 extern char* DisplayBrowserWrapper(char* dfJson);
 
+// DisplayWrapper is an exported function that wraps the Display method.
+// It takes a JSON-string representing the DataFrame, calls Display, and
+// returns the HTML string on success or an error message on failure.
+//
+extern char* DisplayWrapper(char* dfJson);
+
+// DisplayToFile
+// DisplayToFileWrapper is an exported function that wraps the DisplayToFile method.
+// It takes a JSON-string representing the DataFrame and a file path, calls DisplayToFile,
+// and returns an empty string on success or an error message on failure.
+//
+extern char* DisplayToFileWrapper(char* dfJson, char* filePath);
+
+// DisplayChartWrapper is an exported function that wraps the DisplayChart function.
+// It takes a JSON-string representing the Chart, calls DisplayChart, and
+// returns the HTML string on success or an error message on failure.
+//
+extern char* DisplayChartWrapper(char* chartJson);
+
+// DisplayHTMLWrapper is an exported function that wraps the DisplayHTML function.
+// It takes a string representing the HTML content and returns the HTML content as a C string.
+//
+extern char* DisplayHTMLWrapper(char* html);
+
+// BarChartWrapper is an exported function that wraps the BarChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls BarChart, and
+// returns the HTML string on success or an error message on failure.
+//
+extern char* BarChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+
+// ColumnChartWrapper is an exported function that wraps the ColumnChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls ColumnChart, and
+// returns the HTML string on success or an error message on failure.
+//
+extern char* ColumnChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+
+// StackedBarChartWrapper is an exported function that wraps the StackedBarChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls StackedBarChart, and
+// returns the HTML string on success or an error message on failure.
+//
+extern char* StackedBarChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+
+// StackedPercentChartWrapper is an exported function that wraps the StackedPercentChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls StackedPercentChart, and
+// returns the HTML string on success or an error message on failure.
+//
+extern char* StackedPercentChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+
+// CreateDashboardWrapper is an exported function that wraps the CreateDashboard method.
+//
+extern char* CreateDashboardWrapper(char* dfJson, char* title);
+
+// OpenDashboardWrapper is an exported function that wraps the Open method.
+//
+extern char* OpenDashboardWrapper(char* dashboardJson);
+
+// SaveDashboardWrapper is an exported function that wraps the Save method.
+//
+extern char* SaveDashboardWrapper(char* dashboardJson, char* filename);
+
+// AddPageWrapper is an exported function that wraps the AddPage method.
+//
+extern char* AddPageWrapper(char* dashboardJson, char* name);
+
+// AddHTMLWrapper is an exported function that wraps the AddHTML method.
+//
+extern char* AddHTMLWrapper(char* dashboardJson, char* page, char* text);
+
+// AddDataframeWrapper is an exported function that wraps the AddDataframe method.
+//
+extern char* AddDataframeWrapper(char* dashboardJson, char* page, char* dfJson);
+
+// AddChartWrapper is an exported function that wraps the AddChart method.
+//
+extern char* AddChartWrapper(char* dashboardJson, char* page, char* chartJson);
+
+// AddHeadingWrapper is an exported function that wraps the AddHeading method.
+//
+extern char* AddHeadingWrapper(char* dashboardJson, char* page, char* heading, int size);
+
+// AddTextWrapper is an exported function that wraps the AddText method.
+//
+extern char* AddTextWrapper(char* dashboardJson, char* page, char* text);
+
+// AddSubTextWrapper is an exported function that wraps the AddSubText method.
+//
+extern char* AddSubTextWrapper(char* dashboardJson, char* page, char* text);
+
+// AddBulletsWrapper is an exported function that wraps the AddBullets method.
+//
+extern char* AddBulletsWrapper(char* dashboardJson, char* page, char* bulletsJson);
+
+// SumWrapper is an exported function that wraps the Sum function.
+//
+extern char* SumWrapper(char* name);
+
+// MaxWrapper is an exported function that wraps the Max function.
+//
+extern char* MaxWrapper(char* name);
+
+// MinWrapper is an exported function that wraps the Min function.
+//
+extern char* MinWrapper(char* name);
+
+// MedianWrapper is an exported function that wraps the Median function.
+//
+extern char* MedianWrapper(char* name);
+
+// MeanWrapper is an exported function that wraps the Mean function.
+//
+extern char* MeanWrapper(char* name);
+
+// ModeWrapper is an exported function that wraps the Mode function.
+//
+extern char* ModeWrapper(char* name);
+
+// UniqueWrapper is an exported function that wraps the Unique function.
+//
+extern char* UniqueWrapper(char* name);
+
+// FirstWrapper is an exported function that wraps the First function.
+//
+extern char* FirstWrapper(char* name);
+
 // ColumnOp applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
 // The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
 //
 extern char* ColumnOp(char* dfJson, char* newCol, char* opName, char* colsJson);
+
+// GroupByWrapper is an exported function that wraps the GroupBy method.
+// It takes a JSON-string representing the DataFrame, the group column, and a JSON-string representing the aggregations.
+// It returns the resulting DataFrame as a JSON string.
+//
+extern char* GroupByWrapper(char* dfJson, char* groupCol, char* aggsJson);
 
 // ColumnCollectList applies CollectList on the specified source column
 // and creates a new column.

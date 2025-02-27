@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"os/exec"
 	"runtime"
+	"sort"
 )
 
 // DataFrame represents a very simple dataframe structure.
@@ -38,6 +39,54 @@ type DataFrame struct {
 type Column struct {
 	Name string
 	Fn   func(row map[string]interface{}) interface{}
+}
+
+type Chart struct {
+	htmlpreid  string
+	htmldivid  string
+	htmlpostid string
+	jspreid    string
+	jspostid   string
+}
+
+// AggregatorFn defines a function that aggregates a slice of values.
+type AggregatorFn func([]interface{}) interface{}
+
+// Aggregation holds a target column name and the aggregation function to apply.
+type Aggregation struct {
+	ColumnName string
+	Fn         AggregatorFn
+}
+
+// main dashboard object for adding html pages, charts, and inputs for a single html output
+type Dashboard struct {
+	top           string
+	primary       string
+	secondary     string
+	accent        string
+	neutral       string
+	base100       string
+	info          string
+	success       string
+	warning       string
+	err           string
+	htmlheading   string
+	title         string
+	htmlelements  string
+	scriptheading string
+	scriptmiddle  string
+	bottom        string
+	pageshtml     map[string]interface{}
+	pagesjs       map[string]interface{}
+}
+
+func (dash *Dashboard) init() {
+	if dash.pageshtml == nil {
+		dash.pageshtml = make(map[string]interface{})
+	}
+	if dash.pagesjs == nil {
+		dash.pagesjs = make(map[string]interface{})
+	}
 }
 
 // SOURCES --------------------------------------------------
@@ -747,23 +796,648 @@ func (df *DataFrame) DisplayBrowser() error {
 	return nil
 }
 
-// Display
+// DisplayWrapper is an exported function that wraps the Display method.
+// It takes a JSON-string representing the DataFrame, calls Display, and
+// returns the HTML string on success or an error message on failure.
+//
+//export DisplayWrapper
+func DisplayWrapper(dfJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("DisplayWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	displayResult := df.Display()
+	html, ok := displayResult["text/html"].(string)
+	if !ok {
+		errStr := "DisplayWrapper: error displaying dataframe: invalid HTML content"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(html)
+}
+
+// Display an html table of the data
+func (df *DataFrame) Display() map[string]interface{} {
+	// display an html table of the dataframe for analysis, filtering, sorting, etc
+	html := `
+<!DOCTYPE html>
+<html>
+	<head>
+		<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+		<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+		<script src="https://cdn.tailwindcss.com"></script>
+		<script src="https://code.highcharts.com/highcharts.js"></script>
+		<script src="https://code.highcharts.com/modules/boost.js"></script>
+		<script src="https://code.highcharts.com/modules/exporting.js"></script>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+	</head>
+	<body>
+		<div id="table" style="text-align: center;" class="overflow-x-auto">
+			<table class="table">
+				<thead>
+					<tr>
+						<th></th>
+						<th v-for="col in cols">[[ col ]]</th>
+					</tr>
+				</thead>
+				<tbody>
+				<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
+						<th>[[ i ]]</th>
+						<td v-for="col in cols">[[ data[col][i] ]]</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</body>
+	<script>
+		const { createApp } = Vue
+		createApp({
+		delimiters :  ["[[", "]]"],
+			data(){
+				return {
+					cols: ` + QuoteArray(df.Cols) + `,
+					data: ` + mapToString(df.Data) + `,
+				}
+			},
+			methods: {
+
+			},
+			watch: {
+
+			},
+			created(){
+
+			},
+
+			mounted() {
+
+			},
+			computed:{
+
+			}
+
+		}).mount("#table")
+	</script>
+</html>	
+`
+	return map[string]interface{}{
+		"text/html": html,
+	}
+}
 
 // DisplayToFile
+// DisplayToFileWrapper is an exported function that wraps the DisplayToFile method.
+// It takes a JSON-string representing the DataFrame and a file path, calls DisplayToFile,
+// and returns an empty string on success or an error message on failure.
+//
+//export DisplayToFileWrapper
+func DisplayToFileWrapper(dfJson *C.char, filePath *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("DisplayToFileWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-// DisplayChart
+	path := C.GoString(filePath)
+	if err := df.DisplayToFile(path); err != nil {
+		errStr := fmt.Sprintf("DisplayToFileWrapper: error writing to file: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-// DisplayHTML
+	// Return an empty string to denote success.
+	return C.CString("")
+}
+
+// write an html display, chart, or dashboard to a file
+func (df *DataFrame) DisplayToFile(path string) error {
+	// Ensure the path ends with .html
+	if !strings.HasSuffix(path, ".html") {
+		path += ".html"
+	}
+	html := df.Display()["text/html"].(string)
+
+	// Write the HTML string to the specified file path
+	err := os.WriteFile(path, []byte(html), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write to file: %v", err)
+	}
+
+	return nil
+}
+
+// DisplayChartWrapper is an exported function that wraps the DisplayChart function.
+// It takes a JSON-string representing the Chart, calls DisplayChart, and
+// returns the HTML string on success or an error message on failure.
+//
+//export DisplayChartWrapper
+func DisplayChartWrapper(chartJson *C.char) *C.char {
+	var chart Chart
+	if err := json.Unmarshal([]byte(C.GoString(chartJson)), &chart); err != nil {
+		errStr := fmt.Sprintf("DisplayChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	displayChart := DisplayChart(chart)
+	html, ok := displayChart["text/html"].(string)
+	if !ok {
+		errStr := "DisplayChartWrapper: error displaying chart"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(html)
+}
+func DisplayChart(chart Chart) map[string]interface{} {
+	html := chart.htmlpreid + chart.htmldivid + chart.htmlpostid + chart.jspreid + chart.htmldivid + chart.jspostid
+	return map[string]interface{}{
+		"text/html": html,
+	}
+}
+
+// DisplayHTMLWrapper is an exported function that wraps the DisplayHTML function.
+// It takes a string representing the HTML content and returns the HTML content as a C string.
+//
+//export DisplayHTMLWrapper
+func DisplayHTMLWrapper(html *C.char) *C.char {
+	htmlContent := C.GoString(html)
+	displayHTML := DisplayHTML(htmlContent)
+	htmlResult, ok := displayHTML["text/html"].(string)
+	if !ok {
+		errStr := "DisplayHTMLWrapper: error displaying HTML content"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(htmlResult)
+}
+
+// DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
+func DisplayHTML(html string) map[string]interface{} {
+	return map[string]interface{}{
+		"text/html": html,
+	}
+}
 
 // CHARTS --------------------------------------------------
 
-// BarChart
+// BarChart returns Bar Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
 
-// ColumnChart
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
 
-// StackedColumnChart
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
 
-// StackedPercentChart
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `barchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'bar'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: '',
+            align: 'middle'
+        },
+        labels: {
+            overflow: 'justify'
+        },
+        gridLineWidth: 0
+    },
+    tooltip: {
+        valueSuffix: ''
+    },
+    plotOptions: {
+        bar: {
+            borderRadius: '50%%',
+            dataLabels: {
+                enabled: true
+            },
+            groupPadding: 0.1
+        }
+    },
+    credits: {
+        enabled: false
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
+}
+
+// ColumnChart returns Column Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) ColumnChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `columnchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'column'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: '',
+            align: 'middle'
+        },
+        labels: {
+            overflow: 'justify'
+        },
+        gridLineWidth: 0
+    },
+    tooltip: {
+        valueSuffix: ''
+    },
+    plotOptions: {
+        bar: {
+            borderRadius: '50%%',
+            dataLabels: {
+                enabled: true
+            },
+            groupPadding: 0.1
+        }
+    },
+    credits: {
+        enabled: false
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
+}
+
+// StackedBarChart returns Stacked Bar Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) StackedBarChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `stackedbarchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'bar'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: '',
+            align: 'middle'
+        },
+    },
+    plotOptions: {
+        series: {
+            stacking: 'normal',
+            dataLabels: {
+                enabled: true
+            }
+        }
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
+}
+
+// StackedPercentChart returns Stacked Percent Column Chart HTML for the DataFrame.
+// It takes a title, subtitle, group column, and one or more aggregations.
+func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
+	// Group the DataFrame by the specified column and apply the aggregations.
+	df = df.GroupBy(groupcol, aggs...)
+	// df.Show(25)
+
+	// Extract categories and series data.
+	categories := []string{}
+	for _, val := range df.Data[groupcol] {
+		categories = append(categories, fmt.Sprintf("%v", val))
+	}
+
+	series := []map[string]interface{}{}
+	for _, agg := range aggs {
+		data := []interface{}{}
+		for _, val := range df.Data[agg.ColumnName] {
+			data = append(data, val)
+		}
+		series = append(series, map[string]interface{}{
+			"name": agg.ColumnName,
+			"data": data,
+		})
+	}
+
+	// Convert categories and series to JSON.
+	categoriesJSON, _ := json.Marshal(categories)
+	seriesJSON, _ := json.Marshal(series)
+
+	// Build the HTML and JavaScript for the chart.
+	htmlpreid := `<div id="`
+	htmldivid := `stackedpercentchart`
+	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	jspreid := `Highcharts.chart('`
+	jspostid := fmt.Sprintf(`', {
+    chart: {
+        type: 'column'
+    },
+    title: {
+        text: '%s'
+    },
+    subtitle: {
+        text: '%s'
+    },
+    xAxis: {
+        categories: %s,
+        title: {
+            text: '%s'
+        },
+        gridLineWidth: 1,
+        lineWidth: 0
+    },
+    yAxis: {
+        min: 0,
+        title: {
+            text: 'Percent',
+            align: 'middle'
+        },
+    },
+    tooltip: {
+        pointFormat: '<span style="color:{series.color}">{series.name}</span>' +
+            ': <b>{point.y}</b> ({point.percentage:.0f}%%)<br/>',
+        shared: true
+    },
+    plotOptions: {
+        column: {
+            stacking: 'percent',
+            dataLabels: {
+                enabled: true,
+                format: '{point.percentage:.0f}%%'
+            }
+        }
+    },
+    series: %s
+});`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
+
+	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	return newChart
+}
+
+// BarChartWrapper is an exported function that wraps the BarChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls BarChart, and
+// returns the HTML string on success or an error message on failure.
+//
+//export BarChartWrapper
+func BarChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *C.char, aggsJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var aggs []Aggregation
+	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
+		errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	chart := df.BarChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
+	displayChart := DisplayChart(chart)
+	html, ok := displayChart["text/html"].(string)
+	if !ok {
+		errStr := "BarChartWrapper: error displaying chart"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(html)
+}
+
+// ColumnChartWrapper is an exported function that wraps the ColumnChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls ColumnChart, and
+// returns the HTML string on success or an error message on failure.
+//
+//export ColumnChartWrapper
+func ColumnChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *C.char, aggsJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("ColumnChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var aggs []Aggregation
+	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
+		errStr := fmt.Sprintf("ColumnChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	chart := df.ColumnChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
+	displayChart := DisplayChart(chart)
+	html, ok := displayChart["text/html"].(string)
+	if !ok {
+		errStr := "ColumnChartWrapper: error displaying chart"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(html)
+}
+
+// StackedBarChartWrapper is an exported function that wraps the StackedBarChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls StackedBarChart, and
+// returns the HTML string on success or an error message on failure.
+//
+//export StackedBarChartWrapper
+func StackedBarChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *C.char, aggsJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("StackedBarChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var aggs []Aggregation
+	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
+		errStr := fmt.Sprintf("StackedBarChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	chart := df.StackedBarChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
+	displayChart := DisplayChart(chart)
+	html, ok := displayChart["text/html"].(string)
+	if !ok {
+		errStr := "StackedBarChartWrapper: error displaying chart"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(html)
+}
+
+// StackedPercentChartWrapper is an exported function that wraps the StackedPercentChart function.
+// It takes a JSON-string representing the DataFrame and chart parameters, calls StackedPercentChart, and
+// returns the HTML string on success or an error message on failure.
+//
+//export StackedPercentChartWrapper
+func StackedPercentChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *C.char, aggsJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("StackedPercentChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var aggs []Aggregation
+	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
+		errStr := fmt.Sprintf("StackedPercentChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	chart := df.StackedPercentChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
+	displayChart := DisplayChart(chart)
+	html, ok := displayChart["text/html"].(string)
+	if !ok {
+		errStr := "StackedPercentChartWrapper: error displaying chart"
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(html)
+}
 
 // PieChart
 
@@ -781,51 +1455,1131 @@ func (df *DataFrame) DisplayBrowser() error {
 
 // DASHBOARDS --------------------------------------------------
 
-// CreateDashboard
+// dashboard create
+func (df *DataFrame) CreateDashboard(title string) *Dashboard {
+	HTMLTop := `
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<script>
+			tailwind.config = {
+				theme: {
+				extend: {
+					colors: {`
+	HTMLHeading := `	
+				}
+			}
+		}
+		</script>
+		<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+		<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+		<script src="https://cdn.tailwindcss.com"></script>
+		<script src="https://code.highcharts.com/highcharts.js"></script>
+		<script src="https://code.highcharts.com/modules/boost.js"></script>
+		<script src="https://code.highcharts.com/modules/exporting.js"></script>
+		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+	</head>
+	<body>
 
-// Open
+	`
+	ScriptHeading := `
+			</div>
+		</div>
+	</body>
+	<script>
+		const { createApp } = Vue
+		createApp({
+		delimiters : ['[[', ']]'],
+			data(){
+				return {
+					page: `
 
-// Save
+	ScriptMiddle := `
+          }
+        },
+        methods: {
 
-// AddPage
+        },
+        watch: {
 
-// AddHTML
+        },
+        created(){
+		},
+		  mounted() {
+`
 
-// AddDataframe
+	HTMLBottom := `
+        },
+        computed:{
 
-// AddChart
+        }
 
-// AddHeading
+    }).mount('#app')
+  </script>
+</html>
+`
 
-// AddText
+	newDashboard := &Dashboard{
+		top:           HTMLTop,
+		primary:       `primary: "#0000ff",`,
+		secondary:     `secondary: "#00aaff",`,
+		accent:        `accent: "#479700",`,
+		neutral:       `neutral: "#250e0d",`,
+		base100:       `"base-100": "#fffaff",`,
+		info:          `info: "#00c8ff",`,
+		success:       `success: "#00ec6a",`,
+		warning:       `warning: "#ffb900",`,
+		err:           `error: "#f00027",`,
+		htmlheading:   HTMLHeading,
+		title:         title,
+		htmlelements:  "",
+		scriptheading: ScriptHeading,
+		scriptmiddle:  ScriptMiddle,
+		bottom:        HTMLBottom,
+		pageshtml:     make(map[string]interface{}),
+		pagesjs:       make(map[string]interface{}),
+	}
+	fmt.Println("CreateDashboard: Initialized dashboard:", newDashboard)
+	return newDashboard
+}
 
-// AddSubtext
+// Open - open the dashboard in browser
+func (dash *Dashboard) Open() error {
+	// add html element for page
+	html := dash.top +
+		dash.primary +
+		dash.secondary +
+		dash.accent +
+		dash.neutral +
+		dash.base100 +
+		dash.info +
+		dash.success +
+		dash.warning +
+		dash.err +
+		dash.htmlheading
+	if len(dash.pageshtml) > 1 {
+		html += `
+		<div id="app"  style="text-align: center;" class="drawer w-full lg:drawer-open">
+			<input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
+			<div class="drawer-content flex flex-col">
+				<!-- Navbar -->
+				<div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
+			` +
+			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="ml-14 text-4xl">%s</a></div>`, dash.title) +
+			`
+				<div class="flex-none lg:hidden">
+					<label for="my-drawer-2" class="btn btn-neutral btn-square shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation">
+					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+						class="inline-block w-6 h-6 stroke-current">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+					</svg>
+					</label>
+					</div>
+				</div>
+				<!-- content goes here! -->
+				<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">
+			`
 
-// AddBullets
+	} else {
+		html += `
+		<div id="app"  style="text-align: center;">
+			<!-- Navbar -->
+			<div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
+		` +
+			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class=" text-4xl">%s</a></div>
+			</div>`, dash.title) +
+			`<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">`
 
-// AddImage ?
+	}
+	// iterate over pageshtml and add each stored HTML snippet
+	for _, elem := range dash.pageshtml {
+		if pageMap, ok := elem.(map[int]string); ok {
+			// iterate in order
+			for i := 0; i < len(pageMap); i++ {
+				html += pageMap[i]
+			}
+		} else {
+			html += fmt.Sprintf("%v", elem)
+		}
+	}
+	if len(dash.pageshtml) > 1 {
+		html += `
+			</div>
+		</div>
+		<!-- <br> -->
+		<div class="drawer-side">
+			<label for="my-drawer-2" class="drawer-overlay bg-neutral"></label>
+			<ul class="menu p-4 w-80 bg-neutral h-full overflow-y-auto min-h-screen text-base-content shadow-none space-y-2 ">
+			<div class="card w-72 bg-base-100 shadow-xl">
+				<div class="card-body">
+					<div class="flex space-x-6 place-content-center">
+						<h2 class="card-title black-text-shadow-sm flex justify">Pages</h2>
+					</div>
+				<div class="flex flex-col w-full h-1px">
+					<div class="divider"></div>
+				</div>
+				<div class="space-y-4">
+		`
+		for page, _ := range dash.pageshtml {
+			html += fmt.Sprintf(`
+			<button v-if="page == '%s' " @click="page = '%s' " class="btn btn-block btn-sm btn-neutral text-white bg-neutral shadow-lg  hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
+			<button v-else @click="page = '%s' " class="btn btn-block btn-sm bg-base-100 btn-outline btn-neutral hover:text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
+			
+			`, page, page, page, page, page)
+		}
+	} else {
+		html += `
+			</div>
+		</div>
+		`
+	}
+	html += dash.scriptheading
+	pages := `pages: [`
+	count := 0
+	for page, _ := range dash.pageshtml {
+		if count == 0 {
+			html += fmt.Sprintf("%q", page) + ","
+		}
+		pages += fmt.Sprintf("%q", page) + ", "
+		count++
+	}
+	pages = strings.TrimSuffix(pages, ", ") + `],`
+	html += pages
+	html += dash.scriptmiddle
+	// iterate over pagesjs similarly
+	for _, elem := range dash.pagesjs {
+		if jsMap, ok := elem.(map[int]string); ok {
+			for i := 0; i < len(jsMap); i++ {
+				html += jsMap[i]
+			}
+		} else {
+			html += fmt.Sprintf("%v", elem)
+		}
+	}
+	html += dash.bottom
+
+	// Create a temporary file
+	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %v", err)
+	}
+	defer tmpFile.Close()
+
+	// Write the HTML string to the temporary file
+	if _, err := tmpFile.Write([]byte(html)); err != nil {
+		return fmt.Errorf("failed to write to temporary file: %v", err)
+	}
+
+	// Open the temporary file in the default web browser
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
+	case "darwin":
+		cmd = exec.Command("open", tmpFile.Name())
+	default: // "linux", "freebsd", "openbsd", "netbsd"
+		cmd = exec.Command("xdg-open", tmpFile.Name())
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to open file in browser: %v", err)
+	}
+
+	return nil
+
+}
+
+// Save - save dashboard to html file
+func (dash *Dashboard) Save(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// add html element for page
+	html := dash.top +
+		dash.primary +
+		dash.secondary +
+		dash.accent +
+		dash.neutral +
+		dash.base100 +
+		dash.info +
+		dash.success +
+		dash.warning +
+		dash.err +
+		dash.htmlheading
+
+	// iterate over pageshtml and add each stored HTML snippet
+	for _, elem := range dash.pageshtml {
+		if pageMap, ok := elem.(map[int]string); ok {
+			// iterate in order
+			for i := 0; i < len(pageMap); i++ {
+				html += pageMap[i]
+			}
+		} else {
+			html += fmt.Sprintf("%v", elem)
+		}
+	}
+	html += dash.scriptheading
+	pages := `pages: [`
+	count := 0
+	for page, _ := range dash.pageshtml {
+		if count == 0 {
+			html += fmt.Sprintf("%q", page) + ","
+			count++
+		}
+		pages += fmt.Sprintf("%q", page) + ", "
+	}
+	pages = strings.TrimSuffix(pages, ", ") + `],`
+	html += pages
+	html += dash.scriptmiddle
+	// iterate over pagesjs similarly
+	for _, elem := range dash.pagesjs {
+		if jsMap, ok := elem.(map[int]string); ok {
+			for i := 0; i < len(jsMap); i++ {
+				html += jsMap[i]
+			}
+		} else {
+			html += fmt.Sprintf("%v", elem)
+		}
+	}
+	html += dash.bottom
+
+	// Write the HTML string to the file
+	if _, err := file.Write([]byte(html)); err != nil {
+		return fmt.Errorf("failed to write to file: %v", err)
+	}
+
+	return nil
+}
+
+// AddPage adds a new page to the dashboard.
+func (dash *Dashboard) AddPage(name string) {
+	// Check if the page already exists.
+	if _, exists := dash.pageshtml[name]; exists {
+		fmt.Println("Page already exists.")
+		return
+	}
+
+	// Add the page to the dashboard.
+	dash.pageshtml[name] = map[int]string{}
+	pageHTML, ok := dash.pageshtml[name].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+
+	html := `<h1 v-if="page == '` + name + `' " class="text-8xl pt-24 pb-24"> ` + name + `</h1>` // Page Title at top of page
+	pageHTML[len(pageHTML)] = html
+	dash.pagesjs[name] = map[int]string{}
+
+	fmt.Println("AddPage: Added page:", name)
+	fmt.Println("AddPage: Updated pageshtml:", dash.pageshtml)
+}
+
+// spacing for stuff? card or no card? background?
+
+// add text input
+
+// add slider
+
+// add dropdown (array of selections)
+
+// add iframe
+// add title text-2xl - this should just be the page name and automatically populate at the top of the page...
+// add html to page map
+func (dash *Dashboard) AddHTML(page string, text string) {
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+	// Assert the type of the value in pageshtml and pagesjs
+	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center sm:w-7/8 w-3/4" srcdoc='` + text + `'></iframe>`
+	pageHTML[len(pageHTML)] = texthtml
+	// Update the maps with the new values
+	dash.pageshtml[page] = pageHTML
+
+}
+
+// add df (paginate + filter + sort)
+func (dash *Dashboard) AddDataframe(page string, df *DataFrame) {
+	text := df.Display()["text/html"].(string)
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+	dash.AddHTML("page2", text)
+}
+
+// add chart to dashboard page
+func (dash *Dashboard) AddChart(page string, chart Chart) {
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+
+	// Assert the type of the value in pageshtml and pagesjs
+	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+
+	pageJS, ok := dash.pagesjs[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pagesjs[page]")
+		return
+	}
+
+	newdivid := chart.htmldivid + strconv.Itoa(len(pageHTML))
+	html := `<div v-show="page == '` + page + `' " id="` + newdivid + chart.htmlpostid
+	js := chart.jspreid + newdivid + chart.jspostid
+	pageHTML[len(pageHTML)] = html
+	pageJS[len(pageJS)] = js
+
+	// Update the maps with the new values
+	dash.pageshtml[page] = pageHTML
+	dash.pagesjs[page] = pageJS
+}
+
+// add title text-2xl - this should just be the page name and automatically populate at the top of the page...
+// add html to page map
+func (dash *Dashboard) AddHeading(page string, heading string, size int) {
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+	// Assert the type of the value in pageshtml and pagesjs
+	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+	var text_size string
+	if size == 1 {
+		text_size = "text-6xl"
+	} else if size == 2 {
+		text_size = "text-5xl"
+	} else if size == 3 {
+		text_size = "text-4xl"
+	} else if size == 4 {
+		text_size = "text-3xl"
+	} else if size == 5 {
+		text_size = "text-2xl"
+	} else if size == 6 {
+		text_size = "text-xl"
+	} else if size == 7 {
+		text_size = "text-lg"
+	} else if size == 8 {
+		text_size = "text-md"
+	} else if size == 9 {
+		text_size = "text-sm"
+	} else if size == 10 {
+		text_size = "text-xs"
+	} else {
+		text_size = "text-md"
+	}
+	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s p-8 flex justify-start"> `, text_size) + heading + `</h1>`
+	pageHTML[len(pageHTML)] = html
+	// Update the maps with the new values
+	dash.pageshtml[page] = pageHTML
+
+}
+
+// add title text-2xl - this should just be the page name and automatically populate at the top of the page...
+// add html to page map
+func (dash *Dashboard) AddText(page string, text string) {
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+	// Assert the type of the value in pageshtml and pagesjs
+	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+	text_size := "text-md"
+	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 flex justify-start text-left"> `, text_size) + text + `</h1>`
+	pageHTML[len(pageHTML)] = html
+	// Update the maps with the new values
+	dash.pageshtml[page] = pageHTML
+
+}
+
+// add title text-2xl - this should just be the page name and automatically populate at the top of the page...
+// add html to page map
+func (dash *Dashboard) AddSubText(page string, text string) {
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+	// Assert the type of the value in pageshtml and pagesjs
+	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+	text_size := "text-sm"
+	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 pb-8 flex justify-center"> `, text_size) + text + `</h1>`
+	pageHTML[len(pageHTML)] = html
+	// Update the maps with the new values
+	dash.pageshtml[page] = pageHTML
+
+}
+
+// add bullet list
+// add html to page map
+// add title text-2xl - this should just be the page name and automatically populate at the top of the page...
+// add html to page map
+func (dash *Dashboard) AddBullets(page string, text ...string) {
+	// add html to page map
+	if _, exists := dash.pageshtml[page]; !exists {
+		fmt.Println("Page does not exist. Use AddPage()")
+		return
+	}
+	// Assert the type of the value in pageshtml and pagesjs
+	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	if !ok {
+		fmt.Println("Invalid type for pageshtml[page]")
+		return
+	}
+	text_size := "text-md"
+	html := `<ul v-if="page == '` + page + `' " class="list-disc flex-col justify-self-start pl-24 pr-12 py-2"> `
+	for _, bullet := range text {
+		html += fmt.Sprintf(`<li class="text-left %s">`, text_size) + bullet + `</li>`
+	}
+	html += `</ul>`
+	pageHTML[len(pageHTML)] = html
+	// Update the maps with the new values
+	dash.pageshtml[page] = pageHTML
+
+}
+
+// CreateDashboardWrapper is an exported function that wraps the CreateDashboard method.
+//
+//export CreateDashboardWrapper
+func CreateDashboardWrapper(dfJson *C.char, title *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("CreateDashboardWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	dashboard := df.CreateDashboard(C.GoString(title))
+	fmt.Println(dashboard)
+	dashboardJson, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("CreateDashboardWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	fmt.Println("CreateDashboardWrapper: Created dashboard JSON:", string(dashboardJson))
+	return C.CString(string(dashboardJson))
+}
+
+// OpenDashboardWrapper is an exported function that wraps the Open method.
+//
+//export OpenDashboardWrapper
+func OpenDashboardWrapper(dashboardJson *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("OpenDashboardWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	if err := dashboard.Open(); err != nil {
+		errStr := fmt.Sprintf("OpenDashboardWrapper: open error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return nil
+}
+
+// SaveDashboardWrapper is an exported function that wraps the Save method.
+//
+//export SaveDashboardWrapper
+func SaveDashboardWrapper(dashboardJson *C.char, filename *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("SaveDashboardWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	if err := dashboard.Save(C.GoString(filename)); err != nil {
+		errStr := fmt.Sprintf("SaveDashboardWrapper: save error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return nil
+}
+
+// AddPageWrapper is an exported function that wraps the AddPage method.
+//
+//export AddPageWrapper
+func AddPageWrapper(dashboardJson *C.char, name *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddPageWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddPage(C.GoString(name))
+	fmt.Println("AddPageWrapper: Dashboard after adding page:", dashboard)
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddPageWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	fmt.Println("AddPageWrapper: Updated dashboard JSON:", string(dashboardJsonBytes))
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddHTMLWrapper is an exported function that wraps the AddHTML method.
+//
+//export AddHTMLWrapper
+func AddHTMLWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddHTMLWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddHTML(C.GoString(page), C.GoString(text))
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddHTMLWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddDataframeWrapper is an exported function that wraps the AddDataframe method.
+//
+//export AddDataframeWrapper
+func AddDataframeWrapper(dashboardJson *C.char, page *C.char, dfJson *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddDataframeWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("AddDataframeWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddDataframe(C.GoString(page), &df)
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddDataframeWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddChartWrapper is an exported function that wraps the AddChart method.
+//
+//export AddChartWrapper
+func AddChartWrapper(dashboardJson *C.char, page *C.char, chartJson *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var chart Chart
+	if err := json.Unmarshal([]byte(C.GoString(chartJson)), &chart); err != nil {
+		errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddChart(C.GoString(page), chart)
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddChartWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddHeadingWrapper is an exported function that wraps the AddHeading method.
+//
+//export AddHeadingWrapper
+func AddHeadingWrapper(dashboardJson *C.char, page *C.char, heading *C.char, size C.int) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddHeadingWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddHeading(C.GoString(page), C.GoString(heading), int(size))
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddHeadingWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddTextWrapper is an exported function that wraps the AddText method.
+//
+//export AddTextWrapper
+func AddTextWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddTextWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddText(C.GoString(page), C.GoString(text))
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddTextWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddSubTextWrapper is an exported function that wraps the AddSubText method.
+//
+//export AddSubTextWrapper
+func AddSubTextWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddSubTextWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddSubText(C.GoString(page), C.GoString(text))
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddSubTextWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
+
+// AddBulletsWrapper is an exported function that wraps the AddBullets method.
+//
+//export AddBulletsWrapper
+func AddBulletsWrapper(dashboardJson *C.char, page *C.char, bulletsJson *C.char) *C.char {
+	var dashboard Dashboard
+	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+		errStr := fmt.Sprintf("AddBulletsWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var bullets []string
+	if err := json.Unmarshal([]byte(C.GoString(bulletsJson)), &bullets); err != nil {
+		errStr := fmt.Sprintf("AddBulletsWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	dashboard.init() // Initialize the maps
+	dashboard.AddBullets(C.GoString(page), bullets...)
+	dashboardJsonBytes, err := json.Marshal(dashboard)
+	if err != nil {
+		errStr := fmt.Sprintf("AddBulletsWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(dashboardJsonBytes))
+}
 
 // AGGREGATES --------------------------------------------------
 
-// Agg
+// SumWrapper is an exported function that wraps the Sum function.
+//
+//export SumWrapper
+func SumWrapper(name *C.char) *C.char {
+	col := Sum(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("SumWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Sum
+// MaxWrapper is an exported function that wraps the Max function.
+//
+//export MaxWrapper
+func MaxWrapper(name *C.char) *C.char {
+	col := Max(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("MaxWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Avg
+// MinWrapper is an exported function that wraps the Min function.
+//
+//export MinWrapper
+func MinWrapper(name *C.char) *C.char {
+	col := Min(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("MinWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Min
+// MedianWrapper is an exported function that wraps the Median function.
+//
+//export MedianWrapper
+func MedianWrapper(name *C.char) *C.char {
+	col := Median(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("MedianWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Max
+// MeanWrapper is an exported function that wraps the Mean function.
+//
+//export MeanWrapper
+func MeanWrapper(name *C.char) *C.char {
+	col := Mean(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("MeanWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Median
+// ModeWrapper is an exported function that wraps the Mode function.
+//
+//export ModeWrapper
+func ModeWrapper(name *C.char) *C.char {
+	col := Mode(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("ModeWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Mean
+// UniqueWrapper is an exported function that wraps the Unique function.
+//
+//export UniqueWrapper
+func UniqueWrapper(name *C.char) *C.char {
+	col := Unique(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("UniqueWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Mode
+// FirstWrapper is an exported function that wraps the First function.
+//
+//export FirstWrapper
+func FirstWrapper(name *C.char) *C.char {
+	col := First(C.GoString(name))
+	colJson, err := json.Marshal(col)
+	if err != nil {
+		errStr := fmt.Sprintf("FirstWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(colJson))
+}
 
-// Unique
+// Agg converts multiple Column functions to a slice of Aggregation structs for use in aggregation.
+func Agg(cols ...Column) []Aggregation {
+	aggs := []Aggregation{}
+	for _, col := range cols {
+		agg := Aggregation{
+			ColumnName: col.Name,
+			Fn: func(vals []interface{}) interface{} {
+				row := make(map[string]interface{})
+				row[col.Name] = vals
+				return col.Fn(row)
+			},
+		}
+		aggs = append(aggs, agg)
+	}
+	return aggs
+}
 
-// First
+// Sum returns a Column that sums numeric values from the specified column.
+func Sum(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return 0.0
+			}
+			sum := 0.0
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("sum conversion error: %v\n", err)
+					continue
+				}
+				sum += fVal
+			}
+			return sum
+		},
+	}
+}
+
+// Max returns a Column that finds the maximum numeric value from the specified column.
+func Max(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			maxSet := false
+			var max float64
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("max conversion error: %v\n", err)
+					continue
+				}
+				if !maxSet || fVal > max {
+					max = fVal
+					maxSet = true
+				}
+			}
+			if !maxSet {
+				return nil
+			}
+			return max
+		},
+	}
+}
+
+// Min returns a Column that finds the minimum numeric value from the specified column.
+func Min(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			minSet := false
+			var min float64
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("min conversion error: %v\n", err)
+					continue
+				}
+				if !minSet || fVal < min {
+					min = fVal
+					minSet = true
+				}
+			}
+			if !minSet {
+				return nil
+			}
+			return min
+		},
+	}
+}
+
+// Median returns a Column that finds the median numeric value from the specified column.
+func Median(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			var nums []float64
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("median conversion error: %v\n", err)
+					continue
+				}
+				nums = append(nums, fVal)
+			}
+
+			n := len(nums)
+			if n == 0 {
+				return nil
+			}
+
+			// Sort the numbers.
+			sort.Float64s(nums)
+
+			if n%2 == 1 {
+				// Odd count; return middle element.
+				return nums[n/2]
+			}
+			// Even count; return average of two middle elements.
+			median := (nums[n/2-1] + nums[n/2]) / 2.0
+			return median
+		},
+	}
+}
+
+// Mean returns a Column that calculates the mean (average) of numeric values from the specified column.
+func Mean(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			sum := 0.0
+			count := 0
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("mean conversion error: %v\n", err)
+					continue
+				}
+				sum += fVal
+				count++
+			}
+			if count == 0 {
+				return nil
+			}
+			return sum / float64(count)
+		},
+	}
+}
+
+// Mode returns a Column that finds the mode (most frequent value) among the numeric values from the specified column.
+func Mode(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			// Use a map to count frequencies.
+			freq := make(map[float64]int)
+			var mode float64
+			maxCount := 0
+
+			for _, v := range val.([]interface{}) {
+				fVal, err := toFloat64(v)
+				if err != nil {
+					fmt.Printf("mode conversion error: %v\n", err)
+					continue
+				}
+				freq[fVal]++
+				if freq[fVal] > maxCount {
+					maxCount = freq[fVal]
+					mode = fVal
+				}
+			}
+			// If no valid values, return nil.
+			if maxCount == 0 {
+				return nil
+			}
+			return mode
+		},
+	}
+}
+
+// Unique returns a Column that counts the number of unique values from the specified column.
+func Unique(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return 0
+			}
+			uniqueSet := make(map[interface{}]bool)
+			for _, v := range val.([]interface{}) {
+				uniqueSet[v] = true
+			}
+			return len(uniqueSet)
+		},
+	}
+}
+
+// First returns a Column that gets the first value from the specified column.
+func First(name string) Column {
+	return Column{
+		Name: name,
+		Fn: func(row map[string]interface{}) interface{} {
+			val, ok := row[name]
+			if !ok || val == nil {
+				return nil
+			}
+			if len(val.([]interface{})) == 0 {
+				return nil
+			}
+			return val.([]interface{})[0]
+		},
+	}
+}
 
 // LOGIC --------------------------------------------------
 
@@ -833,7 +2587,7 @@ func (df *DataFrame) DisplayBrowser() error {
 
 // IsNull
 
-//IsNotNull
+// IsNotNull
 
 // Gt
 
@@ -956,7 +2710,96 @@ func (df *DataFrame) Column(column string, col Column) *DataFrame {
 
 // Select
 
-// GroupBy
+// GroupByWrapper is an exported function that wraps the GroupBy method.
+// It takes a JSON-string representing the DataFrame, the group column, and a JSON-string representing the aggregations.
+// It returns the resulting DataFrame as a JSON string.
+//
+//export GroupByWrapper
+func GroupByWrapper(dfJson *C.char, groupCol *C.char, aggsJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("GroupByWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var aggs []Aggregation
+	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
+		errStr := fmt.Sprintf("GroupByWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	groupedDF := df.GroupBy(C.GoString(groupCol), aggs...)
+	resultJson, err := json.Marshal(groupedDF)
+	if err != nil {
+		errStr := fmt.Sprintf("GroupByWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(resultJson))
+}
+
+// GroupBy groups the DataFrame rows by the value produced by groupCol.
+// For each group, it applies each provided Aggregation on the values
+// from the corresponding column.
+// The new DataFrame has a "group" column for the grouping key and one column per Aggregation.
+func (df *DataFrame) GroupBy(groupcol string, aggs ...Aggregation) *DataFrame {
+	// Build groups. The key is the groupCol result, and the value is a map: column → slice of values.
+	groups := make(map[interface{}]map[string][]interface{})
+
+	// Iterate over each row and group them.
+	for i := 0; i < df.Rows; i++ {
+		// Build the row as a map.
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			row[col] = df.Data[col][i]
+		}
+		key := row[groupcol]
+		if _, ok := groups[key]; !ok {
+			groups[key] = make(map[string][]interface{})
+			// Initialize slices for each aggregation target.
+			for _, agg := range aggs {
+				groups[key][agg.ColumnName] = []interface{}{}
+			}
+		}
+		// Append each aggregation target value.
+		for _, agg := range aggs {
+			val, ok := row[agg.ColumnName]
+			if ok {
+				groups[key][agg.ColumnName] = append(groups[key][agg.ColumnName], val)
+			}
+		}
+	}
+
+	// Prepare the new DataFrame.
+	newCols := []string{groupcol}
+	// Use the target column names for aggregated data.
+	for _, agg := range aggs {
+		newCols = append(newCols, agg.ColumnName)
+	}
+
+	newData := make(map[string][]interface{})
+	for _, col := range newCols {
+		newData[col] = []interface{}{}
+	}
+
+	// Generate one aggregated row per group.
+	for key, groupValues := range groups {
+		newData[groupcol] = append(newData[groupcol], key)
+		for _, agg := range aggs {
+			aggregatedValue := agg.Fn(groupValues[agg.ColumnName])
+			newData[agg.ColumnName] = append(newData[agg.ColumnName], aggregatedValue)
+		}
+	}
+
+	return &DataFrame{
+		Cols: newCols,
+		Data: newData,
+		Rows: len(newData[groupcol]),
+	}
+}
 
 // Join
 
