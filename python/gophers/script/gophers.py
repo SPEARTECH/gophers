@@ -129,7 +129,7 @@ class DataFrame:
                 cols_json.encode('utf-8')
             ).decode('utf-8')
         # Check for CollectList marker (a string) and call ColumnCollectList.
-        elif isinstance(col_spec, str) and col_spec.startswith("CollectList:"):
+        elif isinstance(col_spec, str) and col_spec.startswith("CollectList"):
             # col_spec is in the form "CollectList:colname"
             src = col_spec.split(":", 1)[1]
             self.df_json = self.gophers.ColumnCollectList(
@@ -138,7 +138,7 @@ class DataFrame:
                 src.encode('utf-8')
             ).decode('utf-8')
         # Similarly for CollectSet.
-        elif isinstance(col_spec, str) and col_spec.startswith("CollectSet:"):
+        elif isinstance(col_spec, str) and col_spec.startswith("CollectSet"):
             src = col_spec.split(":", 1)[1]
             self.df_json = self.gophers.ColumnCollectSet(
                 self.df_json.encode('utf-8'),
