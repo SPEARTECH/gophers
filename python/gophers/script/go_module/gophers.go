@@ -42,11 +42,11 @@ type Column struct {
 }
 
 type Chart struct {
-	htmlpreid  string
-	htmldivid  string
-	htmlpostid string
-	jspreid    string
-	jspostid   string
+	Htmlpreid  string
+	Htmldivid  string
+	Htmlpostid string
+	Jspreid    string
+	Jspostid   string
 }
 
 // AggregatorFn defines a function that aggregates a slice of values.
@@ -58,34 +58,38 @@ type Aggregation struct {
 	Fn         AggregatorFn
 }
 
-// main dashboard object for adding html pages, charts, and inputs for a single html output
+type SimpleAggregation struct {
+	ColumnName string
+}
+
+// Dashboard object for adding html pages, charts, and inputs for a single html output
 type Dashboard struct {
-	top           string
-	primary       string
-	secondary     string
-	accent        string
-	neutral       string
-	base100       string
-	info          string
-	success       string
-	warning       string
-	err           string
-	htmlheading   string
-	title         string
-	htmlelements  string
-	scriptheading string
-	scriptmiddle  string
-	bottom        string
-	pageshtml     map[string]interface{}
-	pagesjs       map[string]interface{}
+	Top           string
+	Primary       string
+	Secondary     string
+	Accent        string
+	Neutral       string
+	Base100       string
+	Info          string
+	Success       string
+	Warning       string
+	Err           string
+	Htmlheading   string
+	Title         string
+	Htmlelements  string
+	Scriptheading string
+	Scriptmiddle  string
+	Bottom        string
+	Pageshtml     map[string]interface{}
+	Pagesjs       map[string]interface{}
 }
 
 func (dash *Dashboard) init() {
-	if dash.pageshtml == nil {
-		dash.pageshtml = make(map[string]interface{})
+	if dash.Pageshtml == nil {
+		dash.Pageshtml = make(map[string]interface{})
 	}
-	if dash.pagesjs == nil {
-		dash.pagesjs = make(map[string]interface{})
+	if dash.Pagesjs == nil {
+		dash.Pagesjs = make(map[string]interface{})
 	}
 }
 
@@ -956,7 +960,7 @@ func DisplayChartWrapper(chartJson *C.char) *C.char {
 	return C.CString(html)
 }
 func DisplayChart(chart Chart) map[string]interface{} {
-	html := chart.htmlpreid + chart.htmldivid + chart.htmlpostid + chart.jspreid + chart.htmldivid + chart.jspostid
+	html := chart.Htmlpreid + chart.Htmldivid + chart.Htmlpostid + chart.Jspreid + chart.Htmldivid + chart.Jspostid
 	return map[string]interface{}{
 		"text/html": html,
 	}
@@ -1017,11 +1021,11 @@ func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, ag
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `barchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `barchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'bar'
     },
@@ -1068,7 +1072,7 @@ func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, ag
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -1102,11 +1106,11 @@ func (df *DataFrame) ColumnChart(title string, subtitle string, groupcol string,
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `columnchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `columnchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'column'
     },
@@ -1153,7 +1157,7 @@ func (df *DataFrame) ColumnChart(title string, subtitle string, groupcol string,
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -1187,11 +1191,11 @@ func (df *DataFrame) StackedBarChart(title string, subtitle string, groupcol str
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `stackedbarchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `stackedbarchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'bar'
     },
@@ -1227,7 +1231,7 @@ func (df *DataFrame) StackedBarChart(title string, subtitle string, groupcol str
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -1261,11 +1265,11 @@ func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `stackedpercentchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `stackedpercentchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'column'
     },
@@ -1307,7 +1311,7 @@ func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -1324,11 +1328,26 @@ func BarChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *
 		return C.CString(errStr)
 	}
 
-	var aggs []Aggregation
-	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
+	var simpleAggs []SimpleAggregation
+	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &simpleAggs); err != nil {
 		errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
+	}
+
+	// Reconstruct the Aggregation structs
+	var aggs []Aggregation
+	for _, simpleAgg := range simpleAggs {
+		col := Sum(simpleAgg.ColumnName) // Adjust this if you have different types of aggregations
+		agg := Aggregation{
+			ColumnName: simpleAgg.ColumnName,
+			Fn: func(vals []interface{}) interface{} {
+				row := make(map[string]interface{})
+				row[simpleAgg.ColumnName] = vals
+				return col.Fn(row)
+			},
+		}
+		aggs = append(aggs, agg)
 	}
 
 	chart := df.BarChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
@@ -1521,24 +1540,24 @@ func (df *DataFrame) CreateDashboard(title string) *Dashboard {
 `
 
 	newDashboard := &Dashboard{
-		top:           HTMLTop,
-		primary:       `primary: "#0000ff",`,
-		secondary:     `secondary: "#00aaff",`,
-		accent:        `accent: "#479700",`,
-		neutral:       `neutral: "#250e0d",`,
-		base100:       `"base-100": "#fffaff",`,
-		info:          `info: "#00c8ff",`,
-		success:       `success: "#00ec6a",`,
-		warning:       `warning: "#ffb900",`,
-		err:           `error: "#f00027",`,
-		htmlheading:   HTMLHeading,
-		title:         title,
-		htmlelements:  "",
-		scriptheading: ScriptHeading,
-		scriptmiddle:  ScriptMiddle,
-		bottom:        HTMLBottom,
-		pageshtml:     make(map[string]interface{}),
-		pagesjs:       make(map[string]interface{}),
+		Top:           HTMLTop,
+		Primary:       `primary: "#0000ff",`,
+		Secondary:     `secondary: "#00aaff",`,
+		Accent:        `accent: "#479700",`,
+		Neutral:       `neutral: "#250e0d",`,
+		Base100:       `"base-100": "#fffaff",`,
+		Info:          `info: "#00c8ff",`,
+		Success:       `success: "#00ec6a",`,
+		Warning:       `warning: "#ffb900",`,
+		Err:           `error: "#f00027",`,
+		Htmlheading:   HTMLHeading,
+		Title:         title,
+		Htmlelements:  "",
+		Scriptheading: ScriptHeading,
+		Scriptmiddle:  ScriptMiddle,
+		Bottom:        HTMLBottom,
+		Pageshtml:     make(map[string]interface{}),
+		Pagesjs:       make(map[string]interface{}),
 	}
 	fmt.Println("CreateDashboard: Initialized dashboard:", newDashboard)
 	return newDashboard
@@ -1547,97 +1566,99 @@ func (df *DataFrame) CreateDashboard(title string) *Dashboard {
 // Open - open the dashboard in browser
 func (dash *Dashboard) Open() error {
 	// add html element for page
-	html := dash.top +
-		dash.primary +
-		dash.secondary +
-		dash.accent +
-		dash.neutral +
-		dash.base100 +
-		dash.info +
-		dash.success +
-		dash.warning +
-		dash.err +
-		dash.htmlheading
-	if len(dash.pageshtml) > 1 {
+	html := dash.Top +
+		dash.Primary +
+		dash.Secondary +
+		dash.Accent +
+		dash.Neutral +
+		dash.Base100 +
+		dash.Info +
+		dash.Success +
+		dash.Warning +
+		dash.Err +
+		dash.Htmlheading
+	if len(dash.Pageshtml) > 1 {
 		html += `
-		<div id="app"  style="text-align: center;" class="drawer w-full lg:drawer-open">
-			<input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
-			<div class="drawer-content flex flex-col">
-				<!-- Navbar -->
-				<div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
-			` +
-			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="ml-14 text-4xl">%s</a></div>`, dash.title) +
+        <div id="app"  style="text-align: center;" class="drawer w-full lg:drawer-open">
+            <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
+            <div class="drawer-content flex flex-col">
+                <!-- Navbar -->
+                <div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
+            ` +
+			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="ml-14 text-4xl">%s</a></div>`, dash.Title) +
 			`
-				<div class="flex-none lg:hidden">
-					<label for="my-drawer-2" class="btn btn-neutral btn-square shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation">
-					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-						class="inline-block w-6 h-6 stroke-current">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-					</svg>
-					</label>
-					</div>
-				</div>
-				<!-- content goes here! -->
-				<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">
-			`
+                <div class="flex-none lg:hidden">
+                    <label for="my-drawer-2" class="btn btn-neutral btn-square shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                        class="inline-block w-6 h-6 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                    </label>
+                    </div>
+                </div>
+                <!-- content goes here! -->
+                <div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">
+            `
 
 	} else {
 		html += `
-		<div id="app"  style="text-align: center;">
-			<!-- Navbar -->
-			<div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
-		` +
+        <div id="app"  style="text-align: center;">
+            <!-- Navbar -->
+            <div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
+        ` +
 			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class=" text-4xl">%s</a></div>
-			</div>`, dash.title) +
+            </div>`, dash.Title) +
 			`<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">`
 
 	}
 	// iterate over pageshtml and add each stored HTML snippet
-	for _, elem := range dash.pageshtml {
-		if pageMap, ok := elem.(map[int]string); ok {
+	for _, elem := range dash.Pageshtml {
+		if pageMap, ok := elem.(map[string]interface{}); ok {
 			// iterate in order
 			for i := 0; i < len(pageMap); i++ {
-				html += pageMap[i]
+				if htmlString, ok := pageMap[strconv.Itoa(i)].(string); ok {
+					html += htmlString
+				}
 			}
 		} else {
 			html += fmt.Sprintf("%v", elem)
 		}
 	}
-	if len(dash.pageshtml) > 1 {
+	if len(dash.Pageshtml) > 1 {
 		html += `
-			</div>
-		</div>
-		<!-- <br> -->
-		<div class="drawer-side">
-			<label for="my-drawer-2" class="drawer-overlay bg-neutral"></label>
-			<ul class="menu p-4 w-80 bg-neutral h-full overflow-y-auto min-h-screen text-base-content shadow-none space-y-2 ">
-			<div class="card w-72 bg-base-100 shadow-xl">
-				<div class="card-body">
-					<div class="flex space-x-6 place-content-center">
-						<h2 class="card-title black-text-shadow-sm flex justify">Pages</h2>
-					</div>
-				<div class="flex flex-col w-full h-1px">
-					<div class="divider"></div>
-				</div>
-				<div class="space-y-4">
-		`
-		for page, _ := range dash.pageshtml {
+            </div>
+        </div>
+        <!-- <br> -->
+        <div class="drawer-side">
+            <label for="my-drawer-2" class="drawer-overlay bg-neutral"></label>
+            <ul class="menu p-4 w-80 bg-neutral h-full overflow-y-auto min-h-screen text-base-content shadow-none space-y-2 ">
+            <div class="card w-72 bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <div class="flex space-x-6 place-content-center">
+                        <h2 class="card-title black-text-shadow-sm flex justify">Pages</h2>
+                    </div>
+                <div class="flex flex-col w-full h-1px">
+                    <div class="divider"></div>
+                </div>
+                <div class="space-y-4">
+        `
+		for page, _ := range dash.Pageshtml {
 			html += fmt.Sprintf(`
-			<button v-if="page == '%s' " @click="page = '%s' " class="btn btn-block btn-sm btn-neutral text-white bg-neutral shadow-lg  hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
-			<button v-else @click="page = '%s' " class="btn btn-block btn-sm bg-base-100 btn-outline btn-neutral hover:text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
-			
-			`, page, page, page, page, page)
+            <button v-if="page == '%s' " @click="page = '%s' " class="btn btn-block btn-sm btn-neutral text-white bg-neutral shadow-lg  hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
+            <button v-else @click="page = '%s' " class="btn btn-block btn-sm bg-base-100 btn-outline btn-neutral hover:text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
+            
+            `, page, page, page, page, page)
 		}
 	} else {
 		html += `
-			</div>
-		</div>
-		`
+            </div>
+        </div>
+        `
 	}
-	html += dash.scriptheading
+	html += dash.Scriptheading
 	pages := `pages: [`
 	count := 0
-	for page, _ := range dash.pageshtml {
+	for page, _ := range dash.Pageshtml {
 		if count == 0 {
 			html += fmt.Sprintf("%q", page) + ","
 		}
@@ -1646,18 +1667,20 @@ func (dash *Dashboard) Open() error {
 	}
 	pages = strings.TrimSuffix(pages, ", ") + `],`
 	html += pages
-	html += dash.scriptmiddle
+	html += dash.Scriptmiddle
 	// iterate over pagesjs similarly
-	for _, elem := range dash.pagesjs {
-		if jsMap, ok := elem.(map[int]string); ok {
+	for _, elem := range dash.Pagesjs {
+		if jsMap, ok := elem.(map[string]interface{}); ok {
 			for i := 0; i < len(jsMap); i++ {
-				html += jsMap[i]
+				if jsString, ok := jsMap[strconv.Itoa(i)].(string); ok {
+					html += jsString
+				}
 			}
 		} else {
 			html += fmt.Sprintf("%v", elem)
 		}
 	}
-	html += dash.bottom
+	html += dash.Bottom
 
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
@@ -1699,20 +1722,20 @@ func (dash *Dashboard) Save(filename string) error {
 	defer file.Close()
 
 	// add html element for page
-	html := dash.top +
-		dash.primary +
-		dash.secondary +
-		dash.accent +
-		dash.neutral +
-		dash.base100 +
-		dash.info +
-		dash.success +
-		dash.warning +
-		dash.err +
-		dash.htmlheading
+	html := dash.Top +
+		dash.Primary +
+		dash.Secondary +
+		dash.Accent +
+		dash.Neutral +
+		dash.Base100 +
+		dash.Info +
+		dash.Success +
+		dash.Warning +
+		dash.Err +
+		dash.Htmlheading
 
 	// iterate over pageshtml and add each stored HTML snippet
-	for _, elem := range dash.pageshtml {
+	for _, elem := range dash.Pageshtml {
 		if pageMap, ok := elem.(map[int]string); ok {
 			// iterate in order
 			for i := 0; i < len(pageMap); i++ {
@@ -1722,10 +1745,10 @@ func (dash *Dashboard) Save(filename string) error {
 			html += fmt.Sprintf("%v", elem)
 		}
 	}
-	html += dash.scriptheading
+	html += dash.Scriptheading
 	pages := `pages: [`
 	count := 0
-	for page, _ := range dash.pageshtml {
+	for page, _ := range dash.Pageshtml {
 		if count == 0 {
 			html += fmt.Sprintf("%q", page) + ","
 			count++
@@ -1734,9 +1757,9 @@ func (dash *Dashboard) Save(filename string) error {
 	}
 	pages = strings.TrimSuffix(pages, ", ") + `],`
 	html += pages
-	html += dash.scriptmiddle
+	html += dash.Scriptmiddle
 	// iterate over pagesjs similarly
-	for _, elem := range dash.pagesjs {
+	for _, elem := range dash.Pagesjs {
 		if jsMap, ok := elem.(map[int]string); ok {
 			for i := 0; i < len(jsMap); i++ {
 				html += jsMap[i]
@@ -1745,7 +1768,7 @@ func (dash *Dashboard) Save(filename string) error {
 			html += fmt.Sprintf("%v", elem)
 		}
 	}
-	html += dash.bottom
+	html += dash.Bottom
 
 	// Write the HTML string to the file
 	if _, err := file.Write([]byte(html)); err != nil {
@@ -1758,14 +1781,14 @@ func (dash *Dashboard) Save(filename string) error {
 // AddPage adds a new page to the dashboard.
 func (dash *Dashboard) AddPage(name string) {
 	// Check if the page already exists.
-	if _, exists := dash.pageshtml[name]; exists {
+	if _, exists := dash.Pageshtml[name]; exists {
 		fmt.Println("Page already exists.")
 		return
 	}
 
 	// Add the page to the dashboard.
-	dash.pageshtml[name] = map[int]string{}
-	pageHTML, ok := dash.pageshtml[name].(map[int]string)
+	dash.Pageshtml[name] = map[int]string{}
+	pageHTML, ok := dash.Pageshtml[name].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1773,10 +1796,10 @@ func (dash *Dashboard) AddPage(name string) {
 
 	html := `<h1 v-if="page == '` + name + `' " class="text-8xl pt-24 pb-24"> ` + name + `</h1>` // Page Title at top of page
 	pageHTML[len(pageHTML)] = html
-	dash.pagesjs[name] = map[int]string{}
+	dash.Pagesjs[name] = map[int]string{}
 
 	fmt.Println("AddPage: Added page:", name)
-	fmt.Println("AddPage: Updated pageshtml:", dash.pageshtml)
+	fmt.Println("AddPage: Updated pageshtml:", dash.Pageshtml)
 }
 
 // spacing for stuff? card or no card? background?
@@ -1792,12 +1815,12 @@ func (dash *Dashboard) AddPage(name string) {
 // add html to page map
 func (dash *Dashboard) AddHTML(page string, text string) {
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1805,7 +1828,7 @@ func (dash *Dashboard) AddHTML(page string, text string) {
 	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center sm:w-7/8 w-3/4" srcdoc='` + text + `'></iframe>`
 	pageHTML[len(pageHTML)] = texthtml
 	// Update the maps with the new values
-	dash.pageshtml[page] = pageHTML
+	dash.Pageshtml[page] = pageHTML
 
 }
 
@@ -1813,7 +1836,7 @@ func (dash *Dashboard) AddHTML(page string, text string) {
 func (dash *Dashboard) AddDataframe(page string, df *DataFrame) {
 	text := df.Display()["text/html"].(string)
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
@@ -1823,45 +1846,45 @@ func (dash *Dashboard) AddDataframe(page string, df *DataFrame) {
 // add chart to dashboard page
 func (dash *Dashboard) AddChart(page string, chart Chart) {
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
 
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
 	}
 
-	pageJS, ok := dash.pagesjs[page].(map[int]string)
+	pageJS, ok := dash.Pagesjs[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pagesjs[page]")
 		return
 	}
 
-	newdivid := chart.htmldivid + strconv.Itoa(len(pageHTML))
-	html := `<div v-show="page == '` + page + `' " id="` + newdivid + chart.htmlpostid
-	js := chart.jspreid + newdivid + chart.jspostid
+	newdivid := chart.Htmldivid + strconv.Itoa(len(pageHTML))
+	html := `<div v-show="page == '` + page + `' " id="` + newdivid + chart.Htmlpostid
+	js := chart.Jspreid + newdivid + chart.Jspostid
 	pageHTML[len(pageHTML)] = html
 	pageJS[len(pageJS)] = js
 
 	// Update the maps with the new values
-	dash.pageshtml[page] = pageHTML
-	dash.pagesjs[page] = pageJS
+	dash.Pageshtml[page] = pageHTML
+	dash.Pagesjs[page] = pageJS
 }
 
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
 // add html to page map
 func (dash *Dashboard) AddHeading(page string, heading string, size int) {
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1893,7 +1916,7 @@ func (dash *Dashboard) AddHeading(page string, heading string, size int) {
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s p-8 flex justify-start"> `, text_size) + heading + `</h1>`
 	pageHTML[len(pageHTML)] = html
 	// Update the maps with the new values
-	dash.pageshtml[page] = pageHTML
+	dash.Pageshtml[page] = pageHTML
 
 }
 
@@ -1901,12 +1924,12 @@ func (dash *Dashboard) AddHeading(page string, heading string, size int) {
 // add html to page map
 func (dash *Dashboard) AddText(page string, text string) {
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1915,7 +1938,7 @@ func (dash *Dashboard) AddText(page string, text string) {
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 flex justify-start text-left"> `, text_size) + text + `</h1>`
 	pageHTML[len(pageHTML)] = html
 	// Update the maps with the new values
-	dash.pageshtml[page] = pageHTML
+	dash.Pageshtml[page] = pageHTML
 
 }
 
@@ -1923,12 +1946,12 @@ func (dash *Dashboard) AddText(page string, text string) {
 // add html to page map
 func (dash *Dashboard) AddSubText(page string, text string) {
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1937,7 +1960,7 @@ func (dash *Dashboard) AddSubText(page string, text string) {
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 pb-8 flex justify-center"> `, text_size) + text + `</h1>`
 	pageHTML[len(pageHTML)] = html
 	// Update the maps with the new values
-	dash.pageshtml[page] = pageHTML
+	dash.Pageshtml[page] = pageHTML
 
 }
 
@@ -1947,12 +1970,12 @@ func (dash *Dashboard) AddSubText(page string, text string) {
 // add html to page map
 func (dash *Dashboard) AddBullets(page string, text ...string) {
 	// add html to page map
-	if _, exists := dash.pageshtml[page]; !exists {
+	if _, exists := dash.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1965,7 +1988,7 @@ func (dash *Dashboard) AddBullets(page string, text ...string) {
 	html += `</ul>`
 	pageHTML[len(pageHTML)] = html
 	// Update the maps with the new values
-	dash.pageshtml[page] = pageHTML
+	dash.Pageshtml[page] = pageHTML
 
 }
 
@@ -1979,18 +2002,22 @@ func CreateDashboardWrapper(dfJson *C.char, title *C.char) *C.char {
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-
+	fmt.Printf("printing dfjson:%s", []byte(C.GoString(dfJson)))
+	fmt.Println("")
 	dashboard := df.CreateDashboard(C.GoString(title))
-	fmt.Println(dashboard)
+	fmt.Printf("printing dashboard:%s", dashboard)
 	dashboardJson, err := json.Marshal(dashboard)
+	fmt.Printf("printing dashboardJson:%s", dashboardJson)
+	fmt.Printf("printing stringed dashboardJson:%s", dashboardJson)
 	if err != nil {
 		errStr := fmt.Sprintf("CreateDashboardWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-
-	fmt.Println("CreateDashboardWrapper: Created dashboard JSON:", string(dashboardJson))
-	return C.CString(string(dashboardJson))
+	dashboardJsonStr := string(dashboardJson)
+	fmt.Println("CreateDashboardWrapper: Created dashboard JSON:", dashboardJsonStr)
+	fmt.Println("printing dashboardJson stringed:", dashboardJsonStr)
+	return C.CString(dashboardJsonStr)
 }
 
 // OpenDashboardWrapper is an exported function that wraps the Open method.
@@ -2010,7 +2037,7 @@ func OpenDashboardWrapper(dashboardJson *C.char) *C.char {
 		return C.CString(errStr)
 	}
 
-	return nil
+	return C.CString("success")
 }
 
 // SaveDashboardWrapper is an exported function that wraps the Save method.
@@ -2233,18 +2260,55 @@ func AddBulletsWrapper(dashboardJson *C.char, page *C.char, bulletsJson *C.char)
 
 // AGGREGATES --------------------------------------------------
 
-// SumWrapper is an exported function that wraps the Sum function.
+// SumWrapper is an exported function that returns an Aggregation struct for the Sum function.
 //
 //export SumWrapper
 func SumWrapper(name *C.char) *C.char {
-	col := Sum(C.GoString(name))
-	colJson, err := json.Marshal(col)
+	colName := C.GoString(name)
+
+	// Create a simplified version of the Aggregation struct for marshaling.
+	simpleAgg := SimpleAggregation{
+		ColumnName: colName,
+	}
+
+	// Marshal the simplified Aggregation struct to JSON.
+	aggJson, err := json.Marshal(simpleAgg)
 	if err != nil {
 		errStr := fmt.Sprintf("SumWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	return C.CString(string(colJson))
+
+	return C.CString(string(aggJson))
+}
+
+// AggWrapper is an exported function that converts multiple Column functions to a slice of Aggregation structs.
+//
+//export AggWrapper
+func AggWrapper(colsJson *C.char) *C.char {
+	var cols []Column
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+		errStr := fmt.Sprintf("AggWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	aggs := Agg(cols...)
+	simpleAggs := make([]SimpleAggregation, len(aggs))
+	for i, agg := range aggs {
+		simpleAggs[i] = SimpleAggregation{
+			ColumnName: agg.ColumnName,
+		}
+	}
+
+	aggsJson, err := json.Marshal(simpleAggs)
+	if err != nil {
+		errStr := fmt.Sprintf("AggWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(aggsJson))
 }
 
 // MaxWrapper is an exported function that wraps the Max function.

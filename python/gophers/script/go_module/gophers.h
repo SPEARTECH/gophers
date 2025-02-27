@@ -190,9 +190,13 @@ extern char* AddSubTextWrapper(char* dashboardJson, char* page, char* text);
 //
 extern char* AddBulletsWrapper(char* dashboardJson, char* page, char* bulletsJson);
 
-// SumWrapper is an exported function that wraps the Sum function.
+// SumWrapper is an exported function that returns an Aggregation struct for the Sum function.
 //
 extern char* SumWrapper(char* name);
+
+// AggWrapper is an exported function that converts multiple Column functions to a slice of Aggregation structs.
+//
+extern char* AggWrapper(char* colsJson);
 
 // MaxWrapper is an exported function that wraps the Max function.
 //

@@ -3,6 +3,9 @@ import os
 import json
 from IPython.display import HTML, display
 
+path = os.path.dirname(os.path.realpath(__file__))
+gophers = cdll.LoadLibrary(path + '/go_module/gophers.so')
+
 class FuncColumn:
     """Helper for function-based column operations.
        func_name is a string like "SHA256" and cols is a list of column names.
@@ -21,24 +24,25 @@ class SplitColumn:
         self.delim = delim
 
 class Dashboard:
-    def __init__(self, gophers, dashboard_json):
-        self.gophers = gophers
+    def __init__(self, dashboard_json):
         self.dashboard_json = dashboard_json
 
     def Open(self):
-        err = self.gophers.OpenDashboardWrapper(self.dashboard_json.encode('utf-8')).decode('utf-8')
-        if err:
+        print("")
+        print("printing open dashboard:"+self.dashboard_json)
+        err = gophers.OpenDashboardWrapper(self.dashboard_json.encode('utf-8')).decode('utf-8')
+        if err != "success":
             print("Error opening dashboard:", err)
         return self
 
     def Save(self, filename):
-        err = self.gophers.SaveDashboardWrapper(self.dashboard_json.encode('utf-8'), filename.encode('utf-8')).decode('utf-8')
+        err = gophers.SaveDashboardWrapper(self.dashboard_json.encode('utf-8'), filename.encode('utf-8')).decode('utf-8')
         if err:
             print("Error saving dashboard:", err)
         return self
 
     def AddPage(self, name):
-        result = self.gophers.AddPageWrapper(self.dashboard_json.encode('utf-8'), name.encode('utf-8')).decode('utf-8')
+        result = gophers.AddPageWrapper(self.dashboard_json.encode('utf-8'), name.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
             print("AddPage: Updated dashboard JSON:", self.dashboard_json)
@@ -47,7 +51,7 @@ class Dashboard:
         return self
 
     def AddHTML(self, page, text):
-        result = self.gophers.AddHTMLWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddHTMLWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -55,7 +59,7 @@ class Dashboard:
         return self
 
     def AddDataframe(self, page, df):
-        result = self.gophers.AddDataframeWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), df.df_json.encode('utf-8')).decode('utf-8')
+        result = gophers.AddDataframeWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), df.df_json.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -64,7 +68,7 @@ class Dashboard:
 
     def AddChart(self, page, chart):
         chart_json = json.dumps(chart.__dict__)
-        result = self.gophers.AddChartWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), chart_json.encode('utf-8')).decode('utf-8')
+        result = gophers.AddChartWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), chart_json.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -72,7 +76,7 @@ class Dashboard:
         return self
 
     def AddHeading(self, page, text):
-        result = self.gophers.AddHeadingWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddHeadingWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -80,7 +84,7 @@ class Dashboard:
         return self
 
     def AddText(self, page, text):
-        result = self.gophers.AddTextWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddTextWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -88,7 +92,7 @@ class Dashboard:
         return self
 
     def AddSubText(self, page, text):
-        result = self.gophers.AddSubTextWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddSubTextWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -97,13 +101,28 @@ class Dashboard:
 
     def AddBullets(self, page, bullets):
         bullets_json = json.dumps(bullets)
-        result = self.gophers.AddBulletsWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), bullets_json.encode('utf-8')).decode('utf-8')
+        result = gophers.AddBulletsWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), bullets_json.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
             print("Error adding bullets:", result)
         return self
     
+    
+def Sum(column_name):
+    # Call the Go SumWrapper function
+    sum_agg_json = gophers.SumWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Unmarshal the JSON into a Python dictionary
+    return json.loads(sum_agg_json)
+
+def Agg(*aggregations):
+    # Convert the list of aggregation dictionaries to JSON
+    aggs_json = json.dumps(aggregations)
+    # Call the Go AggWrapper function
+    aggs_json_result = gophers.AggWrapper(aggs_json.encode('utf-8')).decode('utf-8')
+    # Unmarshal the JSON into a Python list
+    return json.loads(aggs_json_result)
+
 # Helper for extraction (already available in Go as Col)
 def Col(source):
     return FuncColumn("Col",source)
@@ -112,9 +131,9 @@ def Col(source):
 def Lit(source):
     return FuncColumn("Lit",source)
 
-# sum
-def Sum(source):
-    return FuncColumn("Sum", source)
+# # sum
+# def Sum(source):
+#     return FuncColumn("Sum", source)
 
 # Helper functions for common operations
 def SHA256(*cols):
@@ -134,75 +153,77 @@ def CollectSet(col_name):
 def Split(col_name, delimiter):
     return SplitColumn(col_name, delimiter)
 
+
+def ReadJSON(json_data):
+    # Store the JSON representation of DataFrame from Go.
+    df = DataFrame()
+    df.df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
+    return df
+
 class DataFrame:
     def __init__(self):
-        path = os.path.dirname(os.path.realpath(__file__))
-        self.gophers = cdll.LoadLibrary(path + '/go_module/gophers.so')
-        self.gophers.ReadJSON.restype = c_char_p
-        self.gophers.Show.restype = c_char_p
-        self.gophers.Head.restype = c_char_p
-        self.gophers.Tail.restype = c_char_p
-        self.gophers.Vertical.restype = c_char_p
-        self.gophers.ColumnOp.restype = c_char_p
-        self.gophers.ColumnCollectList.restype = c_char_p
-        self.gophers.ColumnCollectSet.restype = c_char_p
-        self.gophers.ColumnSplit.restype = c_char_p
-        self.gophers.DFColumns.restype = c_char_p
-        self.gophers.DFCount.restype = c_int
-        self.gophers.DFCountDuplicates.restype = c_int
-        self.gophers.DFCountDistinct.restype = c_int
-        self.gophers.DFCollect.restype = c_char_p
-        self.gophers.DisplayBrowserWrapper.restype = c_char_p
-        self.gophers.DisplayWrapper.restype = c_char_p
-        self.gophers.DisplayToFileWrapper.restype = c_char_p
-        self.gophers.DisplayHTMLWrapper.restype = c_char_p
-        self.gophers.DisplayChartWrapper.restype = c_char_p
-        self.gophers.BarChartWrapper.restype = c_char_p
-        self.gophers.ColumnChartWrapper.restype = c_char_p
-        self.gophers.StackedBarChartWrapper.restype = c_char_p
-        self.gophers.StackedPercentChartWrapper.restype = c_char_p
-        self.gophers.GroupByWrapper.restype = c_char_p
-        self.gophers.SumWrapper.restype = c_char_p
-        self.gophers.MaxWrapper.restype = c_char_p
-        self.gophers.MinWrapper.restype = c_char_p
-        self.gophers.MedianWrapper.restype = c_char_p
-        self.gophers.MeanWrapper.restype = c_char_p
-        self.gophers.ModeWrapper.restype = c_char_p
-        self.gophers.UniqueWrapper.restype = c_char_p
-        self.gophers.FirstWrapper.restype = c_char_p
-        self.gophers.CreateDashboardWrapper.restype = c_char_p
-        self.gophers.OpenDashboardWrapper.restype = c_char_p
-        self.gophers.SaveDashboardWrapper.restype = c_char_p
-        self.gophers.AddPageWrapper.restype = c_char_p
-        self.gophers.AddHTMLWrapper.restype = c_char_p
-        self.gophers.AddDataframeWrapper.restype = c_char_p
-        self.gophers.AddChartWrapper.restype = c_char_p
-        self.gophers.AddHeadingWrapper.restype = c_char_p
-        self.gophers.AddTextWrapper.restype = c_char_p
-        self.gophers.AddSubTextWrapper.restype = c_char_p
-        self.gophers.AddBulletsWrapper.restype = c_char_p
+        gophers.ReadJSON.restype = c_char_p
+        gophers.Show.restype = c_char_p
+        gophers.Head.restype = c_char_p
+        gophers.Tail.restype = c_char_p
+        gophers.Vertical.restype = c_char_p
+        gophers.ColumnOp.restype = c_char_p
+        gophers.ColumnCollectList.restype = c_char_p
+        gophers.ColumnCollectSet.restype = c_char_p
+        gophers.ColumnSplit.restype = c_char_p
+        gophers.DFColumns.restype = c_char_p
+        gophers.DFCount.restype = c_int
+        gophers.DFCountDuplicates.restype = c_int
+        gophers.DFCountDistinct.restype = c_int
+        gophers.DFCollect.restype = c_char_p
+        gophers.DisplayBrowserWrapper.restype = c_char_p
+        gophers.DisplayWrapper.restype = c_char_p
+        gophers.DisplayToFileWrapper.restype = c_char_p
+        gophers.DisplayHTMLWrapper.restype = c_char_p
+        gophers.DisplayChartWrapper.restype = c_char_p
+        gophers.BarChartWrapper.restype = c_char_p
+        gophers.ColumnChartWrapper.restype = c_char_p
+        gophers.StackedBarChartWrapper.restype = c_char_p
+        gophers.StackedPercentChartWrapper.restype = c_char_p
+        gophers.GroupByWrapper.restype = c_char_p
+        gophers.SumWrapper.restype = c_char_p
+        gophers.MaxWrapper.restype = c_char_p
+        gophers.MinWrapper.restype = c_char_p
+        gophers.MedianWrapper.restype = c_char_p
+        gophers.MeanWrapper.restype = c_char_p
+        gophers.ModeWrapper.restype = c_char_p
+        gophers.UniqueWrapper.restype = c_char_p
+        gophers.FirstWrapper.restype = c_char_p
+        gophers.CreateDashboardWrapper.restype = c_char_p
+        gophers.OpenDashboardWrapper.restype = c_char_p
+        gophers.SaveDashboardWrapper.restype = c_char_p
+        gophers.AddPageWrapper.restype = c_char_p
+        gophers.AddHTMLWrapper.restype = c_char_p
+        gophers.AddDataframeWrapper.restype = c_char_p
+        gophers.AddChartWrapper.restype = c_char_p
+        gophers.AddHeadingWrapper.restype = c_char_p
+        gophers.AddTextWrapper.restype = c_char_p
+        gophers.AddSubTextWrapper.restype = c_char_p
+        gophers.AddBulletsWrapper.restype = c_char_p
 
-    def ReadJSON(self, json_data):
-        # Store the JSON representation of DataFrame from Go.
-        self.df_json = self.gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
 
     def Show(self, chars, record_count=100):
-        result = self.gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
+        result = gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
         print(result)
 
     def Columns(self):
-        cols_json = self.gophers.DFColumns(self.df_json.encode('utf-8')).decode('utf-8')
+        cols_json = gophers.DFColumns(self.df_json.encode('utf-8')).decode('utf-8')
         return json.loads(cols_json)
 
     def Count(self):
-        return self.gophers.DFCount(self.df_json.encode('utf-8'))
+        return gophers.DFCount(self.df_json.encode('utf-8'))
 
     def CountDuplicates(self, cols=None):
         if cols is None:
             cols_json = json.dumps([])
         else:
             cols_json = json.dumps(cols)
-        return self.gophers.DFCountDuplicates(self.df_json.encode('utf-8'),
+        return gophers.DFCountDuplicates(self.df_json.encode('utf-8'),
                                               cols_json.encode('utf-8'))
 
     def CountDistinct(self, cols=None):
@@ -210,74 +231,74 @@ class DataFrame:
             cols_json = json.dumps([])
         else:
             cols_json = json.dumps(cols)
-        return self.gophers.DFCountDistinct(self.df_json.encode('utf-8'),
+        return gophers.DFCountDistinct(self.df_json.encode('utf-8'),
                                             cols_json.encode('utf-8'))
 
     def Collect(self, col_name):
-        collected = self.gophers.DFCollect(self.df_json.encode('utf-8'),
+        collected = gophers.DFCollect(self.df_json.encode('utf-8'),
                                            col_name.encode('utf-8')).decode('utf-8')
         return json.loads(collected)
     def Head(self, chars):
-        result = self.gophers.Head(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
+        result = gophers.Head(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
         print(result)
 
     def Tail(self, chars):
-        result = self.gophers.Tail(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
+        result = gophers.Tail(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
         print(result)
 
     def Vertical(self, chars, record_count=100):
-        result = self.gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
+        result = gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
         print(result)
 
     def DisplayBrowser(self):
-        err = self.gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        err = gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')).decode('utf-8')
         if err:
             print("Error displaying in browser:", err)
         return self
     
     def Display(self):
-        html = self.gophers.DisplayWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        html = gophers.DisplayWrapper(self.df_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
     def DisplayToFile(self, file_path):
-        err = self.gophers.DisplayToFileWrapper(self.df_json.encode('utf-8'), file_path.encode('utf-8')).decode('utf-8')
+        err = gophers.DisplayToFileWrapper(self.df_json.encode('utf-8'), file_path.encode('utf-8')).decode('utf-8')
         if err:
             print("Error writing to file:", err)
         return self
         
     def DisplayHTML(self, html_content):
-        html = self.gophers.DisplayHTMLWrapper(html_content.encode('utf-8')).decode('utf-8')
+        html = gophers.DisplayHTMLWrapper(html_content.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
     def DisplayChart(self, chart):
         chart_json = json.dumps(chart.__dict__)
-        html = self.gophers.DisplayChartWrapper(chart_json.encode('utf-8')).decode('utf-8')
+        html = gophers.DisplayChartWrapper(chart_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
     def BarChart(self, title, subtitle, groupcol, aggs):
-        aggs_json = json.dumps([agg.__dict__ for agg in aggs])
-        html = self.gophers.BarChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
+        aggs_json = json.dumps(aggs)
+        html = gophers.BarChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
     def ColumnChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps([agg.__dict__ for agg in aggs])
-        html = self.gophers.ColumnChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
+        html = gophers.ColumnChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
     def StackedBarChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps([agg.__dict__ for agg in aggs])
-        html = self.gophers.StackedBarChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
+        html = gophers.StackedBarChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
     def StackedPercentChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps([agg.__dict__ for agg in aggs])
-        html = self.gophers.StackedPercentChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
+        html = gophers.StackedPercentChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
     
@@ -285,7 +306,7 @@ class DataFrame:
         # If col_spec is an instance of ColumnExpr, use ColumnFrom.
         if isinstance(col_spec, FuncColumn):
             cols_json = json.dumps(col_spec.cols)
-            self.df_json = self.gophers.ColumnOp(
+            self.df_json = gophers.ColumnOp(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 col_spec.func_name.encode('utf-8'),
@@ -295,7 +316,7 @@ class DataFrame:
         elif isinstance(col_spec, str) and col_spec.startswith("CollectList"):
             # col_spec is in the form "CollectList:colname"
             src = col_spec.split(":", 1)[1]
-            self.df_json = self.gophers.ColumnCollectList(
+            self.df_json = gophers.ColumnCollectList(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 src.encode('utf-8')
@@ -303,7 +324,7 @@ class DataFrame:
         # Similarly for CollectSet.
         elif isinstance(col_spec, str) and col_spec.startswith("CollectSet"):
             src = col_spec.split(":", 1)[1]
-            self.df_json = self.gophers.ColumnCollectSet(
+            self.df_json = gophers.ColumnCollectSet(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 src.encode('utf-8')
@@ -311,7 +332,7 @@ class DataFrame:
         # For Split, expect a tuple: (source, delimiter)
         elif isinstance(col_spec, SplitColumn):
             src, delim = col_spec
-            self.df_json = self.gophers.ColumnSplit(
+            self.df_json = gophers.ColumnSplit(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 src.encode('utf-8'),
@@ -323,15 +344,14 @@ class DataFrame:
         return self
     
     def CreateDashboard(self, title):
-        dashboard_json = self.gophers.CreateDashboardWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
+        dashboard_json = gophers.CreateDashboardWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
         print("CreateDashboard: Created dashboard JSON:", dashboard_json)
-        return Dashboard(self.gophers, dashboard_json)
+        return Dashboard(dashboard_json)
     
 # Example usage:
 def main():
-    json_data = '[{"col1": "value1", "col2": "value2", "col3": "value3"}, {"col1": "value4", "col2": "value5", "col3": "value6"}, {"col1": "value7", "col2": "value8", "col3": "value9"}]'
-    df = DataFrame()
-    df.ReadJSON(json_data)
+    json_data = '[{"col1": "value1", "col2": 2, "col3": "value3"}, {"col1": "value4", "col2": 5, "col3": "value6"}, {"col1": "value7", "col2": 1, "col3": "value9"}]'
+    df = ReadJSON(json_data)
     print("Head:")
     df.Head(25)
     print("Tail:")
@@ -346,6 +366,7 @@ def main():
     dashboard = df.CreateDashboard("My Dashboard")
     dashboard.AddPage("Page1")
     dashboard.AddText("Page1", "This is some text on Page 1")
+    dashboard.AddChart("page1", df.BarChart("barchart","subetxt","col1", Sum("col2")))
     # dashboard.Save("dashboard.html")
     dashboard.Open()
 
