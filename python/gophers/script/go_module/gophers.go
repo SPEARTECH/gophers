@@ -1381,15 +1381,22 @@ func BarChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *
     }
 
     chart := df.BarChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
-    displayChart := DisplayChart(chart)
-    html, ok := displayChart["text/html"].(string)
-    if !ok {
-        errStr := "BarChartWrapper: error displaying chart"
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-
-    return C.CString(html)
+    // displayChart := DisplayChart(chart)
+    // html, ok := displayChart["text/html"].(string)
+    // if !ok {
+    //     errStr := "BarChartWrapper: error displaying chart"
+    //     log.Fatal(errStr)
+    //     return C.CString(errStr)
+    // }
+	chartJson, err := json.Marshal(chart)
+	fmt.Println("printing chartJson...")
+	fmt.Println(string(chartJson))
+	if err != nil {
+		errStr := fmt.Sprintf("BarChartWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+    return C.CString(string(chartJson))
 }
 // ColumnChartWrapper is an exported function that wraps the ColumnChart function.
 // It takes a JSON-string representing the DataFrame and chart parameters, calls ColumnChart, and
@@ -2283,6 +2290,9 @@ func AddChartWrapper(dashboardJson *C.char, page *C.char, chartJson *C.char) *C.
         return C.CString(errStr)
     }
     // dashboard.init() // Initialize the maps
+	fmt.Println("adding chart to page...")
+	fmt.Println("chart:", chart)
+
     dashboard.AddChart(C.GoString(page), chart)
 
     dashboardJsonBytes, err := json.Marshal(dashboard)

@@ -69,11 +69,8 @@ class SplitColumn:
         self.delim = delim
 
 class Chart:
-    def __init__(self, html, chart_type, title, subtitle):
+    def __init__(self, html):
         self.html = html
-        self.chart_type = chart_type
-        self.title = title
-        self.subtitle = subtitle
 
 class Dashboard:
     def __init__(self, dashboard_json):
@@ -118,17 +115,10 @@ class Dashboard:
             print("Error adding dataframe:", result)
         return self
 
-    def AddChart(self, page, chart):
-        print(f"Adding chart to page: {page}")
-        print(f"Chart object: {type(chart).__name__}")
-        print(f"Dashboard pages: {self.dashboard_json}")
-        
-        chart_json = json.dumps({
-            "html": chart.html,
-            "chart_type": chart.chart_type, 
-            "title": chart.title,
-            "subtitle": chart.subtitle
-        })
+    def AddChart(self, page, chart):        
+        chart_json = chart.html
+        # chart_json = json.dumps(chart.__dict__)
+        print(f"Chart JSON: {chart_json}")
         
         result = gophers.AddChartWrapper(
             self.dashboard_json.encode('utf-8'), 
@@ -217,15 +207,17 @@ def CollectSet(col_name):
 def Split(col_name, delimiter):
     return SplitColumn(col_name, delimiter)
 
+def ReadJSON(json_data):
+    # Store the JSON representation of DataFrame from Go.
+    df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
+    return DataFrame(df_json)
+
+# PANDAS FUNCTIONS
 # loc
 # iloc
 
 
 
-def ReadJSON(json_data):
-    # Store the JSON representation of DataFrame from Go.
-    df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
-    return DataFrame(df_json)
 
 class DataFrame:
     def __init__(self, df_json=None):
@@ -262,6 +254,7 @@ class DataFrame:
         collected = gophers.DFCollect(self.df_json.encode('utf-8'),
                                            col_name.encode('utf-8')).decode('utf-8')
         return json.loads(collected)
+    
     def Head(self, chars):
         result = gophers.Head(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
         print(result)
@@ -317,10 +310,10 @@ class DataFrame:
         ).decode('utf-8')
         
         # Create a Chart object
-        chart = Chart(html, "bar", title, subtitle)
+        chart = Chart(html)
         
         # Display the chart
-        display(HTML(html))
+        # display(HTML(html))
         
         # Return the Chart object
         return chart
@@ -418,7 +411,7 @@ def main():
     dashboard = df.CreateDashboard("My Dashboard")
     dashboard.AddPage("Page1")
     dashboard.AddText("Page1", "This is some text on Page 1")
-    chart = df.BarChart("barchart","subetxt","col1", Agg(Sum("col2")))
+    chart = df.BarChart("barchart","subtext","col1", Agg(Sum("col2")))
     dashboard.AddChart("Page1", chart)
     # df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
     # dashboard.Save("dashboard.html")
