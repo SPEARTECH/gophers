@@ -108,7 +108,6 @@ class Dashboard:
             print("Error adding bullets:", result)
         return self
     
-    
 def Sum(column_name):
     # Call the Go SumWrapper function
     sum_agg_json = gophers.SumWrapper(column_name.encode('utf-8')).decode('utf-8')
@@ -131,10 +130,6 @@ def Col(source):
 def Lit(source):
     return FuncColumn("Lit",source)
 
-# # sum
-# def Sum(source):
-#     return FuncColumn("Sum", source)
-
 # Helper functions for common operations
 def SHA256(*cols):
     return FuncColumn("SHA256", list(cols))
@@ -153,12 +148,22 @@ def CollectSet(col_name):
 def Split(col_name, delimiter):
     return SplitColumn(col_name, delimiter)
 
-
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
     df = DataFrame()
     df.df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
     return df
+
+def DisplayHTML(self, html_content):
+    html = gophers.DisplayHTMLWrapper(html_content.encode('utf-8')).decode('utf-8')
+    display(HTML(html))
+    return self
+
+def DisplayChart(self, chart):
+    chart_json = json.dumps(chart.__dict__)
+    html = gophers.DisplayChartWrapper(chart_json.encode('utf-8')).decode('utf-8')
+    display(HTML(html))
+    return self
 
 class DataFrame:
     def __init__(self):
@@ -205,7 +210,6 @@ class DataFrame:
         gophers.AddTextWrapper.restype = c_char_p
         gophers.AddSubTextWrapper.restype = c_char_p
         gophers.AddBulletsWrapper.restype = c_char_p
-
 
     def Show(self, chars, record_count=100):
         result = gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
@@ -267,16 +271,6 @@ class DataFrame:
             print("Error writing to file:", err)
         return self
         
-    def DisplayHTML(self, html_content):
-        html = gophers.DisplayHTMLWrapper(html_content.encode('utf-8')).decode('utf-8')
-        display(HTML(html))
-        return self
-    
-    def DisplayChart(self, chart):
-        chart_json = json.dumps(chart.__dict__)
-        html = gophers.DisplayChartWrapper(chart_json.encode('utf-8')).decode('utf-8')
-        display(HTML(html))
-        return self
     
     def BarChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps(aggs)
@@ -340,7 +334,7 @@ class DataFrame:
             ).decode('utf-8')
         # Otherwise, treat col_spec as a literal.        
         else:
-            print("Error running code, no valid input.")
+            print(f"Error running code, cannot run {col_name} within Column function.")
         return self
     
     def CreateDashboard(self, title):
@@ -367,6 +361,7 @@ def main():
     dashboard.AddPage("Page1")
     dashboard.AddText("Page1", "This is some text on Page 1")
     dashboard.AddChart("page1", df.BarChart("barchart","subetxt","col1", Sum("col2")))
+    # df.BarChart("barchart","subetxt","col1", Sum("col2"))
     # dashboard.Save("dashboard.html")
     dashboard.Open()
 
