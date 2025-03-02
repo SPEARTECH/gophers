@@ -54,8 +54,8 @@ type AggregatorFn func([]interface{}) interface{}
 
 // Aggregation holds a target column name and the aggregation function to apply.
 type Aggregation struct {
-	ColumnName string
-	Fn         AggregatorFn
+    ColumnName string
+    Fn         AggregatorFn
 }
 
 type SimpleAggregation struct {
@@ -144,11 +144,18 @@ func Dataframe(rows []map[string]interface{}) *DataFrame {
 }
 
 func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
+    if filename == "" {
+        return false
+    }
+    // If the input starts with "{" or "[", assume it is JSON and not a file path.
+    if strings.HasPrefix(filename, "{") || strings.HasPrefix(filename, "[") {
+        return false
+    }
+    info, err := os.Stat(filename)
+    if err != nil {
+        return false
+    }
+    return !info.IsDir()
 }
 
 //export ReadCSV
@@ -199,28 +206,42 @@ func ReadCSV(csvFile *C.char) *C.char {
 
 //export ReadJSON
 func ReadJSON(jsonStr *C.char) *C.char {
-	goJsonStr := C.GoString(jsonStr)
-	if fileExists(goJsonStr) {
-		bytes, err := os.ReadFile(goJsonStr)
-		if err != nil {
-			fmt.Println(err)
-		}
-		goJsonStr = string(bytes)
-	}
+    if jsonStr == nil {
+        log.Fatalf("Error: jsonStr is nil")
+        return C.CString("")
+    }
 
-	var rows []map[string]interface{}
-	if err := json.Unmarshal([]byte(goJsonStr), &rows); err != nil {
-		log.Fatal("Error unmarshalling JSON:", err)
-	}
+    goJsonStr := C.GoString(jsonStr)
+    log.Printf("ReadJSON: Input string: %s", goJsonStr) // Log the input string
 
-	df := Dataframe(rows)
-	jsonBytes, err := json.Marshal(df)
-	if err != nil {
-		log.Fatalf("Error marshalling DataFrame to JSON: %v", err)
-	}
+    var rows []map[string]interface{}
+    var jsonContent string
 
-	return C.CString(string(jsonBytes))
+    // Check if the input is a file path.
+    if fileExists(goJsonStr) {
+        bytes, err := os.ReadFile(goJsonStr)
+        if err != nil {
+            log.Fatalf("Error reading file: %v", err)
+        }
+        jsonContent = string(bytes)
+    } else {
+        jsonContent = goJsonStr
+    }
+
+    // Unmarshal the JSON string into rows.
+    if err := json.Unmarshal([]byte(jsonContent), &rows); err != nil {
+        log.Fatalf("Error unmarshalling JSON: %v", err)
+    }
+
+    df := Dataframe(rows)
+    jsonBytes, err := json.Marshal(df)
+    if err != nil {
+        log.Fatalf("Error marshalling DataFrame to JSON: %v", err)
+    }
+
+    return C.CString(string(jsonBytes))
 }
+
 
 //export ReadNDJSON
 func ReadNDJSON(jsonStr *C.char) *C.char {
@@ -1316,52 +1337,67 @@ func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol
 }
 
 // BarChartWrapper is an exported function that wraps the BarChart function.
-// It takes a JSON-string representing the DataFrame and chart parameters, calls BarChart, and
-// returns the HTML string on success or an error message on failure.
 //
 //export BarChartWrapper
 func BarChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupcol *C.char, aggsJson *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    var simpleAggs []SimpleAggregation
+    if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &simpleAggs); err != nil {
+        errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    // Reconstruct the Aggregation structs
+    var aggs []Aggregation
+    for _, simpleAgg := range simpleAggs {
+        // Directly use the aggregation functions instead of trying to wrap them
+        switch simpleAgg.ColumnName {
+        case "Sum":
+            aggs = append(aggs, Sum(simpleAgg.ColumnName))
+        case "Max":
+            aggs = append(aggs, Max(simpleAgg.ColumnName))
+        case "Min":
+            aggs = append(aggs, Min(simpleAgg.ColumnName))
+        case "Mean":
+            aggs = append(aggs, Mean(simpleAgg.ColumnName))
+        case "Median":
+            aggs = append(aggs, Median(simpleAgg.ColumnName))
+        case "Mode":
+            aggs = append(aggs, Mode(simpleAgg.ColumnName))
+        case "Unique":
+            aggs = append(aggs, Unique(simpleAgg.ColumnName))
+        case "First":
+            aggs = append(aggs, First(simpleAgg.ColumnName))
+        default:
+            aggs = append(aggs, Sum(simpleAgg.ColumnName))
+        }
+    }
+
+    chart := df.BarChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
+    // displayChart := DisplayChart(chart)
+    // html, ok := displayChart["text/html"].(string)
+    // if !ok {
+    //     errStr := "BarChartWrapper: error displaying chart"
+    //     log.Fatal(errStr)
+    //     return C.CString(errStr)
+    // }
+	chartJson, err := json.Marshal(chart)
+	fmt.Println("printing chartJson...")
+	fmt.Println(string(chartJson))
+	if err != nil {
+		errStr := fmt.Sprintf("BarChartWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-
-	var simpleAggs []SimpleAggregation
-	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &simpleAggs); err != nil {
-		errStr := fmt.Sprintf("BarChartWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-
-	// Reconstruct the Aggregation structs
-	var aggs []Aggregation
-	for _, simpleAgg := range simpleAggs {
-		col := Sum(simpleAgg.ColumnName) // Adjust this if you have different types of aggregations
-		agg := Aggregation{
-			ColumnName: simpleAgg.ColumnName,
-			Fn: func(vals []interface{}) interface{} {
-				row := make(map[string]interface{})
-				row[simpleAgg.ColumnName] = vals
-				return col.Fn(row)
-			},
-		}
-		aggs = append(aggs, agg)
-	}
-
-	chart := df.BarChart(C.GoString(title), C.GoString(subtitle), C.GoString(groupcol), aggs)
-	displayChart := DisplayChart(chart)
-	html, ok := displayChart["text/html"].(string)
-	if !ok {
-		errStr := "BarChartWrapper: error displaying chart"
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-
-	return C.CString(html)
+    return C.CString(string(chartJson))
 }
-
 // ColumnChartWrapper is an exported function that wraps the ColumnChart function.
 // It takes a JSON-string representing the DataFrame and chart parameters, calls ColumnChart, and
 // returns the HTML string on success or an error message on failure.
@@ -1736,10 +1772,10 @@ func (dash *Dashboard) Save(filename string) error {
 
 	// iterate over pageshtml and add each stored HTML snippet
 	for _, elem := range dash.Pageshtml {
-		if pageMap, ok := elem.(map[int]string); ok {
+		if pageMap, ok := elem.(map[string]string); ok {
 			// iterate in order
 			for i := 0; i < len(pageMap); i++ {
-				html += pageMap[i]
+				html += pageMap[strconv.Itoa(i)]
 			}
 		} else {
 			html += fmt.Sprintf("%v", elem)
@@ -1760,9 +1796,9 @@ func (dash *Dashboard) Save(filename string) error {
 	html += dash.Scriptmiddle
 	// iterate over pagesjs similarly
 	for _, elem := range dash.Pagesjs {
-		if jsMap, ok := elem.(map[int]string); ok {
+		if jsMap, ok := elem.(map[string]string); ok {
 			for i := 0; i < len(jsMap); i++ {
-				html += jsMap[i]
+				html += jsMap[strconv.Itoa(i)]
 			}
 		} else {
 			html += fmt.Sprintf("%v", elem)
@@ -1787,16 +1823,16 @@ func (dash *Dashboard) AddPage(name string) {
 	}
 
 	// Add the page to the dashboard.
-	dash.Pageshtml[name] = map[int]string{}
-	pageHTML, ok := dash.Pageshtml[name].(map[int]string)
+	dash.Pageshtml[name] = map[string]string{}
+	pageHTML, ok := dash.Pageshtml[name].(map[string]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
 	}
 
 	html := `<h1 v-if="page == '` + name + `' " class="text-8xl pt-24 pb-24"> ` + name + `</h1>` // Page Title at top of page
-	pageHTML[len(pageHTML)] = html
-	dash.Pagesjs[name] = map[int]string{}
+	pageHTML[strconv.Itoa(len(pageHTML))] = html
+	dash.Pagesjs[name] = map[string]string{}
 
 	fmt.Println("AddPage: Added page:", name)
 	fmt.Println("AddPage: Updated pageshtml:", dash.Pageshtml)
@@ -1820,13 +1856,13 @@ func (dash *Dashboard) AddHTML(page string, text string) {
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[string]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
 	}
 	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center sm:w-7/8 w-3/4" srcdoc='` + text + `'></iframe>`
-	pageHTML[len(pageHTML)] = texthtml
+	pageHTML[strconv.Itoa(len(pageHTML))] = texthtml
 	// Update the maps with the new values
 	dash.Pageshtml[page] = pageHTML
 
@@ -1845,34 +1881,107 @@ func (dash *Dashboard) AddDataframe(page string, df *DataFrame) {
 
 // add chart to dashboard page
 func (dash *Dashboard) AddChart(page string, chart Chart) {
-	// add html to page map
-	if _, exists := dash.Pageshtml[page]; !exists {
-		fmt.Println("Page does not exist. Use AddPage()")
-		return
+    // add html to page map
+    if _, exists := dash.Pageshtml[page]; !exists {
+        fmt.Println("Page does not exist. Use AddPage()")
+        return
+    }
+    
+    // Try to get the page contents 
+    pageHTMLAny, exists := dash.Pageshtml[page]
+    if !exists {
+        fmt.Println("Page content doesn't exist")
+        return
+    }
+    
+    // Create a new map if needed
+    var pageHTML map[string]string
+    var pageJS map[string]string
+    
+    // Check the type and convert if necessary for HTML
+    switch typedMap := pageHTMLAny.(type) {
+    case map[string]string:
+        pageHTML = typedMap
+    case map[int]string:
+        // Convert int keys to string keys
+        pageHTML = make(map[string]string)
+        for k, v := range typedMap {
+            pageHTML[strconv.Itoa(k)] = v
+        }
+    case map[interface{}]interface{}:
+        // Handle generic maps (common when deserializing from JSON)
+        pageHTML = make(map[string]string)
+        for k, v := range typedMap {
+            if str, ok := v.(string); ok {
+                pageHTML[fmt.Sprintf("%v", k)] = str
+            }
+        }
+    default:
+        // Initialize a new map if nothing else works
+        fmt.Println("Creating new map for page HTML")
+        pageHTML = make(map[string]string)
+    }
+    
+    // Do the same for JS
+    pageJSAny, exists := dash.Pagesjs[page]
+    if !exists {
+        pageJS = make(map[string]string)
+        dash.Pagesjs[page] = pageJS
+    } else {
+        switch typedMap := pageJSAny.(type) {
+        case map[string]string:
+            pageJS = typedMap
+        case map[int]string:
+            // Convert int keys to string keys
+            pageJS = make(map[string]string)
+            for k, v := range typedMap {
+                pageJS[strconv.Itoa(k)] = v
+            }
+        case map[interface{}]interface{}:
+            // Handle generic maps
+            pageJS = make(map[string]string)
+            for k, v := range typedMap {
+                if str, ok := v.(string); ok {
+                    pageJS[fmt.Sprintf("%v", k)] = str
+                }
+            }
+        default:
+            // Initialize a new map if nothing else works
+            pageJS = make(map[string]string)
+        }
+    }
+    
+	// Fix: Explicitly construct the chart HTML properly
+	idx := strconv.Itoa(len(pageHTML))
+	chartId := chart.Htmldivid + idx
+		
+	// Debug print to verify what's being generated
+	fmt.Printf("Chart ID: %s\n", chartId)
+	fmt.Printf("HTML postid: %s\n", chart.Htmlpostid)
+		
+	// Ensure we have necessary HTML parts - add fallbacks if missing
+	if chart.Htmlpostid == "" {
+		chart.Htmlpostid = `" class="flex justify-center mx-auto p-4"></div>`
 	}
-
-	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
-	if !ok {
-		fmt.Println("Invalid type for pageshtml[page]")
-		return
-	}
-
-	pageJS, ok := dash.Pagesjs[page].(map[int]string)
-	if !ok {
-		fmt.Println("Invalid type for pagesjs[page]")
-		return
-	}
-
-	newdivid := chart.Htmldivid + strconv.Itoa(len(pageHTML))
-	html := `<div v-show="page == '` + page + `' " id="` + newdivid + chart.Htmlpostid
-	js := chart.Jspreid + newdivid + chart.Jspostid
-	pageHTML[len(pageHTML)] = html
-	pageJS[len(pageJS)] = js
-
-	// Update the maps with the new values
-	dash.Pageshtml[page] = pageHTML
-	dash.Pagesjs[page] = pageJS
+		
+	// Properly format the HTML with explicit quotes and structure
+	html := fmt.Sprintf(`<div v-show="page == '%s'" id="%s%s`, 
+						page, chartId, chart.Htmlpostid)
+    
+    // Construct JS properly too
+    js := fmt.Sprintf(`%s%s%s`, chart.Jspreid, chartId, chart.Jspostid)
+    
+    // Debug the final HTML
+    fmt.Printf("Generated HTML: %s\n", html)
+    
+    pageHTML[idx] = html
+    pageJS[idx] = js
+    
+    // Update the maps with the new values
+    dash.Pageshtml[page] = pageHTML
+    dash.Pagesjs[page] = pageJS
+    
+    fmt.Printf("Added chart to page %s at index %s\n", page, idx)
 }
 
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
@@ -1884,7 +1993,7 @@ func (dash *Dashboard) AddHeading(page string, heading string, size int) {
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[string]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1914,32 +2023,63 @@ func (dash *Dashboard) AddHeading(page string, heading string, size int) {
 		text_size = "text-md"
 	}
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s p-8 flex justify-start"> `, text_size) + heading + `</h1>`
-	pageHTML[len(pageHTML)] = html
+	pageHTML[strconv.Itoa(len(pageHTML))] = html
 	// Update the maps with the new values
 	dash.Pageshtml[page] = pageHTML
 
 }
 
-// add title text-2xl - this should just be the page name and automatically populate at the top of the page...
-// add html to page map
+// AddText function fix
 func (dash *Dashboard) AddText(page string, text string) {
-	// add html to page map
-	if _, exists := dash.Pageshtml[page]; !exists {
-		fmt.Println("Page does not exist. Use AddPage()")
-		return
-	}
-	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
-	if !ok {
-		fmt.Println("Invalid type for pageshtml[page]")
-		return
-	}
-	text_size := "text-md"
-	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 flex justify-start text-left"> `, text_size) + text + `</h1>`
-	pageHTML[len(pageHTML)] = html
-	// Update the maps with the new values
-	dash.Pageshtml[page] = pageHTML
-
+    // add html to page map
+    if _, exists := dash.Pageshtml[page]; !exists {
+        fmt.Println("Page does not exist. Use AddPage()")
+        return
+    }
+    
+    // Try to get the page contents as map[string]string
+    pageHTMLAny, exists := dash.Pageshtml[page]
+    if !exists {
+        fmt.Println("Page content doesn't exist")
+        return
+    }
+    
+    // Create a new map if needed
+    var pageHTML map[string]string
+    
+    // Check the type and convert if necessary
+    switch typedMap := pageHTMLAny.(type) {
+    case map[string]string:
+        pageHTML = typedMap
+    case map[int]string:
+        // Convert int keys to string keys
+        pageHTML = make(map[string]string)
+        for k, v := range typedMap {
+            pageHTML[strconv.Itoa(k)] = v
+        }
+    case map[interface{}]interface{}:
+        // Handle generic maps (common when deserializing from JSON)
+        pageHTML = make(map[string]string)
+        for k, v := range typedMap {
+            if str, ok := v.(string); ok {
+                pageHTML[fmt.Sprintf("%v", k)] = str
+            }
+        }
+    default:
+        // Initialize a new map if nothing else works
+        fmt.Println("Creating new map for page HTML")
+        pageHTML = make(map[string]string)
+    }
+    
+    // Add the new text element
+    text_size := "text-md"
+    html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 flex justify-start text-left"> `, text_size) + text + `</h1>`
+    idx := strconv.Itoa(len(pageHTML))
+    pageHTML[idx] = html
+    
+    // Update the page HTML
+    dash.Pageshtml[page] = pageHTML
+    fmt.Printf("Added text to page %s at index %s\n", page, idx)
 }
 
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
@@ -1951,14 +2091,14 @@ func (dash *Dashboard) AddSubText(page string, text string) {
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[string]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
 	}
 	text_size := "text-sm"
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 pb-8 flex justify-center"> `, text_size) + text + `</h1>`
-	pageHTML[len(pageHTML)] = html
+	pageHTML[strconv.Itoa(len(pageHTML))] = html
 	// Update the maps with the new values
 	dash.Pageshtml[page] = pageHTML
 
@@ -1975,7 +2115,7 @@ func (dash *Dashboard) AddBullets(page string, text ...string) {
 		return
 	}
 	// Assert the type of the value in pageshtml and pagesjs
-	pageHTML, ok := dash.Pageshtml[page].(map[int]string)
+	pageHTML, ok := dash.Pageshtml[page].(map[string]string)
 	if !ok {
 		fmt.Println("Invalid type for pageshtml[page]")
 		return
@@ -1986,7 +2126,7 @@ func (dash *Dashboard) AddBullets(page string, text ...string) {
 		html += fmt.Sprintf(`<li class="text-left %s">`, text_size) + bullet + `</li>`
 	}
 	html += `</ul>`
-	pageHTML[len(pageHTML)] = html
+	pageHTML[strconv.Itoa(len(pageHTML))] = html
 	// Update the maps with the new values
 	dash.Pageshtml[page] = pageHTML
 
@@ -2069,7 +2209,7 @@ func AddPageWrapper(dashboardJson *C.char, name *C.char) *C.char {
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddPage(C.GoString(name))
 	fmt.Println("AddPageWrapper: Dashboard after adding page:", dashboard)
 	dashboardJsonBytes, err := json.Marshal(dashboard)
@@ -2093,7 +2233,7 @@ func AddHTMLWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddHTML(C.GoString(page), C.GoString(text))
 	dashboardJsonBytes, err := json.Marshal(dashboard)
 	if err != nil {
@@ -2122,7 +2262,7 @@ func AddDataframeWrapper(dashboardJson *C.char, page *C.char, dfJson *C.char) *C
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddDataframe(C.GoString(page), &df)
 	dashboardJsonBytes, err := json.Marshal(dashboard)
 	if err != nil {
@@ -2138,31 +2278,31 @@ func AddDataframeWrapper(dashboardJson *C.char, page *C.char, dfJson *C.char) *C
 //
 //export AddChartWrapper
 func AddChartWrapper(dashboardJson *C.char, page *C.char, chartJson *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
-		errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    var dashboard Dashboard
+    if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+        errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
+        return C.CString(errStr)
+    }
 
-	var chart Chart
-	if err := json.Unmarshal([]byte(C.GoString(chartJson)), &chart); err != nil {
-		errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	dashboard.init() // Initialize the maps
-	dashboard.AddChart(C.GoString(page), chart)
-	dashboardJsonBytes, err := json.Marshal(dashboard)
-	if err != nil {
-		errStr := fmt.Sprintf("AddChartWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    var chart Chart
+    if err := json.Unmarshal([]byte(C.GoString(chartJson)), &chart); err != nil {
+        errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
+        return C.CString(errStr)
+    }
+    // dashboard.init() // Initialize the maps
+	fmt.Println("adding chart to page...")
+	fmt.Println("chart:", chart)
 
-	return C.CString(string(dashboardJsonBytes))
+    dashboard.AddChart(C.GoString(page), chart)
+
+    dashboardJsonBytes, err := json.Marshal(dashboard)
+    if err != nil {
+        errStr := fmt.Sprintf("AddChartWrapper: marshal error: %v", err)
+        return C.CString(errStr)
+    }
+
+    return C.CString(string(dashboardJsonBytes))
 }
-
 // AddHeadingWrapper is an exported function that wraps the AddHeading method.
 //
 //export AddHeadingWrapper
@@ -2173,7 +2313,7 @@ func AddHeadingWrapper(dashboardJson *C.char, page *C.char, heading *C.char, siz
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddHeading(C.GoString(page), C.GoString(heading), int(size))
 	dashboardJsonBytes, err := json.Marshal(dashboard)
 	if err != nil {
@@ -2195,7 +2335,7 @@ func AddTextWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddText(C.GoString(page), C.GoString(text))
 	dashboardJsonBytes, err := json.Marshal(dashboard)
 	if err != nil {
@@ -2217,7 +2357,7 @@ func AddSubTextWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.cha
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddSubText(C.GoString(page), C.GoString(text))
 	dashboardJsonBytes, err := json.Marshal(dashboard)
 	if err != nil {
@@ -2246,7 +2386,7 @@ func AddBulletsWrapper(dashboardJson *C.char, page *C.char, bulletsJson *C.char)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboard.init() // Initialize the maps
+	// dashboard.init() // Initialize the maps
 	dashboard.AddBullets(C.GoString(page), bullets...)
 	dashboardJsonBytes, err := json.Marshal(dashboard)
 	if err != nil {
@@ -2264,22 +2404,15 @@ func AddBulletsWrapper(dashboardJson *C.char, page *C.char, bulletsJson *C.char)
 //
 //export SumWrapper
 func SumWrapper(name *C.char) *C.char {
-	colName := C.GoString(name)
-
-	// Create a simplified version of the Aggregation struct for marshaling.
-	simpleAgg := SimpleAggregation{
-		ColumnName: colName,
-	}
-
-	// Marshal the simplified Aggregation struct to JSON.
-	aggJson, err := json.Marshal(simpleAgg)
-	if err != nil {
-		errStr := fmt.Sprintf("SumWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-
-	return C.CString(string(aggJson))
+    colName := C.GoString(name)
+    // Create a JSON object with the column name and function name
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "Sum"})
+    if err != nil {
+        errStr := fmt.Sprintf("SumWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
 
 // AggWrapper is an exported function that converts multiple Column functions to a slice of Aggregation structs.
@@ -2315,334 +2448,303 @@ func AggWrapper(colsJson *C.char) *C.char {
 //
 //export MaxWrapper
 func MaxWrapper(name *C.char) *C.char {
-	col := Max(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("MaxWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := Max(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "Max"})
+    if err != nil {
+        errStr := fmt.Sprintf("MaxWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
 
 // MinWrapper is an exported function that wraps the Min function.
 //
 //export MinWrapper
 func MinWrapper(name *C.char) *C.char {
-	col := Min(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("MinWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := Min(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "Min"})
+    if err != nil {
+        errStr := fmt.Sprintf("MinWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
 
 // MedianWrapper is an exported function that wraps the Median function.
 //
 //export MedianWrapper
 func MedianWrapper(name *C.char) *C.char {
-	col := Median(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("MedianWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := Median(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "Median"})
+    if err != nil {
+        errStr := fmt.Sprintf("MedianWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
 
 // MeanWrapper is an exported function that wraps the Mean function.
 //
 //export MeanWrapper
 func MeanWrapper(name *C.char) *C.char {
-	col := Mean(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("MeanWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := Mean(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "Mean"})
+    if err != nil {
+        errStr := fmt.Sprintf("MeanWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
 
 // ModeWrapper is an exported function that wraps the Mode function.
 //
 //export ModeWrapper
 func ModeWrapper(name *C.char) *C.char {
-	col := Mode(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("ModeWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := Mode(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "Mode"})
+    if err != nil {
+        errStr := fmt.Sprintf("ModeWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
-
 // UniqueWrapper is an exported function that wraps the Unique function.
 //
 //export UniqueWrapper
 func UniqueWrapper(name *C.char) *C.char {
-	col := Unique(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("UniqueWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := Unique(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "Unique"})
+    if err != nil {
+        errStr := fmt.Sprintf("UniqueWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(aggJson))
 }
 
 // FirstWrapper is an exported function that wraps the First function.
 //
 //export FirstWrapper
 func FirstWrapper(name *C.char) *C.char {
-	col := First(C.GoString(name))
-	colJson, err := json.Marshal(col)
-	if err != nil {
-		errStr := fmt.Sprintf("FirstWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(string(colJson))
+    agg := First(C.GoString(name))
+    aggJson, err := json.Marshal(map[string]string{"ColumnName": agg.ColumnName, "Fn": "First"})
+    if err != nil {
+        errStr := fmt.Sprintf("FirstWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    } 
+    return C.CString(string(aggJson))
 }
-
 // Agg converts multiple Column functions to a slice of Aggregation structs for use in aggregation.
 func Agg(cols ...Column) []Aggregation {
-	aggs := []Aggregation{}
-	for _, col := range cols {
-		agg := Aggregation{
-			ColumnName: col.Name,
-			Fn: func(vals []interface{}) interface{} {
-				row := make(map[string]interface{})
-				row[col.Name] = vals
-				return col.Fn(row)
-			},
-		}
-		aggs = append(aggs, agg)
-	}
-	return aggs
+    aggs := []Aggregation{}
+    for _, col := range cols {
+        colName := col.Name
+        agg := Aggregation{
+            ColumnName: colName,
+            Fn: func(vals []interface{}) interface{} {
+                // Create a map with the column name as key and the first value
+                // We're using a dummy map just to match the expected type
+                dummyRow := make(map[string]interface{})
+                // Put all values in the map under the column name
+                dummyRow[colName] = vals[0] // Use just the first value for simplicity
+                
+                // Call the Column's function with this map
+                return col.Fn(dummyRow)
+            },
+        }
+        aggs = append(aggs, agg)
+    }
+    return aggs
+}
+// Sum returns an Aggregation that sums numeric values from the specified column.
+func Sum(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            sum := 0.0
+            for _, v := range vals {
+                fVal, err := toFloat64(v)
+                if err != nil {
+                    fmt.Printf("sum conversion error: %v\n", err)
+                    continue
+                }
+                sum += fVal
+            }
+            return sum
+        },
+    }
 }
 
-// Sum returns a Column that sums numeric values from the specified column.
-func Sum(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return 0.0
-			}
-			sum := 0.0
-			for _, v := range val.([]interface{}) {
-				fVal, err := toFloat64(v)
-				if err != nil {
-					fmt.Printf("sum conversion error: %v\n", err)
-					continue
-				}
-				sum += fVal
-			}
-			return sum
-		},
-	}
+// Max returns an Aggregation that finds the maximum numeric value from the specified column.
+func Max(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            maxSet := false
+            var max float64
+            for _, v := range vals {
+                fVal, err := toFloat64(v)
+                if err != nil {
+                    fmt.Printf("max conversion error: %v\n", err)
+                    continue
+                }
+                if !maxSet || fVal > max {
+                    max = fVal
+                    maxSet = true
+                }
+            }
+            if !maxSet {
+                return nil
+            }
+            return max
+        },
+    }
 }
 
-// Max returns a Column that finds the maximum numeric value from the specified column.
-func Max(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return nil
-			}
-			maxSet := false
-			var max float64
-			for _, v := range val.([]interface{}) {
-				fVal, err := toFloat64(v)
-				if err != nil {
-					fmt.Printf("max conversion error: %v\n", err)
-					continue
-				}
-				if !maxSet || fVal > max {
-					max = fVal
-					maxSet = true
-				}
-			}
-			if !maxSet {
-				return nil
-			}
-			return max
-		},
-	}
+// Min returns an Aggregation that finds the minimum numeric value from the specified column.
+func Min(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            minSet := false
+            var min float64
+            for _, v := range vals {
+                fVal, err := toFloat64(v)
+                if err != nil {
+                    fmt.Printf("min conversion error: %v\n", err)
+                    continue
+                }
+                if !minSet || fVal < min {
+                    min = fVal
+                    minSet = true
+                }
+            }
+            if !minSet {
+                return nil
+            }
+            return min
+        },
+    }
 }
 
-// Min returns a Column that finds the minimum numeric value from the specified column.
-func Min(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return nil
-			}
-			minSet := false
-			var min float64
-			for _, v := range val.([]interface{}) {
-				fVal, err := toFloat64(v)
-				if err != nil {
-					fmt.Printf("min conversion error: %v\n", err)
-					continue
-				}
-				if !minSet || fVal < min {
-					min = fVal
-					minSet = true
-				}
-			}
-			if !minSet {
-				return nil
-			}
-			return min
-		},
-	}
+// Median returns an Aggregation that finds the median numeric value from the specified column.
+func Median(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            var nums []float64
+            for _, v := range vals {
+                fVal, err := toFloat64(v)
+                if err != nil {
+                    fmt.Printf("median conversion error: %v\n", err)
+                    continue
+                }
+                nums = append(nums, fVal)
+            }
+
+            n := len(nums)
+            if n == 0 {
+                return nil
+            }
+
+            // Sort the numbers.
+            sort.Float64s(nums)
+
+            if n%2 == 1 {
+                // Odd count; return middle element.
+                return nums[n/2]
+            }
+            // Even count; return average of two middle elements.
+            median := (nums[n/2-1] + nums[n/2]) / 2.0
+            return median
+        },
+    }
 }
 
-// Median returns a Column that finds the median numeric value from the specified column.
-func Median(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return nil
-			}
-			var nums []float64
-			for _, v := range val.([]interface{}) {
-				fVal, err := toFloat64(v)
-				if err != nil {
-					fmt.Printf("median conversion error: %v\n", err)
-					continue
-				}
-				nums = append(nums, fVal)
-			}
+// Mean returns an Aggregation that calculates the mean (average) of numeric values from the specified column.
+func Mean(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            sum := 0.0
+            count := 0
+            for _, v := range vals {
+                fVal, err := toFloat64(v)
+                if err != nil {
+                    fmt.Printf("mean conversion error: %v\n", err)
+                    continue
+                }
+                sum += fVal
+                count++
+            }
+            if count == 0 {
+                return nil
+            }
+            return sum / float64(count)
+        },
+    }
+}
+// Mode returns an Aggregation that finds the mode (most frequent value) among the numeric values from the specified column.
+func Mode(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            // Use a map to count frequencies.
+            freq := make(map[float64]int)
+            var mode float64
+            maxCount := 0
 
-			n := len(nums)
-			if n == 0 {
-				return nil
-			}
-
-			// Sort the numbers.
-			sort.Float64s(nums)
-
-			if n%2 == 1 {
-				// Odd count; return middle element.
-				return nums[n/2]
-			}
-			// Even count; return average of two middle elements.
-			median := (nums[n/2-1] + nums[n/2]) / 2.0
-			return median
-		},
-	}
+            for _, v := range vals {
+                fVal, err := toFloat64(v)
+                if err != nil {
+                    fmt.Printf("mode conversion error: %v\n", err)
+                    continue
+                }
+                freq[fVal]++
+                if freq[fVal] > maxCount {
+                    maxCount = freq[fVal]
+                    mode = fVal
+                }
+            }
+            // If no valid values, return nil.
+            if maxCount == 0 {
+                return nil
+            }
+            return mode
+        },
+    }
+}
+// Unique returns an Aggregation that counts the number of unique values from the specified column.
+func Unique(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            uniqueSet := make(map[interface{}]bool)
+            for _, v := range vals {
+                uniqueSet[v] = true
+            }
+            return len(uniqueSet)
+        },
+    }
 }
 
-// Mean returns a Column that calculates the mean (average) of numeric values from the specified column.
-func Mean(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return nil
-			}
-			sum := 0.0
-			count := 0
-			for _, v := range val.([]interface{}) {
-				fVal, err := toFloat64(v)
-				if err != nil {
-					fmt.Printf("mean conversion error: %v\n", err)
-					continue
-				}
-				sum += fVal
-				count++
-			}
-			if count == 0 {
-				return nil
-			}
-			return sum / float64(count)
-		},
-	}
-}
-
-// Mode returns a Column that finds the mode (most frequent value) among the numeric values from the specified column.
-func Mode(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return nil
-			}
-			// Use a map to count frequencies.
-			freq := make(map[float64]int)
-			var mode float64
-			maxCount := 0
-
-			for _, v := range val.([]interface{}) {
-				fVal, err := toFloat64(v)
-				if err != nil {
-					fmt.Printf("mode conversion error: %v\n", err)
-					continue
-				}
-				freq[fVal]++
-				if freq[fVal] > maxCount {
-					maxCount = freq[fVal]
-					mode = fVal
-				}
-			}
-			// If no valid values, return nil.
-			if maxCount == 0 {
-				return nil
-			}
-			return mode
-		},
-	}
-}
-
-// Unique returns a Column that counts the number of unique values from the specified column.
-func Unique(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return 0
-			}
-			uniqueSet := make(map[interface{}]bool)
-			for _, v := range val.([]interface{}) {
-				uniqueSet[v] = true
-			}
-			return len(uniqueSet)
-		},
-	}
-}
-
-// First returns a Column that gets the first value from the specified column.
-func First(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			val, ok := row[name]
-			if !ok || val == nil {
-				return nil
-			}
-			if len(val.([]interface{})) == 0 {
-				return nil
-			}
-			return val.([]interface{})[0]
-		},
-	}
+// First returns an Aggregation that gets the first value from the specified column.
+func First(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            if len(vals) == 0 {
+                return nil
+            }
+            return vals[0]
+        },
+    }
 }
 
 // LOGIC --------------------------------------------------
@@ -2780,29 +2882,54 @@ func (df *DataFrame) Column(column string, col Column) *DataFrame {
 //
 //export GroupByWrapper
 func GroupByWrapper(dfJson *C.char, groupCol *C.char, aggsJson *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		errStr := fmt.Sprintf("GroupByWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("GroupByWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
 
-	var aggs []Aggregation
-	if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggs); err != nil {
-		errStr := fmt.Sprintf("GroupByWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    var aggCols []map[string]string
+    if err := json.Unmarshal([]byte(C.GoString(aggsJson)), &aggCols); err != nil {
+        errStr := fmt.Sprintf("GroupByWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
 
-	groupedDF := df.GroupBy(C.GoString(groupCol), aggs...)
-	resultJson, err := json.Marshal(groupedDF)
-	if err != nil {
-		errStr := fmt.Sprintf("GroupByWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    // Extract column names and function names from the aggregation JSON
+    var aggregations []Aggregation
+    for _, agg := range aggCols {
+        colName := agg["ColumnName"]
+        fnName := agg["Fn"]
+        switch fnName {
+        case "Sum":
+            aggregations = append(aggregations, Sum(colName))
+        case "Max":
+            aggregations = append(aggregations, Max(colName))
+        case "Min":
+            aggregations = append(aggregations, Min(colName))
+        case "Mean":
+            aggregations = append(aggregations, Mean(colName))
+        case "Median":
+            aggregations = append(aggregations, Median(colName))
+        case "Mode":
+            aggregations = append(aggregations, Mode(colName))
+        case "Unique":
+            aggregations = append(aggregations, Unique(colName))
+        case "First":
+            aggregations = append(aggregations, First(colName))
+        }
+    }
 
-	return C.CString(string(resultJson))
+    groupedDF := df.GroupBy(C.GoString(groupCol), aggregations...)
+    resultJson, err := json.Marshal(groupedDF)
+    if err != nil {
+        errStr := fmt.Sprintf("GroupByWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    return C.CString(string(resultJson))
 }
 
 // GroupBy groups the DataFrame rows by the value produced by groupCol.
