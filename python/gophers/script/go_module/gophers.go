@@ -3586,6 +3586,52 @@ func (df *DataFrame) Collect(c string) []interface{} {
 	return []interface{}{}
 }
 
+// SINKS --------------------------------------------------
+
+// dataframe to csv file
+func (df *DataFrame) ToCSVFile(filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write the column headers.
+	if err := writer.Write(df.Cols); err != nil {
+		return err
+	}
+
+	// Write the rows of data.
+	for i := 0; i < df.Rows; i++ {
+		row := make([]string, len(df.Cols))
+		for j, col := range df.Cols {
+			value := df.Data[col][i]
+			row[j] = fmt.Sprintf("%v", value)
+		}
+		if err := writer.Write(row); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+//export ToCSVFileWrapper
+func ToCSVFileWrapper(dfJson *C.char, filename *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		log.Fatalf("ToCSVFileWrapper: unmarshal error: %v", err)
+	}
+	err := df.ToCSVFile(C.GoString(filename))
+	if err != nil {
+		return C.CString(err.Error())
+	}
+	return nil
+}
+
 // END --------------------------------------------------
 
 func main() {}

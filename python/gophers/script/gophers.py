@@ -50,6 +50,7 @@ gophers.AddHeadingWrapper.restype = c_char_p
 gophers.AddTextWrapper.restype = c_char_p
 gophers.AddSubTextWrapper.restype = c_char_p
 gophers.AddBulletsWrapper.restype = c_char_p
+gophers.ToCSVFileWrapper.restype = c_char_p
 
 class FuncColumn:
     """Helper for function-based column operations.
@@ -388,6 +389,10 @@ class DataFrame:
         dashboard_json = gophers.CreateDashboardWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
         # print("CreateDashboard: Created dashboard JSON:", dashboard_json)
         return Dashboard(dashboard_json)
+    def ToCSVFile(self, filename):
+        gophers.ToCSVFileWrapper(self.df_json.encode('utf-8'), filename.encode('utf-8'))
+        # add output giving file name/location
+        return self
     
 # Example usage:
 def main():
@@ -416,9 +421,10 @@ def main():
     chart = df.ColumnChart("barchart","subtext","col1", Agg(Sum("col2")))
     # DisplayChart(chart)
     dashboard.AddChart("Page1", chart)
-    # df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
+    df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
     # dashboard.Save("dashboard.html")
-    dashboard.Open()
+    # dashboard.Open()
+    df.ToCSVFile('newcsvgophers.csv')
     # print(chart)
 
 if __name__ == '__main__':
