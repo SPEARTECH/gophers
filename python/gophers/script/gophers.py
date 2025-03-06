@@ -77,8 +77,9 @@ class Dashboard:
         self.dashboard_json = dashboard_json
 
     def Open(self):
-        print("")
+        # print("")
         print("printing open dashboard:"+self.dashboard_json)
+
         err = gophers.OpenDashboardWrapper(self.dashboard_json.encode('utf-8')).decode('utf-8')
         if err != "success":
             print("Error opening dashboard:", err)
@@ -94,7 +95,7 @@ class Dashboard:
         result = gophers.AddPageWrapper(self.dashboard_json.encode('utf-8'), name.encode('utf-8')).decode('utf-8')
         if result:
             self.dashboard_json = result
-            print("AddPage: Updated dashboard JSON:", self.dashboard_json)
+            # print("AddPage: Updated dashboard JSON:", self.dashboard_json)
         else:
             print("Error adding page:", result)
         return self
@@ -115,26 +116,24 @@ class Dashboard:
             print("Error adding dataframe:", result)
         return self
 
-    def AddChart(self, page, chart):        
+    def AddChart(self, page, chart):
         chart_json = chart.html
-        # chart_json = json.dumps(chart.__dict__)
-        print(f"Chart JSON: {chart_json}")
-        
+        # print(f"Chart JSON: {chart_json}")
+
         result = gophers.AddChartWrapper(
-            self.dashboard_json.encode('utf-8'), 
-            page.encode('utf-8'), 
+            self.dashboard_json.encode('utf-8'),
+            page.encode('utf-8'),
             chart_json.encode('utf-8')
         ).decode('utf-8')
-        
+
         if result:
-            print(f"Chart added successfully, result: {result[:100]}...")
+            # print(f"Chart added successfully, result: {result[:100]}...")
             self.dashboard_json = result
         else:
             print(f"Error adding chart, empty result")
         return self
-
-    def AddHeading(self, page, text):
-        result = gophers.AddHeadingWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+    def AddHeading(self, page, text, size):
+        result = gophers.AddHeadingWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8'), size).decode('utf-8')
         if result:
             self.dashboard_json = result
         else:
@@ -210,9 +209,6 @@ def ReadJSON(json_data):
 # PANDAS FUNCTIONS
 # loc
 # iloc
-
-
-
 
 class DataFrame:
     def __init__(self, df_json=None):
@@ -296,6 +292,7 @@ class DataFrame:
         
         # Create a Chart object
         chart = Chart(html)
+        # print(html)
         
         # Display the chart
         # display(HTML(html))
@@ -304,10 +301,27 @@ class DataFrame:
         return chart
     
     def ColumnChart(self, title, subtitle, groupcol, aggs):
-        aggs_json = json.dumps([agg.__dict__ for agg in aggs])
-        html = gophers.ColumnChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
-        display(HTML(html))
-        return self
+        # Make sure aggs is a list
+        if not isinstance(aggs, list):
+            aggs = [aggs]
+        
+        aggs_json = json.dumps(aggs)
+        html = gophers.ColumnChartWrapper(
+            self.df_json.encode('utf-8'), 
+            title.encode('utf-8'), 
+            subtitle.encode('utf-8'), 
+            groupcol.encode('utf-8'), 
+            aggs_json.encode('utf-8')
+        ).decode('utf-8')
+        
+        # Create a Chart object
+        chart = Chart(html)
+        
+        # Display the chart
+        # display(HTML(html))
+        
+        # Return the Chart object
+        return chart
     
     def StackedBarChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps([agg.__dict__ for agg in aggs])
@@ -372,7 +386,7 @@ class DataFrame:
         return self    
     def CreateDashboard(self, title):
         dashboard_json = gophers.CreateDashboardWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
-        print("CreateDashboard: Created dashboard JSON:", dashboard_json)
+        # print("CreateDashboard: Created dashboard JSON:", dashboard_json)
         return Dashboard(dashboard_json)
     
 # Example usage:
@@ -382,25 +396,30 @@ def main():
     if not isinstance(json_data, str):
         json_data = str(json_data)
     df = ReadJSON(json_data)
-    print("Head:")
-    df.Head(25)
-    print("Tail:")
-    df.Tail(25)
-    print("Vertical:")
-    df.Vertical(25, record_count=3)
-    print("Columns:")
-    print(df.Columns())
-    df.Display()
+    # print("Head:")
+    # df.Head(25)
+    # print("Tail:")
+    # df.Tail(25)
+    # print("Vertical:")
+    # df.Vertical(25, record_count=3)
+    # print("Columns:")
+    # print(df.Columns())
+    # df.Display()
     
     # Example dashboard usage
     dashboard = df.CreateDashboard("My Dashboard")
     dashboard.AddPage("Page1")
     dashboard.AddText("Page1", "This is some text on Page 1")
-    chart = df.BarChart("barchart","subtext","col1", Agg(Sum("col2")))
+    dashboard.AddHeading("Page1", "Text on Page 1",4)
+    dashboard.AddPage("Page2")
+    
+    chart = df.ColumnChart("barchart","subtext","col1", Agg(Sum("col2")))
+    # DisplayChart(chart)
     dashboard.AddChart("Page1", chart)
     # df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
     # dashboard.Save("dashboard.html")
     dashboard.Open()
+    # print(chart)
 
 if __name__ == '__main__':
     main()
