@@ -418,9 +418,9 @@ func (dash *Dashboard) AddChart(page string, chart Chart) {
 		return
 	}
 
-	newdivid := chart.htmldivid + strconv.Itoa(len(pageHTML))
-	html := `<div v-show="page == '` + page + `' " id="` + newdivid + chart.htmlpostid
-	js := chart.jspreid + newdivid + chart.jspostid
+	newdivid := chart.Htmldivid + strconv.Itoa(len(pageHTML))
+	html := `<div v-show="page == '` + page + `' " id="` + newdivid + chart.Htmlpostid
+	js := chart.Jspreid + newdivid + chart.Jspostid
 	pageHTML[len(pageHTML)] = html
 	pageJS[len(pageJS)] = js
 

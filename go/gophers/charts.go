@@ -6,11 +6,11 @@ import (
 )
 
 type Chart struct {
-	htmlpreid  string
-	htmldivid  string
-	htmlpostid string
-	jspreid    string
-	jspostid   string
+	Htmlpreid  string
+	Htmldivid  string
+	Htmlpostid string
+	Jspreid    string
+	Jspostid   string
 }
 
 // BarChart returns Bar Chart HTML for the DataFrame.
@@ -43,11 +43,11 @@ func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, ag
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `barchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `barchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'bar'
     },
@@ -94,7 +94,7 @@ func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, ag
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -128,11 +128,11 @@ func (df *DataFrame) ColumnChart(title string, subtitle string, groupcol string,
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `columnchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `columnchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'column'
     },
@@ -179,7 +179,7 @@ func (df *DataFrame) ColumnChart(title string, subtitle string, groupcol string,
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -241,11 +241,11 @@ func (df *DataFrame) StackedBarChart(title string, subtitle string, groupcol str
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `stackedbarchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `stackedbarchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'bar'
     },
@@ -281,7 +281,7 @@ func (df *DataFrame) StackedBarChart(title string, subtitle string, groupcol str
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 
@@ -315,11 +315,11 @@ func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol
 	seriesJSON, _ := json.Marshal(series)
 
 	// Build the HTML and JavaScript for the chart.
-	htmlpreid := `<div id="`
-	htmldivid := `stackedpercentchart`
-	htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
-	jspreid := `Highcharts.chart('`
-	jspostid := fmt.Sprintf(`', {
+	Htmlpreid := `<div id="`
+	Htmldivid := `stackedpercentchart`
+	Htmlpostid := `" class="flex justify-center mx-auto p-4"></div>`
+	Jspreid := `Highcharts.chart('`
+	Jspostid := fmt.Sprintf(`', {
     chart: {
         type: 'column'
     },
@@ -361,7 +361,7 @@ func (df *DataFrame) StackedPercentChart(title string, subtitle string, groupcol
     series: %s
 });`, title, subtitle, categoriesJSON, groupcol, seriesJSON)
 
-	newChart := Chart{htmlpreid, htmldivid, htmlpostid, jspreid, jspostid}
+	newChart := Chart{Htmlpreid, Htmldivid, Htmlpostid, Jspreid, Jspostid}
 	return newChart
 }
 

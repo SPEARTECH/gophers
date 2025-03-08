@@ -237,7 +237,7 @@ func DisplayHTML(html string) map[string]interface{} {
 }
 
 func DisplayChart(chart Chart) map[string]interface{} {
-	html := chart.htmlpreid + chart.htmldivid + chart.htmlpostid + chart.jspreid + chart.htmldivid + chart.jspostid
+	html := chart.Htmlpreid + chart.Htmldivid + chart.Htmlpostid + chart.Jspreid + chart.Htmldivid + chart.Jspostid
 	return map[string]interface{}{
 		"text/html": html,
 	}
