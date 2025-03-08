@@ -22,8 +22,10 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"os/exec"
+	"reflect"
 	"runtime"
 	"sort"
+
 	"gopkg.in/yaml.v2"
 )
 
@@ -280,89 +282,90 @@ func ReadNDJSON(jsonStr *C.char) *C.char {
 }
 
 // ReadYAML reads a YAML string or file and converts it to a DataFrame.
+//
 //export ReadYAML
 func ReadYAML(yamlStr *C.char) *C.char {
-    if yamlStr == nil {
-        log.Fatalf("Error: yamlStr is nil")
-        return C.CString("")
-    }
+	if yamlStr == nil {
+		log.Fatalf("Error: yamlStr is nil")
+		return C.CString("")
+	}
 
-    goYamlStr := C.GoString(yamlStr)
-    // log.Printf("ReadYAML: Input string: %s", goYamlStr) // Log the input string
+	goYamlStr := C.GoString(yamlStr)
+	// log.Printf("ReadYAML: Input string: %s", goYamlStr) // Log the input string
 
-    var yamlContent string
+	var yamlContent string
 
-    // Check if the input is a file path.
-    if fileExists(goYamlStr) {
-        bytes, err := os.ReadFile(goYamlStr)
-        if err != nil {
-            log.Fatalf("Error reading file: %v", err)
-        }
-        yamlContent = string(bytes)
-    } else {
-        yamlContent = goYamlStr
-    }
+	// Check if the input is a file path.
+	if fileExists(goYamlStr) {
+		bytes, err := os.ReadFile(goYamlStr)
+		if err != nil {
+			log.Fatalf("Error reading file: %v", err)
+		}
+		yamlContent = string(bytes)
+	} else {
+		yamlContent = goYamlStr
+	}
 
-    // Unmarshal the YAML string into a generic map
-    var data map[interface{}]interface{}
-    if err := yaml.Unmarshal([]byte(yamlContent), &data); err != nil {
-        log.Fatalf("Error unmarshalling YAML: %v", err)
-    }
+	// Unmarshal the YAML string into a generic map
+	var data map[interface{}]interface{}
+	if err := yaml.Unmarshal([]byte(yamlContent), &data); err != nil {
+		log.Fatalf("Error unmarshalling YAML: %v", err)
+	}
 
 	fmt.Println("printing yaml unmarshalled data...")
 	fmt.Println(data)
 
-    // Convert the map to a slice of maps with string keys
-    rows := mapToRows(convertMapKeysToString(data))
+	// Convert the map to a slice of maps with string keys
+	rows := mapToRows(convertMapKeysToString(data))
 
-    df := Dataframe(rows)
-    jsonBytes, err := json.Marshal(df)
-    if err != nil {
-        log.Fatalf("Error marshalling DataFrame to JSON: %v", err)
-    }
+	df := Dataframe(rows)
+	jsonBytes, err := json.Marshal(df)
+	if err != nil {
+		log.Fatalf("Error marshalling DataFrame to JSON: %v", err)
+	}
 
-    return C.CString(string(jsonBytes))
+	return C.CString(string(jsonBytes))
 }
 
 // convertMapKeysToString converts map keys to strings recursively
 func convertMapKeysToString(data map[interface{}]interface{}) map[string]interface{} {
-    result := make(map[string]interface{})
-    for k, v := range data {
-        strKey := fmt.Sprintf("%v", k)
-        switch v := v.(type) {
-        case map[interface{}]interface{}:
-            result[strKey] = convertMapKeysToString(v)
-        default:
-            result[strKey] = v
-        }
-    }
-    return result
+	result := make(map[string]interface{})
+	for k, v := range data {
+		strKey := fmt.Sprintf("%v", k)
+		switch v := v.(type) {
+		case map[interface{}]interface{}:
+			result[strKey] = convertMapKeysToString(v)
+		default:
+			result[strKey] = v
+		}
+	}
+	return result
 }
 
 // mapToRows converts a nested map to a slice of maps
 func mapToRows(data map[string]interface{}) []map[string]interface{} {
-    var rows []map[string]interface{}
-    flattenMap(data, "", &rows)
-    return rows
+	var rows []map[string]interface{}
+	flattenMap(data, "", &rows)
+	return rows
 }
 
 // flattenMap flattens a nested map into a slice of maps
 func flattenMap(data map[string]interface{}, prefix string, rows *[]map[string]interface{}) {
-    for k, v := range data {
-        key := k
-        if prefix != "" {
-            key = prefix + "." + k
-        }
-        switch v := v.(type) {
-        case map[string]interface{}:
-            flattenMap(v, key, rows)
-        default:
-            if len(*rows) == 0 {
-                *rows = append(*rows, make(map[string]interface{}))
-            }
-            (*rows)[0][key] = v
-        }
-    }
+	for k, v := range data {
+		key := k
+		if prefix != "" {
+			key = prefix + "." + k
+		}
+		switch v := v.(type) {
+		case map[string]interface{}:
+			flattenMap(v, key, rows)
+		default:
+			if len(*rows) == 0 {
+				*rows = append(*rows, make(map[string]interface{}))
+			}
+			(*rows)[0][key] = v
+		}
+	}
 }
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
@@ -2761,28 +2764,242 @@ func First(name string) Aggregation {
 }
 
 // LOGIC --------------------------------------------------
+// If implements conditional logic similar to PySpark's when.
+// It returns fn1 if condition returns true for a row, else fn2.
+func If(condition Column, fn1 Column, fn2 Column) Column {
+	return Column{
+		Name: "if",
+		Fn: func(row map[string]interface{}) interface{} {
+			cond, ok := condition.Fn(row).(bool)
+			if !ok {
+				return nil
+			}
+			if cond {
+				return fn1.Fn(row)
+			}
+			return fn2.Fn(row)
+		},
+	}
+}
 
-// If
+// IsNull returns a new Column that, when applied to a row,
+// returns true if the original column value is nil, an empty string, or "null".
+func (c Column) IsNull() Column {
+	return Column{
+		Name: c.Name + "_isnull",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			if val == nil {
+				return true
+			}
+			switch v := val.(type) {
+			case string:
+				return v == "" || strings.ToLower(v) == "null"
+			case *string:
+				return v == nil || *v == "" || strings.ToLower(*v) == "null"
+			default:
+				return false
+			}
+		},
+	}
+}
 
-// IsNull
+// IsNullWrapper is an exported function that wraps the IsNull method.
+// It takes a JSON-string representing the Column, calls IsNull, and returns the resulting Column as a JSON string.
+//
+//export IsNullWrapper
+func IsNullWrapper(columnJson *C.char) *C.char {
+	var col Column
+	if err := json.Unmarshal([]byte(C.GoString(columnJson)), &col); err != nil {
+		errStr := fmt.Sprintf("IsNullWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-// IsNotNull
+	isNullCol := col.IsNull()
+	isNullColJson, err := json.Marshal(isNullCol)
+	if err != nil {
+		errStr := fmt.Sprintf("IsNullWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-// Gt
+	return C.CString(string(isNullColJson))
+}
 
-// Ge
+// IsNotNull returns a new Column that, when applied to a row,
+// returns true if the original column value is not nil, not an empty string, and not "null".
+func (c Column) IsNotNull() Column {
+	return Column{
+		Name: c.Name + "_isnotnull",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			if val == nil {
+				return false
+			}
+			switch v := val.(type) {
+			case string:
+				return !(v == "" || strings.ToLower(v) == "null")
+			case *string:
+				return !(v == nil || *v == "" || strings.ToLower(*v) == "null")
+			default:
+				return true
+			}
+		},
+	}
+}
 
-// Lt
+// Gt returns a Column that compares the numeric value at col with the given threshold.
+// The threshold can be of any numeric type (int, float32, float64, etc.).
+func (c Column) Gt(threshold interface{}) Column {
+	return Column{
+		Name: c.Name + "_gt",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			fVal, err := toFloat64(val)
+			if err != nil {
+				return false
+			}
+			fThreshold, err := toFloat64(threshold)
+			if err != nil {
+				return false
+			}
+			return fVal > fThreshold
+		},
+	}
+}
 
-// Le
+// Ge returns a Column that compares the numeric value at col with the given threshold.
+// The threshold can be of any numeric type (int, float32, float64, etc.).
+func (c Column) Ge(threshold interface{}) Column {
+	return Column{
+		Name: c.Name + "_ge",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			fVal, err := toFloat64(val)
+			if err != nil {
+				return false
+			}
+			fThreshold, err := toFloat64(threshold)
+			if err != nil {
+				return false
+			}
+			return fVal >= fThreshold
+		},
+	}
+}
 
-// Or
+// Lt returns a Column that compares the numeric value at col with the given threshold.
+// The threshold can be of any numeric type (int, float32, float64, etc.).
+func (c Column) Lt(threshold interface{}) Column {
+	return Column{
+		Name: c.Name + "_lt",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			fVal, err := toFloat64(val)
+			if err != nil {
+				return false
+			}
+			fThreshold, err := toFloat64(threshold)
+			if err != nil {
+				return false
+			}
+			return fVal < fThreshold
+		},
+	}
+}
 
-// And
+// Le returns a Column that compares the numeric value at col with the given threshold.
+// The threshold can be of any numeric type (int, float32, float64, etc.).
+func (c Column) Le(threshold interface{}) Column {
+	return Column{
+		Name: c.Name + "_le",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			fVal, err := toFloat64(val)
+			if err != nil {
+				return false
+			}
+			fThreshold, err := toFloat64(threshold)
+			if err != nil {
+				return false
+			}
+			return fVal <= fThreshold
+		},
+	}
+}
 
-// Eq
+// Eq returns a Column that, when evaluated on a row,
+// checks if the value from col is equal (same type and value) to threshold.
+func (c Column) Eq(threshold interface{}) Column {
+	return Column{
+		Name: c.Name + "_eq",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			// If either is nil, return equality directly.
+			if val == nil || threshold == nil {
+				return val == threshold
+			}
+			// Check that both values are of the same type.
+			if reflect.TypeOf(val) != reflect.TypeOf(threshold) {
+				return false
+			}
+			// Use Go's native equality.
+			return val == threshold
+		},
+	}
+}
 
-// Ne
+// Ne returns a Column that, when evaluated on a row,
+// checks if the value from col is NOT equal (diff type or value) to threshold.
+func (c Column) Ne(threshold interface{}) Column {
+	return Column{
+		Name: c.Name + "_ne",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			// If either is nil, return equality directly.
+			if val == nil || threshold == nil {
+				return val != threshold
+			}
+			// Check that both values are of the same type.
+			if reflect.TypeOf(val) != reflect.TypeOf(threshold) {
+				return true
+			}
+			// Use Go's native equality.
+			return val != threshold
+		},
+	}
+}
+
+// Or returns a Column that evaluates to true if either of the two provided Conditions is true.
+func Or(c1, c2 Column) Column {
+	return Column{
+		Name: "or",
+		Fn: func(row map[string]interface{}) interface{} {
+			cond1, ok1 := c1.Fn(row).(bool)
+			cond2, ok2 := c2.Fn(row).(bool)
+			if !ok1 || !ok2 {
+				return false
+			}
+			return cond1 || cond2
+		},
+	}
+}
+
+// And returns a Column that evaluates to true if both of the two provided Conditions is true.
+func And(c1, c2 Column) Column {
+	return Column{
+		Name: "and",
+		Fn: func(row map[string]interface{}) interface{} {
+			cond1, ok1 := c1.Fn(row).(bool)
+			cond2, ok2 := c2.Fn(row).(bool)
+			if !ok1 || !ok2 {
+				return false
+			}
+			return cond1 && cond2
+		},
+	}
+}
 
 // TRANSFORMS --------------------------------------------------
 

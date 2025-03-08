@@ -52,6 +52,7 @@ gophers.AddTextWrapper.restype = c_char_p
 gophers.AddSubTextWrapper.restype = c_char_p
 gophers.AddBulletsWrapper.restype = c_char_p
 gophers.ToCSVFileWrapper.restype = c_char_p
+gophers.IsNullWrapper.restype = c_char_p
 
 class FuncColumn:
     """Helper for function-based column operations.
@@ -61,6 +62,19 @@ class FuncColumn:
         self.func_name = func_name
         self.cols = cols
 
+    def IsNull(self):
+        # Convert the Column object to a JSON string
+        column_json = json.dumps(self.__dict__)
+        
+        # Call the IsNullWrapper function
+        result_json = gophers.IsNullWrapper(column_json.encode('utf-8')).decode('utf-8')
+        
+        # Convert the result back to a Python object
+        result = json.loads(result_json)
+        
+        # Return the result as a Column object
+        return FuncColumn(result['Name'], result['Fn'])
+    
 class SplitColumn:
     """Helper for function-based column operations.
        func_name is a string like "SHA256" and cols is a list of column names.
