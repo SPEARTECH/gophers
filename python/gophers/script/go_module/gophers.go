@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sort"
+	"gopkg.in/yaml.v2"
 )
 
 // DataFrame represents a very simple dataframe structure.
@@ -276,6 +277,92 @@ func ReadNDJSON(jsonStr *C.char) *C.char {
 	}
 
 	return C.CString(string(jsonBytes))
+}
+
+// ReadYAML reads a YAML string or file and converts it to a DataFrame.
+//export ReadYAML
+func ReadYAML(yamlStr *C.char) *C.char {
+    if yamlStr == nil {
+        log.Fatalf("Error: yamlStr is nil")
+        return C.CString("")
+    }
+
+    goYamlStr := C.GoString(yamlStr)
+    // log.Printf("ReadYAML: Input string: %s", goYamlStr) // Log the input string
+
+    var yamlContent string
+
+    // Check if the input is a file path.
+    if fileExists(goYamlStr) {
+        bytes, err := os.ReadFile(goYamlStr)
+        if err != nil {
+            log.Fatalf("Error reading file: %v", err)
+        }
+        yamlContent = string(bytes)
+    } else {
+        yamlContent = goYamlStr
+    }
+
+    // Unmarshal the YAML string into a generic map
+    var data map[interface{}]interface{}
+    if err := yaml.Unmarshal([]byte(yamlContent), &data); err != nil {
+        log.Fatalf("Error unmarshalling YAML: %v", err)
+    }
+
+	fmt.Println("printing yaml unmarshalled data...")
+	fmt.Println(data)
+
+    // Convert the map to a slice of maps with string keys
+    rows := mapToRows(convertMapKeysToString(data))
+
+    df := Dataframe(rows)
+    jsonBytes, err := json.Marshal(df)
+    if err != nil {
+        log.Fatalf("Error marshalling DataFrame to JSON: %v", err)
+    }
+
+    return C.CString(string(jsonBytes))
+}
+
+// convertMapKeysToString converts map keys to strings recursively
+func convertMapKeysToString(data map[interface{}]interface{}) map[string]interface{} {
+    result := make(map[string]interface{})
+    for k, v := range data {
+        strKey := fmt.Sprintf("%v", k)
+        switch v := v.(type) {
+        case map[interface{}]interface{}:
+            result[strKey] = convertMapKeysToString(v)
+        default:
+            result[strKey] = v
+        }
+    }
+    return result
+}
+
+// mapToRows converts a nested map to a slice of maps
+func mapToRows(data map[string]interface{}) []map[string]interface{} {
+    var rows []map[string]interface{}
+    flattenMap(data, "", &rows)
+    return rows
+}
+
+// flattenMap flattens a nested map into a slice of maps
+func flattenMap(data map[string]interface{}, prefix string, rows *[]map[string]interface{}) {
+    for k, v := range data {
+        key := k
+        if prefix != "" {
+            key = prefix + "." + k
+        }
+        switch v := v.(type) {
+        case map[string]interface{}:
+            flattenMap(v, key, rows)
+        default:
+            if len(*rows) == 0 {
+                *rows = append(*rows, make(map[string]interface{}))
+            }
+            (*rows)[0][key] = v
+        }
+    }
 }
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.

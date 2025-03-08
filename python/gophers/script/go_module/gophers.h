@@ -78,6 +78,9 @@ extern __declspec(dllexport) char* ReadCSV(char* csvFile);
 extern __declspec(dllexport) char* ReadJSON(char* jsonStr);
 extern __declspec(dllexport) char* ReadNDJSON(char* jsonStr);
 
+// ReadYAML reads a YAML string or file and converts it to a DataFrame.
+extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
+
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
 // It accepts a C string representing the path (or content) of a parquet file,
 // calls ReadParquet, marshals the resulting DataFrame back to JSON, and returns it as a C string.

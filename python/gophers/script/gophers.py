@@ -7,6 +7,7 @@ path = os.path.dirname(os.path.realpath(__file__))
 gophers = cdll.LoadLibrary(path + '/go_module/gophers.so')
 # Set restype for functions at module load time
 gophers.ReadJSON.restype = c_char_p
+gophers.ReadYAML.restype = c_char_p
 gophers.Show.restype = c_char_p
 gophers.Head.restype = c_char_p
 gophers.Tail.restype = c_char_p
@@ -207,6 +208,10 @@ def ReadJSON(json_data):
     df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
 
+def ReadYAML(yaml_data):
+    # Store the JSON representation of DataFrame from Go.
+    df_json = gophers.ReadYAML(yaml_data.encode('utf-8')).decode('utf-8')
+    return DataFrame(df_json)
 # PANDAS FUNCTIONS
 # loc
 # iloc
@@ -396,11 +401,14 @@ class DataFrame:
     
 # Example usage:
 def main():
-    json_data = '[{"col1": "value1", "col2": 2, "col3": 3}, {"col1": "value4", "col2": 5, "col3": 3}, {"col1": "value7", "col2": 1, "col3": 3}]'
-        # Ensure json_data is a string before encoding
-    if not isinstance(json_data, str):
-        json_data = str(json_data)
-    df = ReadJSON(json_data)
+
+
+    # json_data = '[{"col1": "value1", "col2": 2, "col3": 3}, {"col1": "value4", "col2": 5, "col3": 3}, {"col1": "value7", "col2": 1, "col3": 3}]'
+    #     # Ensure json_data is a string before encoding
+    # if not isinstance(json_data, str):
+    #     json_data = str(json_data)
+    # df = ReadJSON(json_data)
+
     # print("Head:")
     # df.Head(25)
     # print("Tail:")
@@ -412,20 +420,44 @@ def main():
     # df.Display()
     
     # Example dashboard usage
-    dashboard = df.CreateDashboard("My Dashboard")
-    dashboard.AddPage("Page1")
-    dashboard.AddText("Page1", "This is some text on Page 1")
-    dashboard.AddHeading("Page1", "Text on Page 1",4)
-    dashboard.AddPage("Page2")
+    # dashboard = df.CreateDashboard("My Dashboard")
+    # dashboard.AddPage("Page1")
+    # dashboard.AddText("Page1", "This is some text on Page 1")
+    # dashboard.AddHeading("Page1", "Text on Page 1",4)
+    # dashboard.AddPage("Page2")
     
-    chart = df.ColumnChart("barchart","subtext","col1", Agg(Sum("col2")))
+    # chart = df.ColumnChart("barchart","subtext","col1", Agg(Sum("col2")))
     # DisplayChart(chart)
-    dashboard.AddChart("Page1", chart)
-    df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
+    # dashboard.AddChart("Page1", chart)
+    # df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
     # dashboard.Save("dashboard.html")
     # dashboard.Open()
-    df.ToCSVFile('newcsvgophers.csv')
+    yamldata = '''_interval:
+  end: 2023-04-20
+  start: 2023-04-06
+indices_changed:
+  cdm_csm:
+    _jira_references:
+    - CDE-31444
+    attributes_added:
+    - meta
+  cdm_csm_trending:
+    _jira_references:
+    - CDE-31444
+    attributes_added:
+    - meta
+    attributes_changed:
+      meta.owner:
+        data_source:
+          new: Dashboard Process
+          old: Agency
+'''        
+    df = ReadYAML(yamldata)
+    df.Vertical(50)
+    # df.ToCSVFile('newyamlgophers.csv')
+
     # print(chart)
+    pass
 
 if __name__ == '__main__':
     main()
