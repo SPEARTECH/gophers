@@ -317,7 +317,6 @@ func ReadYAML(yamlStr *C.char) *C.char {
 
 	// Convert the map to a slice of maps with string keys
 	rows := mapToRows(convertMapKeysToString(data))
-
 	df := Dataframe(rows)
 	jsonBytes, err := json.Marshal(df)
 	if err != nil {
@@ -344,8 +343,8 @@ func convertMapKeysToString(data map[interface{}]interface{}) map[string]interfa
 
 // mapToRows converts a nested map to a slice of maps
 func mapToRows(data map[string]interface{}) []map[string]interface{} {
-	var rows []map[string]interface{}
-	flattenMap(data, "", &rows)
+	rows := []map[string]interface{}{data}
+	// flattenMap(data, "", &rows)
 	return rows
 }
 
@@ -367,6 +366,9 @@ func flattenMap(data map[string]interface{}, prefix string, rows *[]map[string]i
 		}
 	}
 }
+
+// make flatten function - from pyspark methodology (for individual columns)
+func flattenWrapper(djJson *C.Char, col *C.Char)
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
 // It accepts a C string representing the path (or content) of a parquet file,

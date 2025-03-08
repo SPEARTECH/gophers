@@ -79,6 +79,7 @@ extern __declspec(dllexport) char* ReadJSON(char* jsonStr);
 extern __declspec(dllexport) char* ReadNDJSON(char* jsonStr);
 
 // ReadYAML reads a YAML string or file and converts it to a DataFrame.
+//
 extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
@@ -229,6 +230,11 @@ extern __declspec(dllexport) char* UniqueWrapper(char* name);
 // FirstWrapper is an exported function that wraps the First function.
 //
 extern __declspec(dllexport) char* FirstWrapper(char* name);
+
+// IsNullWrapper is an exported function that wraps the IsNull method.
+// It takes a JSON-string representing the Column, calls IsNull, and returns the resulting Column as a JSON string.
+//
+extern __declspec(dllexport) char* IsNullWrapper(char* columnJson);
 
 // ColumnOp applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
