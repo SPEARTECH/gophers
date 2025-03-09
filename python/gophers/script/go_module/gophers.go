@@ -44,6 +44,29 @@ type Column struct {
 	Fn   func(row map[string]interface{}) interface{}
 }
 
+// MarshalJSON custom marshaller to exclude the function field.
+func (c Column) MarshalJSON() ([]byte, error) {
+    return json.Marshal(struct {
+        Name string `json:"Name"`
+    }{
+        Name: c.Name,
+    })
+}
+
+// UnmarshalJSON custom unmarshaller to handle the function field.
+func (c *Column) UnmarshalJSON(data []byte) error {
+    var aux struct {
+        Name string `json:"Name"`
+    }
+    if err := json.Unmarshal(data, &aux); err != nil {
+        return err
+    }
+    c.Name = aux.Name
+    // Note: The function field cannot be unmarshalled from JSON.
+    return nil
+}
+
+// add other methods that modify the chart (no menu icon, no horizontal lines, highcharts vs apexcharts, colors, etc)?
 type Chart struct {
 	Htmlpreid  string
 	Htmldivid  string
@@ -368,7 +391,7 @@ func flattenMap(data map[string]interface{}, prefix string, rows *[]map[string]i
 }
 
 // make flatten function - from pyspark methodology (for individual columns)
-func flattenWrapper(djJson *C.Char, col *C.Char)
+func flattenWrapper(djJson *C.char, col *C.char)
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
 // It accepts a C string representing the path (or content) of a parquet file,
@@ -1071,6 +1094,7 @@ func DisplayChartWrapper(chartJson *C.char) *C.char {
 
 	return C.CString(html)
 }
+
 func DisplayChart(chart Chart) map[string]interface{} {
 	html := chart.Htmlpreid + chart.Htmldivid + chart.Htmlpostid + chart.Jspreid + chart.Htmldivid + chart.Jspostid
 	return map[string]interface{}{
@@ -1654,6 +1678,10 @@ func StackedPercentChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char,
 
 // LineChart
 
+// MixedChart (Column + Line)
+
+// SplineChart (apexcharts...)
+
 // DASHBOARDS --------------------------------------------------
 
 // dashboard create
@@ -1970,7 +1998,7 @@ func (dash *Dashboard) AddPage(name string) {
 
 // add slider
 
-// add dropdown (array of selections)
+// add dropdown (array of selections) - adds variable and updates charts + uses in new charts...
 
 // add iframe
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
@@ -2313,11 +2341,6 @@ func AddChartWrapper(dashboardJson *C.char, page *C.char, chartJson *C.char) *C.
 	return C.CString(string(dashboardJsonBytes))
 }
 
-// AddHeadingWrapper is an exported function that wraps the AddHeading method.
-//
-// AddHeadingWrapper is an exported function that wraps the AddHeading method.
-//
-//export AddHeadingWrapper
 //export AddHeadingWrapper
 func AddHeadingWrapper(dashboardJson *C.char, page *C.char, heading *C.char, size C.int) *C.char {
 	var dashboard Dashboard
@@ -2770,7 +2793,7 @@ func First(name string) Aggregation {
 // It returns fn1 if condition returns true for a row, else fn2.
 func If(condition Column, fn1 Column, fn2 Column) Column {
 	return Column{
-		Name: "if",
+		Name: "If",
 		Fn: func(row map[string]interface{}) interface{} {
 			cond, ok := condition.Fn(row).(bool)
 			if !ok {
@@ -2784,51 +2807,90 @@ func If(condition Column, fn1 Column, fn2 Column) Column {
 	}
 }
 
+// IfWrapper is an exported function that wraps the If function.
+// It takes JSON strings representing the condition, fn1, and fn2 Columns, calls If, and returns the resulting Column as a JSON string.
+//
+//export IfWrapper
+func IfWrapper(conditionJson *C.char, fn1Json *C.char, fn2Json *C.char) *C.char {
+    var condition, fn1, fn2 Column
+    if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &condition); err != nil {
+        errStr := fmt.Sprintf("IfWrapper: unmarshal error for condition: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    if err := json.Unmarshal([]byte(C.GoString(fn1Json)), &fn1); err != nil {
+        errStr := fmt.Sprintf("IfWrapper: unmarshal error for fn1: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    if err := json.Unmarshal([]byte(C.GoString(fn2Json)), &fn2); err != nil {
+        errStr := fmt.Sprintf("IfWrapper: unmarshal error for fn2: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    result := If(condition, fn1, fn2)
+    resultJson, err := json.Marshal(struct {
+        Name string   `json:"Name"`
+        Cols []string `json:"Cols"`
+    }{
+        Name: result.Name,
+        Cols: []string{condition.Name, fn1.Name, fn2.Name},
+    })
+    if err != nil {
+        errStr := fmt.Sprintf("IfWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    return C.CString(string(resultJson))
+}
+
 // IsNull returns a new Column that, when applied to a row,
 // returns true if the original column value is nil, an empty string, or "null".
 func (c Column) IsNull() Column {
-	return Column{
-		Name: c.Name + "_isnull",
-		Fn: func(row map[string]interface{}) interface{} {
-			val := c.Fn(row)
-			if val == nil {
-				return true
-			}
-			switch v := val.(type) {
-			case string:
-				return v == "" || strings.ToLower(v) == "null"
-			case *string:
-				return v == nil || *v == "" || strings.ToLower(*v) == "null"
-			default:
-				return false
-			}
-		},
-	}
+    return Column{
+        Name: c.Name + "_isnull",
+        Fn: func(row map[string]interface{}) interface{} {
+            val := c.Fn(row)
+            if val == nil {
+                return true
+            }
+
+            switch v := val.(type) {
+            case string:
+                return v == "" || strings.ToLower(v) == "null"
+            case *string:
+                return v == nil || *v == "" || strings.ToLower(*v) == "null"
+            default:
+                return false
+            }
+        },
+    }
 }
 
-// IsNullWrapper is an exported function that wraps the IsNull method.
-// It takes a JSON-string representing the Column, calls IsNull, and returns the resulting Column as a JSON string.
-//
-//export IsNullWrapper
-func IsNullWrapper(columnJson *C.char) *C.char {
-	var col Column
-	if err := json.Unmarshal([]byte(C.GoString(columnJson)), &col); err != nil {
-		errStr := fmt.Sprintf("IsNullWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+// // Updated IsNullWrapper: now accepts both a column JSON and a DataFrame JSON,
+// // so that it can use real data (here the first row) rather than an empty dummy row.
+// //
+// //export IsNullWrapper
+// func IsNullWrapper(columnJson *C.char) *C.char {
+//     // Parse the incoming JSON from Python FuncColumn.
+//     var colData struct {
+//         Name string   `json:"func_name"`
+//         Col   []string `json:"cols"`
+//     }
 
-	isNullCol := col.IsNull()
-	isNullColJson, err := json.Marshal(isNullCol)
-	if err != nil {
-		errStr := fmt.Sprintf("IsNullWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+//     if err := json.Unmarshal([]byte(C.GoString(columnJson)), &colData); err != nil {
+//         errStr := fmt.Sprintf("IsNullWrapper: unmarshal error: %v", err)
+//         log.Fatal(errStr)
+//         return C.CString(errStr)
+//     }
+//     fmt.Printf("IsNullWrapper: Parsed column data: %+v\n", colData)
 
-	return C.CString(string(isNullColJson))
-}
+//     result := colData.IsNull()
 
+//     return C.CString(result)
+// }
 // IsNotNull returns a new Column that, when applied to a row,
 // returns true if the original column value is not nil, not an empty string, and not "null".
 func (c Column) IsNotNull() Column {
@@ -3025,8 +3087,11 @@ func ColumnOp(dfJson *C.char, newCol *C.char, opName *C.char, colsJson *C.char) 
 	// Create a slice of Columns from the source column names.
 	var compCols []Column
 	for _, s := range srcCols {
-		compCols = append(compCols, Col(s))
-	}
+        if op == "Lit" {
+            compCols = append(compCols, Lit(s))
+        } else {
+            compCols = append(compCols, Col(s))
+        }	}
 
 	// Depending on the operation, create the Column specification.
 	var colSpec Column
@@ -3037,12 +3102,21 @@ func ColumnOp(dfJson *C.char, newCol *C.char, opName *C.char, colsJson *C.char) 
 		colSpec = SHA512(compCols...)
 	case "Col":
 		colSpec = Col(srcCols[0])
+	case "IsNull":
+		colSpec = Col(srcCols[0]).IsNull()
+		fmt.Println("colSpec:", colSpec)
+		return C.CString(string(colSpec))
 	case "Lit":
 		colSpec = Lit(srcCols[0])
 	case "CollectList":
 		colSpec = CollectList(srcCols[0])
 	case "CollectSet":
 		colSpec = CollectSet(srcCols[0])
+	// case "If":
+	// 	if len(compCols) != 3 {
+	// 		log.Fatalf("Expected 3 columns for If operation, got %d", len(compCols))
+	// 	}
+	// 	colSpec = If(compCols[0], compCols[1], compCols[2])
 	default:
 		log.Fatalf("Unsupported operation: %s", op)
 	}
@@ -3520,7 +3594,7 @@ func Col(name string) Column {
 // Lit returns a Column that always returns the provided literal value.
 func Lit(value interface{}) Column {
 	return Column{
-		Name: "lit",
+		Name: "Lit",
 		Fn: func(row map[string]interface{}) interface{} {
 			return value
 		},

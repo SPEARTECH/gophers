@@ -53,6 +53,7 @@ gophers.AddSubTextWrapper.restype = c_char_p
 gophers.AddBulletsWrapper.restype = c_char_p
 gophers.ToCSVFileWrapper.restype = c_char_p
 gophers.IsNullWrapper.restype = c_char_p
+gophers.IfWrapper.restype = c_char_p
 
 class FuncColumn:
     """Helper for function-based column operations.
@@ -63,17 +64,18 @@ class FuncColumn:
         self.cols = cols
 
     def IsNull(self):
-        # Convert the Column object to a JSON string
-        column_json = json.dumps(self.__dict__)
+        self.func_name = "IsNull"
+        return self
+        # # Convert the Column object to a JSON string
+        # column_json = json.dumps(self.__dict__)
+        # print('printing column json')
+        # print(column_json) 
         
-        # Call the IsNullWrapper function
-        result_json = gophers.IsNullWrapper(column_json.encode('utf-8')).decode('utf-8')
-        
-        # Convert the result back to a Python object
-        result = json.loads(result_json)
-        
-        # Return the result as a Column object
-        return FuncColumn(result['Name'], result['Fn'])
+        # # Call the IsNullWrapper function
+        # result = gophers.IsNullWrapper(column_json.encode('utf-8')).decode('utf-8')
+        # print(result)
+        # # Return the result as a Column object
+        # return result
     
 class SplitColumn:
     """Helper for function-based column operations.
@@ -193,11 +195,11 @@ def Agg(*aggregations):
 
 # Helper for extraction (already available in Go as Col)
 def Col(source):
-    return FuncColumn("Col",source)
+    return FuncColumn("Col",[source])
 
 # Helper for extraction (already available in Go as Col)
 def Lit(source):
-    return FuncColumn("Lit",source)
+    return FuncColumn("Lit",[source])
 
 # Helper functions for common operations
 def SHA256(*cols):
@@ -215,7 +217,7 @@ def CollectSet(col_name):
     return FuncColumn("CollectSet", col_name)
 
 def Split(col_name, delimiter):
-    return SplitColumn(col_name, delimiter)
+    return SplitColumn("Split", col_name, delimiter)
 
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
@@ -226,6 +228,25 @@ def ReadYAML(yaml_data):
     # Store the JSON representation of DataFrame from Go.
     df_json = gophers.ReadYAML(yaml_data.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
+
+def If(condition, fn1, fn2):
+    # If condition is a string (from IsNullWrapper), check if it's "true"
+    print("printing condition")
+    print(condition)
+    if isinstance(condition, str):
+        if condition == "true":
+            return fn1
+        else:
+            return fn2
+    else:
+        # Otherwise, treat it as a FuncColumn object
+        condition_json = json.dumps(condition.__dict__)
+        fn1_json = json.dumps(fn1.__dict__)
+        fn2_json = json.dumps(fn2.__dict__)
+        result_json = gophers.IfWrapper(condition_json.encode('utf-8'), fn1_json.encode('utf-8'), fn2_json.encode('utf-8')).decode('utf-8')
+        result_dict = json.loads(result_json)
+        return FuncColumn(result_dict['Name'], result_dict['Cols'])
+
 # PANDAS FUNCTIONS
 # loc
 # iloc
@@ -382,6 +403,13 @@ class DataFrame:
                 col_name.encode('utf-8'),
                 src.encode('utf-8')
             ).decode('utf-8')
+        elif isinstance(col_spec, str) and col_spec.startswith("If"):
+            src = col_spec.split(":", 1)[1]
+            self.df_json = gophers.IfWrapper(
+                self.df_json.encode('utf-8'),
+                col_name.encode('utf-8'),
+                src.encode('utf-8')
+            ).decode('utf-8')
         # For Split, expect a tuple: (source, delimiter)
         elif isinstance(col_spec, SplitColumn):
             src, delim = col_spec
@@ -467,6 +495,10 @@ indices_changed:
           old: Agency
 '''        
     df = ReadYAML(yamldata)
+    df = df.Column("new_column", Lit("Yes"))
+    print(df.Columns())
+    df = df.Column("newnull", Lit(Col("indices_changed").IsNull()))
+    df = df.Column("new_column", If(Col("indices_changed").IsNull(), Lit("yes"), Lit("no")))
     df.Vertical(50)
     # df.ToCSVFile('newyamlgophers.csv')
 

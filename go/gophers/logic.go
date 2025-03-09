@@ -9,7 +9,7 @@ import (
 // It returns fn1 if condition returns true for a row, else fn2.
 func If(condition Column, fn1 Column, fn2 Column) Column {
 	return Column{
-		Name: "if",
+		Name: "If",
 		Fn: func(row map[string]interface{}) interface{} {
 			cond, ok := condition.Fn(row).(bool)
 			if !ok {

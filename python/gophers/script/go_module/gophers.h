@@ -175,12 +175,6 @@ extern __declspec(dllexport) char* AddDataframeWrapper(char* dashboardJson, char
 // AddChartWrapper is an exported function that wraps the AddChart method.
 //
 extern __declspec(dllexport) char* AddChartWrapper(char* dashboardJson, char* page, char* chartJson);
-
-// AddHeadingWrapper is an exported function that wraps the AddHeading method.
-//
-// AddHeadingWrapper is an exported function that wraps the AddHeading method.
-//
-//export AddHeadingWrapper
 extern __declspec(dllexport) char* AddHeadingWrapper(char* dashboardJson, char* page, char* heading, int size);
 
 // AddTextWrapper is an exported function that wraps the AddText method.
@@ -231,10 +225,15 @@ extern __declspec(dllexport) char* UniqueWrapper(char* name);
 //
 extern __declspec(dllexport) char* FirstWrapper(char* name);
 
-// IsNullWrapper is an exported function that wraps the IsNull method.
-// It takes a JSON-string representing the Column, calls IsNull, and returns the resulting Column as a JSON string.
+// IfWrapper is an exported function that wraps the If function.
+// It takes JSON strings representing the condition, fn1, and fn2 Columns, calls If, and returns the resulting Column as a JSON string.
 //
-extern __declspec(dllexport) char* IsNullWrapper(char* columnJson);
+extern __declspec(dllexport) char* IfWrapper(char* conditionJson, char* fn1Json, char* fn2Json);
+
+// Updated IsNullWrapper: now accepts both a column JSON and a DataFrame JSON,
+// so that it can use real data (here the first row) rather than an empty dummy row.
+//
+extern __declspec(dllexport) char* IsNullWrapper(char* columnJson, char* dfJson);
 
 // ColumnOp applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
