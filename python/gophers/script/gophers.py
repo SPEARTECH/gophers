@@ -7,20 +7,22 @@ path = os.path.dirname(os.path.realpath(__file__))
 gophers = cdll.LoadLibrary(path + '/go_module/gophers.so')
 # Set restype for functions at module load time
 gophers.ReadJSON.restype = c_char_p
+gophers.ReadNDJSON.restype = c_char_p
+gophers.ReadCSV.restype = c_char_p
 gophers.ReadYAML.restype = c_char_p
 gophers.Show.restype = c_char_p
 gophers.Head.restype = c_char_p
 gophers.Tail.restype = c_char_p
 gophers.Vertical.restype = c_char_p
 gophers.ColumnOp.restype = c_char_p
-gophers.ColumnCollectList.restype = c_char_p
-gophers.ColumnCollectSet.restype = c_char_p
-gophers.ColumnSplit.restype = c_char_p
-gophers.DFColumns.restype = c_char_p
-gophers.DFCount.restype = c_int
-gophers.DFCountDuplicates.restype = c_int
-gophers.DFCountDistinct.restype = c_int
-gophers.DFCollect.restype = c_char_p
+# gophers.ColumnCollectList.restype = c_char_p
+# gophers.ColumnCollectSet.restype = c_char_p
+# gophers.ColumnSplit.restype = c_char_p
+gophers.ColumnsWrapper.restype = c_char_p
+gophers.CountWrapper.restype = c_int
+gophers.CountDuplicatesWrapper.restype = c_int
+gophers.CountDistinctWrapper.restype = c_int
+gophers.CollectWrapper.restype = c_char_p
 gophers.DisplayBrowserWrapper.restype = c_char_p
 gophers.DisplayWrapper.restype = c_char_p
 gophers.DisplayToFileWrapper.restype = c_char_p
@@ -52,30 +54,21 @@ gophers.AddTextWrapper.restype = c_char_p
 gophers.AddSubTextWrapper.restype = c_char_p
 gophers.AddBulletsWrapper.restype = c_char_p
 gophers.ToCSVFileWrapper.restype = c_char_p
-gophers.IsNullWrapper.restype = c_char_p
-gophers.IfWrapper.restype = c_char_p
+# gophers.IsNullWrapper.restype = c_char_p
 
-class FuncColumn:
-    """Helper for function-based column operations.
-       func_name is a string like "SHA256" and cols is a list of column names.
-    """
-    def __init__(self, func_name, cols):
-        self.func_name = func_name
-        self.cols = cols
+
+class ColumnExpr:
+    def __init__(self, expr):
+        self.expr = expr
+
+    def to_json(self):
+        return json.dumps(self.expr)
+
+    def __repr__(self):
+        return f"ColumnExpr({self.expr})"
 
     def IsNull(self):
-        self.func_name = "IsNull"
-        return self
-        # # Convert the Column object to a JSON string
-        # column_json = json.dumps(self.__dict__)
-        # print('printing column json')
-        # print(column_json) 
-        
-        # # Call the IsNullWrapper function
-        # result = gophers.IsNullWrapper(column_json.encode('utf-8')).decode('utf-8')
-        # print(result)
-        # # Return the result as a Column object
-        # return result
+        return ColumnExpr({ "type": "isnull", "expr": self.expr })
     
 class SplitColumn:
     """Helper for function-based column operations.
@@ -182,7 +175,9 @@ class Dashboard:
         else:
             print("Error adding bullets:", result)
         return self
-    
+
+# Aggregate functions
+
 def Sum(column_name):
     # Call the Go SumWrapper function with only the column name
     sum_agg_json = gophers.SumWrapper(column_name.encode('utf-8')).decode('utf-8')
@@ -193,59 +188,54 @@ def Agg(*aggregations):
     # Simply return the list of aggregations
     return list(aggregations)
 
-# Helper for extraction (already available in Go as Col)
-def Col(source):
-    return FuncColumn("Col",[source])
+# Column functions
+def Col(name):
+    return ColumnExpr({ "type": "col", "name": name })
 
-# Helper for extraction (already available in Go as Col)
-def Lit(source):
-    return FuncColumn("Lit",[source])
+def Lit(value):
+    return ColumnExpr({ "type": "lit", "value": value })
 
-# Helper functions for common operations
+# Logic functions
+def Gt(left, right):
+    return ColumnExpr({ "type": "gt", "left": json.loads(left.to_json()), "right": json.loads(right.to_json()) })
+
+def If(condition, trueExpr, falseExpr):
+    return ColumnExpr({ "type": "if", "cond": json.loads(condition.to_json()), "true": json.loads(trueExpr.to_json()), "false": json.loads(falseExpr.to_json()) })
+
 def SHA256(*cols):
-    return FuncColumn("SHA256", list(cols))
+    return ColumnExpr({ "type": "sha256", "cols": [json.loads(col.to_json()) for col in cols] })
 
 def SHA512(*cols):
-    return FuncColumn("SHA512", list(cols))
+    return ColumnExpr({ "type": "sha512", "cols": [json.loads(col.to_json()) for col in cols] })
 
-# In this design, CollectList, CollectSet, and Split will be handled
-# by their own exported Go wrappers.
 def CollectList(col_name):
-    return FuncColumn("CollectList",col_name)  # This is a marker value; see DataFrame.Column below.
+    return ColumnExpr({ "type": "collectlist", "col": col_name })
 
 def CollectSet(col_name):
-    return FuncColumn("CollectSet", col_name)
+    return ColumnExpr({ "type": "collectset", "col": col_name })
 
 def Split(col_name, delimiter):
-    return SplitColumn("Split", col_name, delimiter)
+    return ColumnExpr({ "type": "split", "col": col_name, "delimiter": delimiter })
 
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
     df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
 
+def ReadNDJSON(json_data):
+    # Store the JSON representation of DataFrame from Go.
+    df_json = gophers.ReadNDJSON(json_data.encode('utf-8')).decode('utf-8')
+    return DataFrame(df_json)
+
+def ReadCSV(json_data):
+    # Store the JSON representation of DataFrame from Go.
+    df_json = gophers.ReadCSV(json_data.encode('utf-8')).decode('utf-8')
+    return DataFrame(df_json)
+
 def ReadYAML(yaml_data):
     # Store the JSON representation of DataFrame from Go.
     df_json = gophers.ReadYAML(yaml_data.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
-
-def If(condition, fn1, fn2):
-    # If condition is a string (from IsNullWrapper), check if it's "true"
-    print("printing condition")
-    print(condition)
-    if isinstance(condition, str):
-        if condition == "true":
-            return fn1
-        else:
-            return fn2
-    else:
-        # Otherwise, treat it as a FuncColumn object
-        condition_json = json.dumps(condition.__dict__)
-        fn1_json = json.dumps(fn1.__dict__)
-        fn2_json = json.dumps(fn2.__dict__)
-        result_json = gophers.IfWrapper(condition_json.encode('utf-8'), fn1_json.encode('utf-8'), fn2_json.encode('utf-8')).decode('utf-8')
-        result_dict = json.loads(result_json)
-        return FuncColumn(result_dict['Name'], result_dict['Cols'])
 
 # PANDAS FUNCTIONS
 # loc
@@ -255,23 +245,24 @@ class DataFrame:
     def __init__(self, df_json=None):
         self.df_json = df_json
 
+    # Display functions
     def Show(self, chars, record_count=100):
         result = gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
         print(result)
 
     def Columns(self):
-        cols_json = gophers.DFColumns(self.df_json.encode('utf-8')).decode('utf-8')
+        cols_json = gophers.ColumnsWrapper(self.df_json.encode('utf-8')).decode('utf-8')
         return json.loads(cols_json)
 
     def Count(self):
-        return gophers.DFCount(self.df_json.encode('utf-8'))
+        return gophers.CountWrapper(self.df_json.encode('utf-8'))
 
     def CountDuplicates(self, cols=None):
         if cols is None:
             cols_json = json.dumps([])
         else:
             cols_json = json.dumps(cols)
-        return gophers.DFCountDuplicates(self.df_json.encode('utf-8'),
+        return gophers.CountDuplicatesWrapper(self.df_json.encode('utf-8'),
                                               cols_json.encode('utf-8'))
 
     def CountDistinct(self, cols=None):
@@ -279,11 +270,11 @@ class DataFrame:
             cols_json = json.dumps([])
         else:
             cols_json = json.dumps(cols)
-        return gophers.DFCountDistinct(self.df_json.encode('utf-8'),
+        return gophers.CountDistinctWrapper(self.df_json.encode('utf-8'),
                                             cols_json.encode('utf-8'))
 
     def Collect(self, col_name):
-        collected = gophers.DFCollect(self.df_json.encode('utf-8'),
+        collected = gophers.CollectWrapper(self.df_json.encode('utf-8'),
                                            col_name.encode('utf-8')).decode('utf-8')
         return json.loads(collected)
     
@@ -316,7 +307,7 @@ class DataFrame:
             print("Error writing to file:", err)
         return self
         
-    
+    # Chart functions
     def BarChart(self, title, subtitle, groupcol, aggs):
         # Make sure aggs is a list
         if not isinstance(aggs, list):
@@ -376,15 +367,13 @@ class DataFrame:
         display(HTML(html))
         return self
     
+    # Transform functions
     def Column(self, col_name, col_spec):
-        # If col_spec is an instance of ColumnExpr, use ColumnFrom.
-        if isinstance(col_spec, FuncColumn):
-            cols_json = json.dumps(col_spec.cols)
+        if isinstance(col_spec, ColumnExpr):
             self.df_json = gophers.ColumnOp(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
-                col_spec.func_name.encode('utf-8'),
-                cols_json.encode('utf-8')
+                col_spec.to_json().encode('utf-8')
             ).decode('utf-8')
         # Check for CollectList marker (a string) and call ColumnCollectList.
         elif isinstance(col_spec, str) and col_spec.startswith("CollectList"):
@@ -399,13 +388,6 @@ class DataFrame:
         elif isinstance(col_spec, str) and col_spec.startswith("CollectSet"):
             src = col_spec.split(":", 1)[1]
             self.df_json = gophers.ColumnCollectSet(
-                self.df_json.encode('utf-8'),
-                col_name.encode('utf-8'),
-                src.encode('utf-8')
-            ).decode('utf-8')
-        elif isinstance(col_spec, str) and col_spec.startswith("If"):
-            src = col_spec.split(":", 1)[1]
-            self.df_json = gophers.IfWrapper(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 src.encode('utf-8')
@@ -495,10 +477,8 @@ indices_changed:
           old: Agency
 '''        
     df = ReadYAML(yamldata)
-    df = df.Column("new_column", Lit("Yes"))
-    print(df.Columns())
-    df = df.Column("newnull", Lit(Col("indices_changed").IsNull()))
-    df = df.Column("new_column", If(Col("indices_changed").IsNull(), Lit("yes"), Lit("no")))
+    df = df.Column("newcol",Lit("knull"))
+    df = df.Column("newcol", If(Col("newcol").IsNull(),Lit("YES"),Lit("NO")))
     df.Vertical(50)
     # df.ToCSVFile('newyamlgophers.csv')
 

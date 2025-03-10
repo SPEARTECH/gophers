@@ -46,24 +46,107 @@ type Column struct {
 
 // MarshalJSON custom marshaller to exclude the function field.
 func (c Column) MarshalJSON() ([]byte, error) {
-    return json.Marshal(struct {
-        Name string `json:"Name"`
-    }{
-        Name: c.Name,
-    })
+	return json.Marshal(struct {
+		Name string `json:"Name"`
+	}{
+		Name: c.Name,
+	})
 }
 
 // UnmarshalJSON custom unmarshaller to handle the function field.
 func (c *Column) UnmarshalJSON(data []byte) error {
-    var aux struct {
-        Name string `json:"Name"`
-    }
-    if err := json.Unmarshal(data, &aux); err != nil {
-        return err
-    }
-    c.Name = aux.Name
-    // Note: The function field cannot be unmarshalled from JSON.
-    return nil
+	var aux struct {
+		Name string `json:"Name"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.Name = aux.Name
+	// Note: The function field cannot be unmarshalled from JSON.
+	return nil
+}
+
+type ColumnExpr struct {
+	Type      string          `json:"type"`
+	Name      string          `json:"name,omitempty"`
+	Value     interface{}     `json:"value,omitempty"`
+	Expr      json.RawMessage `json:"expr,omitempty"`
+	Left      json.RawMessage `json:"left,omitempty"`
+	Right     json.RawMessage `json:"right,omitempty"`
+	Cond      json.RawMessage `json:"cond,omitempty"`
+	True      json.RawMessage `json:"true,omitempty"`
+	False     json.RawMessage `json:"false,omitempty"`
+	Cols      json.RawMessage `json:"cols,omitempty"`
+	Col       string          `json:"col,omitempty"`
+	Delimiter string          `json:"delimiter,omitempty"`
+}
+
+func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
+	switch expr.Type {
+	case "col":
+		return row[expr.Name]
+	case "lit":
+		return expr.Value
+	case "isnull":
+		var subExpr ColumnExpr
+		json.Unmarshal(expr.Expr, &subExpr)
+		val := Evaluate(subExpr, row)
+		if val == nil {
+			return true
+		}
+		switch v := val.(type) {
+		case string:
+			return v == "" || strings.ToLower(v) == "null"
+		case *string:
+			return v == nil || *v == "" || strings.ToLower(*v) == "null"
+		default:
+			return false
+		}
+	case "gt":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(float64) > Evaluate(rightExpr, row).(float64)
+	case "if":
+		var condExpr, trueExpr, falseExpr ColumnExpr
+		json.Unmarshal(expr.Cond, &condExpr)
+		json.Unmarshal(expr.True, &trueExpr)
+		json.Unmarshal(expr.False, &falseExpr)
+		if Evaluate(condExpr, row).(bool) {
+			return Evaluate(trueExpr, row)
+		} else {
+			return Evaluate(falseExpr, row)
+		}
+	case "sha256":
+		var cols []ColumnExpr
+		json.Unmarshal(expr.Cols, &cols)
+		var values []string
+		for _, col := range cols {
+			values = append(values, fmt.Sprintf("%v", Evaluate(col, row)))
+		}
+		return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(values, ""))))
+	case "sha512":
+		var cols []ColumnExpr
+		json.Unmarshal(expr.Cols, &cols)
+		var values []string
+		for _, col := range cols {
+			values = append(values, fmt.Sprintf("%v", Evaluate(col, row)))
+		}
+		return fmt.Sprintf("%x", sha512.Sum512([]byte(strings.Join(values, ""))))
+	case "collectlist":
+		colName := expr.Col
+		return row[colName]
+	case "collectset":
+		colName := expr.Col
+		return row[colName]
+	case "split":
+		colName := expr.Col
+		delimiter := expr.Delimiter
+		val := row[colName].(string)
+		return strings.Split(val, delimiter)
+	default:
+		return nil
+	}
 }
 
 // add other methods that modify the chart (no menu icon, no horizontal lines, highcharts vs apexcharts, colors, etc)?
@@ -391,7 +474,7 @@ func flattenMap(data map[string]interface{}, prefix string, rows *[]map[string]i
 }
 
 // make flatten function - from pyspark methodology (for individual columns)
-func flattenWrapper(djJson *C.char, col *C.char)
+// func flattenWrapper(djJson *C.char, col *C.char)
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
 // It accepts a C string representing the path (or content) of a parquet file,
@@ -2812,61 +2895,61 @@ func If(condition Column, fn1 Column, fn2 Column) Column {
 //
 //export IfWrapper
 func IfWrapper(conditionJson *C.char, fn1Json *C.char, fn2Json *C.char) *C.char {
-    var condition, fn1, fn2 Column
-    if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &condition); err != nil {
-        errStr := fmt.Sprintf("IfWrapper: unmarshal error for condition: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    if err := json.Unmarshal([]byte(C.GoString(fn1Json)), &fn1); err != nil {
-        errStr := fmt.Sprintf("IfWrapper: unmarshal error for fn1: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    if err := json.Unmarshal([]byte(C.GoString(fn2Json)), &fn2); err != nil {
-        errStr := fmt.Sprintf("IfWrapper: unmarshal error for fn2: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	var condition, fn1, fn2 Column
+	if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &condition); err != nil {
+		errStr := fmt.Sprintf("IfWrapper: unmarshal error for condition: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	if err := json.Unmarshal([]byte(C.GoString(fn1Json)), &fn1); err != nil {
+		errStr := fmt.Sprintf("IfWrapper: unmarshal error for fn1: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	if err := json.Unmarshal([]byte(C.GoString(fn2Json)), &fn2); err != nil {
+		errStr := fmt.Sprintf("IfWrapper: unmarshal error for fn2: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    result := If(condition, fn1, fn2)
-    resultJson, err := json.Marshal(struct {
-        Name string   `json:"Name"`
-        Cols []string `json:"Cols"`
-    }{
-        Name: result.Name,
-        Cols: []string{condition.Name, fn1.Name, fn2.Name},
-    })
-    if err != nil {
-        errStr := fmt.Sprintf("IfWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	result := If(condition, fn1, fn2)
+	resultJson, err := json.Marshal(struct {
+		Name string   `json:"Name"`
+		Cols []string `json:"Cols"`
+	}{
+		Name: result.Name,
+		Cols: []string{condition.Name, fn1.Name, fn2.Name},
+	})
+	if err != nil {
+		errStr := fmt.Sprintf("IfWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    return C.CString(string(resultJson))
+	return C.CString(string(resultJson))
 }
 
 // IsNull returns a new Column that, when applied to a row,
 // returns true if the original column value is nil, an empty string, or "null".
 func (c Column) IsNull() Column {
-    return Column{
-        Name: c.Name + "_isnull",
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            if val == nil {
-                return true
-            }
+	return Column{
+		Name: c.Name + "_isnull",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			if val == nil {
+				return true
+			}
 
-            switch v := val.(type) {
-            case string:
-                return v == "" || strings.ToLower(v) == "null"
-            case *string:
-                return v == nil || *v == "" || strings.ToLower(*v) == "null"
-            default:
-                return false
-            }
-        },
-    }
+			switch v := val.(type) {
+			case string:
+				return v == "" || strings.ToLower(v) == "null"
+			case *string:
+				return v == nil || *v == "" || strings.ToLower(*v) == "null"
+			default:
+				return false
+			}
+		},
+	}
 }
 
 // // Updated IsNullWrapper: now accepts both a column JSON and a DataFrame JSON,
@@ -2889,8 +2972,9 @@ func (c Column) IsNull() Column {
 
 //     result := colData.IsNull()
 
-//     return C.CString(result)
-// }
+//	    return C.CString(result)
+//	}
+//
 // IsNotNull returns a new Column that, when applied to a row,
 // returns true if the original column value is not nil, not an empty string, and not "null".
 func (c Column) IsNotNull() Column {
@@ -3072,53 +3156,15 @@ func And(c1, c2 Column) Column {
 // The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
 //
 //export ColumnOp
-func ColumnOp(dfJson *C.char, newCol *C.char, opName *C.char, colsJson *C.char) *C.char {
+func ColumnOp(dfJson *C.char, newCol *C.char, colSpecJson *C.char) *C.char {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
 		log.Fatalf("Error unmarshalling DataFrame JSON in ColumnOp: %v", err)
 	}
 
-	op := C.GoString(opName)
-	var srcCols []string
-	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &srcCols); err != nil {
-		log.Fatalf("Error unmarshalling columns JSON in ColumnOp: %v", err)
-	}
-
-	// Create a slice of Columns from the source column names.
-	var compCols []Column
-	for _, s := range srcCols {
-        if op == "Lit" {
-            compCols = append(compCols, Lit(s))
-        } else {
-            compCols = append(compCols, Col(s))
-        }	}
-
-	// Depending on the operation, create the Column specification.
-	var colSpec Column
-	switch op {
-	case "SHA256":
-		colSpec = SHA256(compCols...)
-	case "SHA512":
-		colSpec = SHA512(compCols...)
-	case "Col":
-		colSpec = Col(srcCols[0])
-	case "IsNull":
-		colSpec = Col(srcCols[0]).IsNull()
-		fmt.Println("colSpec:", colSpec)
-		return C.CString(string(colSpec))
-	case "Lit":
-		colSpec = Lit(srcCols[0])
-	case "CollectList":
-		colSpec = CollectList(srcCols[0])
-	case "CollectSet":
-		colSpec = CollectSet(srcCols[0])
-	// case "If":
-	// 	if len(compCols) != 3 {
-	// 		log.Fatalf("Expected 3 columns for If operation, got %d", len(compCols))
-	// 	}
-	// 	colSpec = If(compCols[0], compCols[1], compCols[2])
-	default:
-		log.Fatalf("Unsupported operation: %s", op)
+	var colSpec ColumnExpr
+	if err := json.Unmarshal([]byte(C.GoString(colSpecJson)), &colSpec); err != nil {
+		log.Fatalf("Error unmarshalling ColumnExpr JSON in ColumnOp: %v", err)
 	}
 
 	newDF := df.Column(C.GoString(newCol), colSpec)
@@ -3131,15 +3177,20 @@ func ColumnOp(dfJson *C.char, newCol *C.char, opName *C.char, colsJson *C.char) 
 
 // Column adds or modifies a column in the DataFrame using a Column.
 // This version accepts a Column (whose underlying function is applied to each row).
-func (df *DataFrame) Column(column string, col Column) *DataFrame {
+//
+//	(moddified for c-shared library)
+func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
 	values := make([]interface{}, df.Rows)
 	for i := 0; i < df.Rows; i++ {
 		row := make(map[string]interface{})
 		for _, c := range df.Cols {
 			row[c] = df.Data[c][i]
 		}
-		// Use the underlying Column function.
-		values[i] = col.Fn(row)
+		// // Use the underlying Column function.
+		// values[i] = col.Fn(row)
+
+		// Use the Evaluate function to evaluate the expression.
+		values[i] = Evaluate(colSpec, row)
 	}
 
 	// Add or modify the column.
@@ -3643,63 +3694,63 @@ func SHA512(cols ...Column) Column {
 	}
 }
 
-// ColumnCollectList applies CollectList on the specified source column
-// and creates a new column.
-//
-//export ColumnCollectList
-func ColumnCollectList(dfJson *C.char, newCol *C.char, source *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("ColumnCollectList: unmarshal error: %v", err)
-	}
-	newName := C.GoString(newCol)
-	src := C.GoString(source)
-	newDF := df.Column(newName, CollectList(src))
-	newJSON, err := json.Marshal(newDF)
-	if err != nil {
-		log.Fatalf("ColumnCollectList: marshal error: %v", err)
-	}
-	return C.CString(string(newJSON))
-}
+// // ColumnCollectList applies CollectList on the specified source column
+// // and creates a new column.
+// //
+// //export ColumnCollectList
+// func ColumnCollectList(dfJson *C.char, newCol *C.char, source *C.char) *C.char {
+// 	var df DataFrame
+// 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+// 		log.Fatalf("ColumnCollectList: unmarshal error: %v", err)
+// 	}
+// 	newName := C.GoString(newCol)
+// 	src := C.GoString(source)
+// 	newDF := df.Column(newName, CollectList(src))
+// 	newJSON, err := json.Marshal(newDF)
+// 	if err != nil {
+// 		log.Fatalf("ColumnCollectList: marshal error: %v", err)
+// 	}
+// 	return C.CString(string(newJSON))
+// }
 
-// ColumnCollectSet applies CollectSet on the specified source column
-// and creates a new column.
-//
-//export ColumnCollectSet
-func ColumnCollectSet(dfJson *C.char, newCol *C.char, source *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("ColumnCollectSet: unmarshal error: %v", err)
-	}
-	newName := C.GoString(newCol)
-	src := C.GoString(source)
-	newDF := df.Column(newName, CollectSet(src))
-	newJSON, err := json.Marshal(newDF)
-	if err != nil {
-		log.Fatalf("ColumnCollectSet: marshal error: %v", err)
-	}
-	return C.CString(string(newJSON))
-}
+// // ColumnCollectSet applies CollectSet on the specified source column
+// // and creates a new column.
+// //
+// //export ColumnCollectSet
+// func ColumnCollectSet(dfJson *C.char, newCol *C.char, source *C.char) *C.char {
+// 	var df DataFrame
+// 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+// 		log.Fatalf("ColumnCollectSet: unmarshal error: %v", err)
+// 	}
+// 	newName := C.GoString(newCol)
+// 	src := C.GoString(source)
+// 	newDF := df.Column(newName, CollectSet(src))
+// 	newJSON, err := json.Marshal(newDF)
+// 	if err != nil {
+// 		log.Fatalf("ColumnCollectSet: marshal error: %v", err)
+// 	}
+// 	return C.CString(string(newJSON))
+// }
 
-// ColumnSplit applies Split on the specified source column with the given delimiter
-// and creates a new column.
-//
-//export ColumnSplit
-func ColumnSplit(dfJson *C.char, newCol *C.char, source *C.char, delim *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("ColumnSplit: unmarshal error: %v", err)
-	}
-	newName := C.GoString(newCol)
-	src := C.GoString(source)
-	delimiter := C.GoString(delim)
-	newDF := df.Column(newName, Split(src, delimiter))
-	newJSON, err := json.Marshal(newDF)
-	if err != nil {
-		log.Fatalf("ColumnSplit: marshal error: %v", err)
-	}
-	return C.CString(string(newJSON))
-}
+// // ColumnSplit applies Split on the specified source column with the given delimiter
+// // and creates a new column.
+// //
+// //export ColumnSplit
+// func ColumnSplit(dfJson *C.char, newCol *C.char, source *C.char, delim *C.char) *C.char {
+// 	var df DataFrame
+// 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+// 		log.Fatalf("ColumnSplit: unmarshal error: %v", err)
+// 	}
+// 	newName := C.GoString(newCol)
+// 	src := C.GoString(source)
+// 	delimiter := C.GoString(delim)
+// 	newDF := df.Column(newName, Split(src, delimiter))
+// 	newJSON, err := json.Marshal(newDF)
+// 	if err != nil {
+// 		log.Fatalf("ColumnSplit: marshal error: %v", err)
+// 	}
+// 	return C.CString(string(newJSON))
+// }
 
 // CollectList returns a Column that is an array of the given column's values.
 func CollectList(name string) Column {
@@ -3813,41 +3864,41 @@ func toString(val interface{}) (string, error) {
 
 // RETURNS --------------------------------------------------
 
-// DFColumns returns the DataFrame columns as a JSON array.
+// ColumnsWrapper returns the DataFrame columns as a JSON array.
 
-//export DFColumns
-func DFColumns(dfJson *C.char) *C.char {
+//export ColumnsWrapper
+func ColumnsWrapper(dfJson *C.char) *C.char {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("DFColumns: error unmarshalling DataFrame: %v", err)
+		log.Fatalf("ColumnsWrapper: error unmarshalling DataFrame: %v", err)
 	}
 	cols := df.Columns()
 	colsJSON, err := json.Marshal(cols)
 	if err != nil {
-		log.Fatalf("DFColumns: error marshalling columns: %v", err)
+		log.Fatalf("ColumnsWrapper: error marshalling columns: %v", err)
 	}
 	return C.CString(string(colsJSON))
 }
 
-// DFCount returns the number of rows in the DataFrame.
+// CountWrapper returns the number of rows in the DataFrame.
 //
-//export DFCount
-func DFCount(dfJson *C.char) C.int {
+//export CountWrapper
+func CountWrapper(dfJson *C.char) C.int {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("DFCount: error unmarshalling DataFrame: %v", err)
+		log.Fatalf("CountWrapper: error unmarshalling DataFrame: %v", err)
 	}
 	return C.int(df.Count())
 }
 
-// DFCountDuplicates returns the count of duplicate rows.
+// CountDuplicatesWrapper returns the count of duplicate rows.
 // It accepts a JSON array of column names (or an empty array to use all columns).
 //
-//export DFCountDuplicates
-func DFCountDuplicates(dfJson *C.char, colsJson *C.char) C.int {
+//export CountDuplicatesWrapper
+func CountDuplicatesWrapper(dfJson *C.char, colsJson *C.char) C.int {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("DFCountDuplicates: error unmarshalling DataFrame: %v", err)
+		log.Fatalf("CountDuplicatesWrapper: error unmarshalling DataFrame: %v", err)
 	}
 
 	var cols []string
@@ -3859,14 +3910,14 @@ func DFCountDuplicates(dfJson *C.char, colsJson *C.char) C.int {
 	return C.int(dups)
 }
 
-// DFCountDistinct returns the count of unique rows (or unique values in the provided columns).
+// CountDistinctWrapper returns the count of unique rows (or unique values in the provided columns).
 // Accepts a JSON array of column names (or an empty array to use all columns).
 //
-//export DFCountDistinct
-func DFCountDistinct(dfJson *C.char, colsJson *C.char) C.int {
+//export CountDistinctWrapper
+func CountDistinctWrapper(dfJson *C.char, colsJson *C.char) C.int {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("DFCountDistinct: error unmarshalling DataFrame: %v", err)
+		log.Fatalf("CountDistinctWrapper: error unmarshalling DataFrame: %v", err)
 	}
 
 	var cols []string
@@ -3877,19 +3928,19 @@ func DFCountDistinct(dfJson *C.char, colsJson *C.char) C.int {
 	return C.int(distinct)
 }
 
-// DFCollect returns the collected values from a specified column as a JSON-array.
+// CollectWrapper returns the collected values from a specified column as a JSON-array.
 //
-//export DFCollect
-func DFCollect(dfJson *C.char, colName *C.char) *C.char {
+//export CollectWrapper
+func CollectWrapper(dfJson *C.char, colName *C.char) *C.char {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("DFCollect: error unmarshalling DataFrame: %v", err)
+		log.Fatalf("CollectWrapper: error unmarshalling DataFrame: %v", err)
 	}
 	col := C.GoString(colName)
 	collected := df.Collect(col)
 	result, err := json.Marshal(collected)
 	if err != nil {
-		log.Fatalf("DFCollect: error marshalling collected values: %v", err)
+		log.Fatalf("CollectWrapper: error marshalling collected values: %v", err)
 	}
 	return C.CString(string(result))
 }
