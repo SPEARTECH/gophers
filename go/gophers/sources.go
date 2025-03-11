@@ -126,12 +126,24 @@ func ReadCSV(csvFile string) *DataFrame {
 
 // Read json and output dataframe
 func ReadJSON(jsonStr string) *DataFrame {
+	var rows []map[string]interface{}
+	var jsonContent string
+
+	// Check if the input is a file path.
 	if fileExists(jsonStr) {
 		bytes, err := os.ReadFile(jsonStr)
 		if err != nil {
-			fmt.Println(err)
+			log.Fatalf("Error reading file: %v", err)
 		}
-		jsonStr = string(bytes)
+		jsonContent = string(bytes)
+	} else {
+		jsonContent = jsonStr
+	}
+	// Trim whitespace and check if jsonContent starts with "{".
+	trimmed := strings.TrimSpace(jsonContent)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		// Wrap single JSON object into an array.
+		jsonContent = "[" + jsonContent + "]"
 	}
 	// fmt.Println(jsonStr)
 	// Unmarshal the JSON into a slice of maps.

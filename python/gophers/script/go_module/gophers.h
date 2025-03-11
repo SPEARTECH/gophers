@@ -74,193 +74,229 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
-extern char* ReadCSV(char* csvFile);
-extern char* ReadJSON(char* jsonStr);
-extern char* ReadNDJSON(char* jsonStr);
+extern __declspec(dllexport) char* ReadCSV(char* csvFile);
+extern __declspec(dllexport) char* ReadJSON(char* jsonStr);
+extern __declspec(dllexport) char* ReadNDJSON(char* jsonStr);
 
 // ReadYAML reads a YAML string or file and converts it to a DataFrame.
 //
-extern char* ReadYAML(char* yamlStr);
+extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
 // It accepts a C string representing the path (or content) of a parquet file,
 // calls ReadParquet, marshals the resulting DataFrame back to JSON, and returns it as a C string.
 //
-extern char* ReadParquetWrapper(char* parquetPath);
-extern char* GetAPIJSON(char* endpoint, char* headers, char* queryParams);
+extern __declspec(dllexport) char* ReadParquetWrapper(char* parquetPath);
+extern __declspec(dllexport) char* GetAPIJSON(char* endpoint, char* headers, char* queryParams);
 
 // Print displays the DataFrame in a simple tabular format.
 //
-extern char* Show(char* dfJson, int chars, int record_count);
-extern char* Head(char* dfJson, int chars);
-extern char* Tail(char* dfJson, int chars);
-extern char* Vertical(char* dfJson, int chars, int record_count);
+extern __declspec(dllexport) char* Show(char* dfJson, int chars, int record_count);
+extern __declspec(dllexport) char* Head(char* dfJson, int chars);
+extern __declspec(dllexport) char* Tail(char* dfJson, int chars);
+extern __declspec(dllexport) char* Vertical(char* dfJson, int chars, int record_count);
 
 // DisplayBrowserWrapper is an exported function that wraps the DisplayBrowser method.
 // It takes a JSON-string representing the DataFrame, calls DisplayBrowser, and
 // returns an empty string on success or an error message on failure.
 //
-extern char* DisplayBrowserWrapper(char* dfJson);
+extern __declspec(dllexport) char* DisplayBrowserWrapper(char* dfJson);
 
 // DisplayWrapper is an exported function that wraps the Display method.
 // It takes a JSON-string representing the DataFrame, calls Display, and
 // returns the HTML string on success or an error message on failure.
 //
-extern char* DisplayWrapper(char* dfJson);
+extern __declspec(dllexport) char* DisplayWrapper(char* dfJson);
 
 // DisplayToFile
 // DisplayToFileWrapper is an exported function that wraps the DisplayToFile method.
 // It takes a JSON-string representing the DataFrame and a file path, calls DisplayToFile,
 // and returns an empty string on success or an error message on failure.
 //
-extern char* DisplayToFileWrapper(char* dfJson, char* filePath);
+extern __declspec(dllexport) char* DisplayToFileWrapper(char* dfJson, char* filePath);
 
 // DisplayChartWrapper is an exported function that wraps the DisplayChart function.
 // It takes a JSON-string representing the Chart, calls DisplayChart, and
 // returns the HTML string on success or an error message on failure.
 //
-extern char* DisplayChartWrapper(char* chartJson);
+extern __declspec(dllexport) char* DisplayChartWrapper(char* chartJson);
 
 // DisplayHTMLWrapper is an exported function that wraps the DisplayHTML function.
 // It takes a string representing the HTML content and returns the HTML content as a C string.
 //
-extern char* DisplayHTMLWrapper(char* html);
+extern __declspec(dllexport) char* DisplayHTMLWrapper(char* html);
 
 // BarChartWrapper is an exported function that wraps the BarChart function.
 //
-extern char* BarChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+extern __declspec(dllexport) char* BarChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
 
 // ColumnChartWrapper is an exported function that wraps the ColumnChart function.
 // It takes a JSON-string representing the DataFrame and chart parameters, calls ColumnChart, and
 // returns the HTML string on success or an error message on failure.
 //
-extern char* ColumnChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+extern __declspec(dllexport) char* ColumnChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
 
 // StackedBarChartWrapper is an exported function that wraps the StackedBarChart function.
 // It takes a JSON-string representing the DataFrame and chart parameters, calls StackedBarChart, and
 // returns the HTML string on success or an error message on failure.
 //
-extern char* StackedBarChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+extern __declspec(dllexport) char* StackedBarChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
 
 // StackedPercentChartWrapper is an exported function that wraps the StackedPercentChart function.
 // It takes a JSON-string representing the DataFrame and chart parameters, calls StackedPercentChart, and
 // returns the HTML string on success or an error message on failure.
 //
-extern char* StackedPercentChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
+extern __declspec(dllexport) char* StackedPercentChartWrapper(char* dfJson, char* title, char* subtitle, char* groupcol, char* aggsJson);
 
-// CreateDashboardWrapper is an exported function that wraps the CreateDashboard method.
+// CreateReportWrapper is an exported function that wraps the CreateReport method.
 //
-extern char* CreateDashboardWrapper(char* dfJson, char* title);
+extern __declspec(dllexport) char* CreateReportWrapper(char* dfJson, char* title);
 
-// OpenDashboardWrapper is an exported function that wraps the Open method.
+// OpenReportWrapper is an exported function that wraps the Open method.
 //
-extern char* OpenDashboardWrapper(char* dashboardJson);
+extern __declspec(dllexport) char* OpenReportWrapper(char* reportJson);
 
-// SaveDashboardWrapper is an exported function that wraps the Save method.
+// SaveReportWrapper is an exported function that wraps the Save method.
 //
-extern char* SaveDashboardWrapper(char* dashboardJson, char* filename);
+extern __declspec(dllexport) char* SaveReportWrapper(char* reportJson, char* filename);
 
 // AddPageWrapper is an exported function that wraps the AddPage method.
 //
-extern char* AddPageWrapper(char* dashboardJson, char* name);
+extern __declspec(dllexport) char* AddPageWrapper(char* reportJson, char* name);
 
 // AddHTMLWrapper is an exported function that wraps the AddHTML method.
 //
-extern char* AddHTMLWrapper(char* dashboardJson, char* page, char* text);
+extern __declspec(dllexport) char* AddHTMLWrapper(char* reportJson, char* page, char* text);
 
 // AddDataframeWrapper is an exported function that wraps the AddDataframe method.
 //
-extern char* AddDataframeWrapper(char* dashboardJson, char* page, char* dfJson);
+extern __declspec(dllexport) char* AddDataframeWrapper(char* reportJson, char* page, char* dfJson);
 
 // AddChartWrapper is an exported function that wraps the AddChart method.
 //
-extern char* AddChartWrapper(char* dashboardJson, char* page, char* chartJson);
-extern char* AddHeadingWrapper(char* dashboardJson, char* page, char* heading, int size);
+extern __declspec(dllexport) char* AddChartWrapper(char* reportJson, char* page, char* chartJson);
+extern __declspec(dllexport) char* AddHeadingWrapper(char* reportJson, char* page, char* heading, int size);
 
 // AddTextWrapper is an exported function that wraps the AddText method.
 //
-extern char* AddTextWrapper(char* dashboardJson, char* page, char* text);
+extern __declspec(dllexport) char* AddTextWrapper(char* reportJson, char* page, char* text);
 
 // AddSubTextWrapper is an exported function that wraps the AddSubText method.
 //
-extern char* AddSubTextWrapper(char* dashboardJson, char* page, char* text);
+extern __declspec(dllexport) char* AddSubTextWrapper(char* reportJson, char* page, char* text);
 
 // AddBulletsWrapper is an exported function that wraps the AddBullets method.
 //
-extern char* AddBulletsWrapper(char* dashboardJson, char* page, char* bulletsJson);
+extern __declspec(dllexport) char* AddBulletsWrapper(char* reportJson, char* page, char* bulletsJson);
 
 // SumWrapper is an exported function that returns an Aggregation struct for the Sum function.
 //
-extern char* SumWrapper(char* name);
+extern __declspec(dllexport) char* SumWrapper(char* name);
 
 // AggWrapper is an exported function that converts multiple Column functions to a slice of Aggregation structs.
 //
-extern char* AggWrapper(char* colsJson);
+extern __declspec(dllexport) char* AggWrapper(char* colsJson);
 
 // MaxWrapper is an exported function that wraps the Max function.
 //
-extern char* MaxWrapper(char* name);
+extern __declspec(dllexport) char* MaxWrapper(char* name);
 
 // MinWrapper is an exported function that wraps the Min function.
 //
-extern char* MinWrapper(char* name);
+extern __declspec(dllexport) char* MinWrapper(char* name);
 
 // MedianWrapper is an exported function that wraps the Median function.
 //
-extern char* MedianWrapper(char* name);
+extern __declspec(dllexport) char* MedianWrapper(char* name);
 
 // MeanWrapper is an exported function that wraps the Mean function.
 //
-extern char* MeanWrapper(char* name);
+extern __declspec(dllexport) char* MeanWrapper(char* name);
 
 // ModeWrapper is an exported function that wraps the Mode function.
 //
-extern char* ModeWrapper(char* name);
+extern __declspec(dllexport) char* ModeWrapper(char* name);
 
 // UniqueWrapper is an exported function that wraps the Unique function.
 //
-extern char* UniqueWrapper(char* name);
+extern __declspec(dllexport) char* UniqueWrapper(char* name);
 
 // FirstWrapper is an exported function that wraps the First function.
 //
-extern char* FirstWrapper(char* name);
+extern __declspec(dllexport) char* FirstWrapper(char* name);
 
 // IfWrapper is an exported function that wraps the If function.
 // It takes JSON strings representing the condition, fn1, and fn2 Columns, calls If, and returns the resulting Column as a JSON string.
 //
-extern char* IfWrapper(char* conditionJson, char* fn1Json, char* fn2Json);
+extern __declspec(dllexport) char* IfWrapper(char* conditionJson, char* fn1Json, char* fn2Json);
 
-// ColumnOp applies an operation (identified by opName) to the columns
+// ColumnWrapper applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
 // The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
 //
-extern char* ColumnOp(char* dfJson, char* newCol, char* colSpecJson);
+extern __declspec(dllexport) char* ColumnWrapper(char* dfJson, char* newCol, char* colSpecJson);
+
+// FilterWrapper is an exported function that wraps the Filter method.
+// It accepts a JSON string representing the DataFrame and a JSON string representing a Column (the condition).
+// It returns the filtered DataFrame as a JSON string.
+//
+extern __declspec(dllexport) char* FilterWrapper(char* dfJson, char* conditionJson);
+
+// ExplodeWrapper is an exported function that wraps the Explode method.
+// It accepts a JSON string representing the DataFrame and a JSON string representing an array of column names to explode.
+// It returns the resulting DataFrame as a JSON string.
+//
+extern __declspec(dllexport) char* ExplodeWrapper(char* dfJson, char* colsJson);
+extern __declspec(dllexport) char* RenameWrapper(char* dfJson, char* oldCol, char* newCol);
+extern __declspec(dllexport) char* FillNAWrapper(char* dfJson, char* replacement);
+extern __declspec(dllexport) char* DropNAWrapper(char* dfJson);
+
+// The wrapper accepts a JSON string representing an array of column names. If empty,
+// then the entire row is used.
+extern __declspec(dllexport) char* DropDuplicatesWrapper(char* dfJson, char* colsJson);
+
+// SelectWrapper is an exported function that wraps the Select method.
+// It takes a JSON-string representing the DataFrame and a JSON-string representing the column names.
+// It returns the resulting DataFrame as a JSON string.
+//
+extern __declspec(dllexport) char* SelectWrapper(char* dfJson, char* colsJson);
 
 // GroupByWrapper is an exported function that wraps the GroupBy method.
 // It takes a JSON-string representing the DataFrame, the group column, and a JSON-string representing the aggregations.
 // It returns the resulting DataFrame as a JSON string.
 //
-extern char* GroupByWrapper(char* dfJson, char* groupCol, char* aggsJson);
-extern char* ColumnsWrapper(char* dfJson);
+extern __declspec(dllexport) char* GroupByWrapper(char* dfJson, char* groupCol, char* aggsJson);
+
+// This wrapper accepts two DataFrame JSON strings and join parameters.
+extern __declspec(dllexport) char* JoinWrapper(char* leftDfJson, char* rightDfJson, char* leftOn, char* rightOn, char* joinType);
+extern __declspec(dllexport) char* UnionWrapper(char* leftDfJson, char* rightDfJson);
+extern __declspec(dllexport) char* DropWrapper(char* dfJson, char* colsJson);
+extern __declspec(dllexport) char* OrderByWrapper(char* dfJson, char* column, char* asc);
+
+// SortWrapper is an exported function that wraps the SortColumns method
+// so that it can be called from Python.
+//
+extern __declspec(dllexport) char* SortWrapper(char* dfJson);
+extern __declspec(dllexport) char* ColumnsWrapper(char* dfJson);
 
 // CountWrapper returns the number of rows in the DataFrame.
 //
-extern int CountWrapper(char* dfJson);
+extern __declspec(dllexport) int CountWrapper(char* dfJson);
 
 // CountDuplicatesWrapper returns the count of duplicate rows.
 // It accepts a JSON array of column names (or an empty array to use all columns).
 //
-extern int CountDuplicatesWrapper(char* dfJson, char* colsJson);
+extern __declspec(dllexport) int CountDuplicatesWrapper(char* dfJson, char* colsJson);
 
 // CountDistinctWrapper returns the count of unique rows (or unique values in the provided columns).
 // Accepts a JSON array of column names (or an empty array to use all columns).
 //
-extern int CountDistinctWrapper(char* dfJson, char* colsJson);
+extern __declspec(dllexport) int CountDistinctWrapper(char* dfJson, char* colsJson);
 
 // CollectWrapper returns the collected values from a specified column as a JSON-array.
 //
-extern char* CollectWrapper(char* dfJson, char* colName);
-extern char* ToCSVFileWrapper(char* dfJson, char* filename);
+extern __declspec(dllexport) char* CollectWrapper(char* dfJson, char* colName);
+extern __declspec(dllexport) char* ToCSVFileWrapper(char* dfJson, char* filename);
 
 #ifdef __cplusplus
 }

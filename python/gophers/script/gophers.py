@@ -10,14 +10,12 @@ gophers.ReadJSON.restype = c_char_p
 gophers.ReadNDJSON.restype = c_char_p
 gophers.ReadCSV.restype = c_char_p
 gophers.ReadYAML.restype = c_char_p
+gophers.GetAPIJSON.restype = c_char_p
 gophers.Show.restype = c_char_p
 gophers.Head.restype = c_char_p
 gophers.Tail.restype = c_char_p
 gophers.Vertical.restype = c_char_p
-gophers.ColumnOp.restype = c_char_p
-# gophers.ColumnCollectList.restype = c_char_p
-# gophers.ColumnCollectSet.restype = c_char_p
-# gophers.ColumnSplit.restype = c_char_p
+gophers.ColumnWrapper.restype = c_char_p
 gophers.ColumnsWrapper.restype = c_char_p
 gophers.CountWrapper.restype = c_int
 gophers.CountDuplicatesWrapper.restype = c_int
@@ -33,6 +31,20 @@ gophers.ColumnChartWrapper.restype = c_char_p
 gophers.StackedBarChartWrapper.restype = c_char_p
 gophers.StackedPercentChartWrapper.restype = c_char_p
 gophers.GroupByWrapper.restype = c_char_p
+gophers.ExplodeWrapper.restype = c_char_p
+gophers.FilterWrapper.restype = c_char_p
+gophers.SelectWrapper.restype = c_char_p
+gophers.UnionWrapper.restype = c_char_p
+gophers.JoinWrapper.restype = c_char_p
+gophers.SortWrapper.restype = c_char_p
+gophers.FilterWrapper.restype = c_char_p
+gophers.OrderByWrapper.restype = c_char_p
+gophers.DropWrapper.restype = c_char_p
+gophers.DropDuplicatesWrapper.restype = c_char_p
+gophers.DropNAWrapper.restype = c_char_p
+gophers.FillNAWrapper.restype = c_char_p
+gophers.RenameWrapper.restype = c_char_p
+gophers.GroupByWrapper.restype = c_char_p
 gophers.AggWrapper.restype = c_char_p
 gophers.SumWrapper.restype = c_char_p
 gophers.MaxWrapper.restype = c_char_p
@@ -42,9 +54,9 @@ gophers.MeanWrapper.restype = c_char_p
 gophers.ModeWrapper.restype = c_char_p
 gophers.UniqueWrapper.restype = c_char_p
 gophers.FirstWrapper.restype = c_char_p
-gophers.CreateDashboardWrapper.restype = c_char_p
-gophers.OpenDashboardWrapper.restype = c_char_p
-gophers.SaveDashboardWrapper.restype = c_char_p
+gophers.CreateReportWrapper.restype = c_char_p
+gophers.OpenReportWrapper.restype = c_char_p
+gophers.SaveReportWrapper.restype = c_char_p
 gophers.AddPageWrapper.restype = c_char_p
 gophers.AddHTMLWrapper.restype = c_char_p
 gophers.AddDataframeWrapper.restype = c_char_p
@@ -54,7 +66,6 @@ gophers.AddTextWrapper.restype = c_char_p
 gophers.AddSubTextWrapper.restype = c_char_p
 gophers.AddBulletsWrapper.restype = c_char_p
 gophers.ToCSVFileWrapper.restype = c_char_p
-# gophers.IsNullWrapper.restype = c_char_p
 
 
 class ColumnExpr:
@@ -64,65 +75,176 @@ class ColumnExpr:
     def to_json(self):
         return json.dumps(self.expr)
 
+    def Help(self):
+        print("Column Help:")
+        print("\tIsNull()")
+        print("\tIsNotNull()")
+        print("\tIsIn(values)")
+        print("\tIsBetween(lower, upper)")
+        print("\tLike(pattern)")
+        print("\tNotLike(pattern)")
+        print("\tStartsWith(prefix)")
+        print("\tEndsWith(suffix)")
+        print("\tContains(substr)")
+        print("\tNotContains(substr)")
+        print("\tReplace(old, new)")
+        print("\tTrim()")
+        print("\tLTrim()")
+        print("\tRTrim()")
+        print("\tLower()")
+        print("\tUpper()")
+        print("\tTitle()")
+        print("\tSubstr(start, length)")
+        print("\tGt(other)")
+        print("\tLt(other)")
+        print("\tGe(other)")
+        print("\tLe(other)")
+        print("\tEq(other)")
+        print("\tNe(other)")
+        
     def __repr__(self):
         return f"ColumnExpr({self.expr})"
 
     def IsNull(self):
         return ColumnExpr({ "type": "isnull", "expr": self.expr })
     
-class SplitColumn:
-    """Helper for function-based column operations.
-       func_name is a string like "SHA256" and cols is a list of column names.
-    """
-    def __init__(self, func_name, cols, delim):
-        self.func_name = func_name
-        self.cols = cols
-        self.delim = delim
+    def IsNotNull(self):
+        return ColumnExpr({ "type": "isnotnull", "expr": self.expr })
+    
+    def IsIn(self, values):
+        return ColumnExpr({ "type": "isin", "expr": self.expr, "values": values })
+    
+    def IsBetween(self, lower, upper):
+        return ColumnExpr({ "type": "isbetween", "expr": self.expr, "lower": lower, "upper": upper })
+    
+    def Like(self, pattern):
+        return ColumnExpr({ "type": "like", "expr": self.expr, "pattern": pattern })
+    
+    def NotLike(self, pattern):
+        return ColumnExpr({ "type": "notlike", "expr": self.expr, "pattern": pattern })
+    
+    def StartsWith(self, prefix):
+        return ColumnExpr({ "type": "startswith", "expr": self.expr, "prefix": prefix })
+    
+    def EndsWith(self, suffix):
+        return ColumnExpr({ "type": "endswith", "expr": self.expr, "suffix": suffix })
+    
+    def Contains(self, substr):
+        return ColumnExpr({ "type": "contains", "expr": self.expr, "substr": substr })
+    
+    def NotContains(self, substr):
+        return ColumnExpr({ "type": "notcontains", "expr": self.expr, "substr": substr })
+    
+    def Replace(self, old, new):
+        return ColumnExpr({ "type": "replace", "expr": self.expr, "old": old, "new": new })
+    
+    def Trim(self):
+        return ColumnExpr({ "type": "trim", "expr": self.expr })
+    
+    def LTrim(self):
+        return ColumnExpr({ "type": "ltrim", "expr": self.expr })
+    
+    def RTrim(self):
+        return ColumnExpr({ "type": "rtrim", "expr": self.expr })
+    
+    def Lower(self):
+        return ColumnExpr({ "type": "lower", "expr": self.expr })
+    
+    def Upper(self):
+        return ColumnExpr({ "type": "upper", "expr": self.expr })
+    
+    # def Title(self):
+    #     return ColumnExpr({ "type": "title", "expr": self.expr })
+    
+    # def Substr(self, start, length):
+    #     return ColumnExpr({ "type": "substr", "expr": self.expr, "start": start, "length": length })
+    
+    def Gt(self, other):
+        return ColumnExpr({ "type": "gt", "left": self.expr, "right": other })
+    
+    def Lt(self, other):
+        return ColumnExpr({ "type": "lt", "left": self.expr, "right": other })
+    
+    def Ge(self, other):
+        return ColumnExpr({ "type": "ge", "left": self.expr, "right": other })
+    
+    def Le(self, other):
+        return ColumnExpr({ "type": "le", "left": self.expr, "right": other })
+    
+    def Eq(self, other):
+        return ColumnExpr({ "type": "eq", "left": self.expr, "right": other })
+    
+    def Ne(self, other):
+        return ColumnExpr({ "type": "ne", "left": self.expr, "right": other })
 
+# class SplitColumn:
+#     """Helper for function-based column operations.
+#        func_name is a string like "SHA256" and cols is a list of column names.
+#     """
+#     def __init__(self, func_name, cols, delim):
+#         self.func_name = func_name
+#         self.cols = cols
+#         self.delim = delim
+
+# Chart obj
 class Chart:
     def __init__(self, html):
         self.html = html
 
-class Dashboard:
-    def __init__(self, dashboard_json):
-        self.dashboard_json = dashboard_json
+# Report + Methods
+class Report:
+    def __init__(self, report_json):
+        self.report_json = report_json
+
+    def Help(self):
+        print("Report Help:")
+        print("\tOpen()")
+        print("\tSave(filename)")
+        print("\tAddPage(name)")
+        print("\tAddHTML(page, text)")
+        print("\tAddDataframe(page, df)")
+        print("\tAddChart(page, chart)")
+        print("\tAddHeading(page, text, size)")
+        print("\tAddText(page, text)")
+        print("\tAddSubText(page, text)")
+        print("\tAddBullets(page, bullets)")
 
     def Open(self):
         # print("")
-        print("printing open dashboard:"+self.dashboard_json)
+        print("printing open report:"+self.report_json)
 
-        err = gophers.OpenDashboardWrapper(self.dashboard_json.encode('utf-8')).decode('utf-8')
+        err = gophers.OpenReportWrapper(self.report_json.encode('utf-8')).decode('utf-8')
         if err != "success":
-            print("Error opening dashboard:", err)
+            print("Error opening report:", err)
         return self
 
     def Save(self, filename):
-        err = gophers.SaveDashboardWrapper(self.dashboard_json.encode('utf-8'), filename.encode('utf-8')).decode('utf-8')
+        err = gophers.SaveReportWrapper(self.report_json.encode('utf-8'), filename.encode('utf-8')).decode('utf-8')
         if err:
-            print("Error saving dashboard:", err)
+            print("Error saving report:", err)
         return self
 
     def AddPage(self, name):
-        result = gophers.AddPageWrapper(self.dashboard_json.encode('utf-8'), name.encode('utf-8')).decode('utf-8')
+        result = gophers.AddPageWrapper(self.report_json.encode('utf-8'), name.encode('utf-8')).decode('utf-8')
         if result:
-            self.dashboard_json = result
-            # print("AddPage: Updated dashboard JSON:", self.dashboard_json)
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
         else:
             print("Error adding page:", result)
         return self
 
     def AddHTML(self, page, text):
-        result = gophers.AddHTMLWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddHTMLWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print("Error adding HTML:", result)
         return self
 
     def AddDataframe(self, page, df):
-        result = gophers.AddDataframeWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), df.df_json.encode('utf-8')).decode('utf-8')
+        result = gophers.AddDataframeWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), df.df_json.encode('utf-8')).decode('utf-8')
         if result:
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print("Error adding dataframe:", result)
         return self
@@ -132,52 +254,72 @@ class Dashboard:
         # print(f"Chart JSON: {chart_json}")
 
         result = gophers.AddChartWrapper(
-            self.dashboard_json.encode('utf-8'),
+            self.report_json.encode('utf-8'),
             page.encode('utf-8'),
             chart_json.encode('utf-8')
         ).decode('utf-8')
 
         if result:
             # print(f"Chart added successfully, result: {result[:100]}...")
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print(f"Error adding chart, empty result")
         return self
     def AddHeading(self, page, text, size):
-        result = gophers.AddHeadingWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8'), size).decode('utf-8')
+        result = gophers.AddHeadingWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8'), size).decode('utf-8')
         if result:
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print("Error adding heading:", result)
         return self
 
     def AddText(self, page, text):
-        result = gophers.AddTextWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddTextWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print("Error adding text:", result)
         return self
 
     def AddSubText(self, page, text):
-        result = gophers.AddSubTextWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = gophers.AddSubTextWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
         if result:
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print("Error adding subtext:", result)
         return self
 
     def AddBullets(self, page, bullets):
         bullets_json = json.dumps(bullets)
-        result = gophers.AddBulletsWrapper(self.dashboard_json.encode('utf-8'), page.encode('utf-8'), bullets_json.encode('utf-8')).decode('utf-8')
+        result = gophers.AddBulletsWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), bullets_json.encode('utf-8')).decode('utf-8')
         if result:
-            self.dashboard_json = result
+            self.report_json = result
         else:
             print("Error adding bullets:", result)
         return self
 
-# Aggregate functions
+def Help():
+    print("Functions Help:")
+    print("\tReadJSON(json_data)")
+    print("\tReadNDJSON(json_data)")
+    print("\tReadCSV(csv_data)")
+    print("\tReadYAML(yaml_data)")
+    print("\tGetAPIJSON(endpoint, headers, query_params)")
+    print("\tSum(column_name)")
+    print("\tAgg(*aggregations)")
+    print("\tCol(name)")
+    print("\tLit(value)")
+    print("\tOr(left, right)")
+    print("\tAnd(left, right)")
+    print("\tIf(condition, trueExpr, falseExpr)")
+    print("\tSHA256(*cols)")
+    print("\tSHA512(*cols)")
+    print("\tCollectList(col_name)")
+    print("\tCollectSet(col_name)")
+    print("\tSplit(col_name, delimiter)")
 
+    
+# Aggregate functions
 def Sum(column_name):
     # Call the Go SumWrapper function with only the column name
     sum_agg_json = gophers.SumWrapper(column_name.encode('utf-8')).decode('utf-8')
@@ -195,13 +337,28 @@ def Col(name):
 def Lit(value):
     return ColumnExpr({ "type": "lit", "value": value })
 
+def Cast(col, datatype):
+    """
+    Returns a ColumnExpr that casts the value of 'col'
+    to the specified datatype ("int", "float", or "string").
+    """
+    return ColumnExpr({
+        "type": "cast",
+        "col": json.loads(col.to_json()),
+        "datatype": datatype
+    })
+
 # Logic functions
-def Gt(left, right):
-    return ColumnExpr({ "type": "gt", "left": json.loads(left.to_json()), "right": json.loads(right.to_json()) })
+def Or(left, right):
+    return ColumnExpr({ "type": "or", "left": json.loads(left.to_json()), "right": json.loads(right.to_json()) })
+
+def And(left, right):
+    return ColumnExpr({ "type": "and", "left": json.loads(left.to_json()), "right": json.loads(right.to_json()) })
 
 def If(condition, trueExpr, falseExpr):
     return ColumnExpr({ "type": "if", "cond": json.loads(condition.to_json()), "true": json.loads(trueExpr.to_json()), "false": json.loads(falseExpr.to_json()) })
 
+# List functions
 def SHA256(*cols):
     return ColumnExpr({ "type": "sha256", "cols": [json.loads(col.to_json()) for col in cols] })
 
@@ -217,6 +374,28 @@ def CollectSet(col_name):
 def Split(col_name, delimiter):
     return ColumnExpr({ "type": "split", "col": col_name, "delimiter": delimiter })
 
+def Concat(*cols):
+    """
+    Returns a ColumnExpr that concatenates the string representations
+    of the given column expressions.
+    """
+    return ColumnExpr({
+        "type": "concat",
+        "cols": [json.loads(col.to_json()) for col in cols]
+    })
+
+def Concat_WS(delimiter, *cols):
+    """
+    Returns a ColumnExpr that concatenates the string representations
+    of the given column expressions using the specified delimiter.
+    """
+    return ColumnExpr({
+        "type": "concat_ws",
+        "delimiter": delimiter,
+        "cols": [json.loads(col.to_json()) for col in cols]
+    })
+
+# Source functions
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
     df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
@@ -237,14 +416,54 @@ def ReadYAML(yaml_data):
     df_json = gophers.ReadYAML(yaml_data.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
 
+def GetAPIJSON(endpoint, headers, query_params):
+    # Store the JSON representation of DataFrame from Go.
+    df_json = gophers.GetAPIJSON(endpoint.encode('utf-8'), headers.encode('utf-8'), query_params.encode('utf-8')).decode('utf-8')
+    return DataFrame(df_json)
+
 # PANDAS FUNCTIONS
 # loc
 # iloc
 
+# Dataframe + Methods
 class DataFrame:
     def __init__(self, df_json=None):
         self.df_json = df_json
 
+    def Help(self):
+        print("DataFrame Help:")
+        print("\tShow(chars, record_count)")   
+        print("\tColumns()")
+        print("\tCount()")
+        print("\tCountDuplicates(cols)")
+        print("\tCountDistinct(cols)")
+        print("\tCollect(col_name)")
+        print("\tHead(chars)")
+        print("\tTail(chars)")
+        print("\tVertical(chars, record_count)")
+        print("\tDisplayBrowser()")
+        print("\tDisplay()")
+        print("\tDisplayToFile(file_path)")
+        print("\tBarChart(title, subtitle, groupcol, aggs)")
+        print("\tColumnChart(title, subtitle, groupcol, aggs)")
+        print("\tStackedBarChart(title, subtitle, groupcol, aggs)")
+        print("\tStackedPercentChart(title, subtitle, groupcol, aggs)")
+        print("\tColumn(col_name, col_spec)")
+        print("\tGroupBy(groupCol, aggs)")
+        print("\tSelect(*cols)")
+        print("\tUnion(df2)")
+        print("\tJoin(df2, col1, col2, how)")
+        print("\tSort(*cols)")
+        print("\tFilter(condition)")
+        print("\tOrderBy(col, asc)")
+        print("\tDrop(*cols)")
+        print("\tDropDuplicates(cols)")
+        print("\tDropNA(cols)")
+        print("\tFillNA(value)")
+        print("\tRenameWrapper(old_name, new_name)")
+        print("\tCreateReport(title)")
+        print("\tToCSVFile(filename)")
+        
     # Display functions
     def Show(self, chars, record_count=100):
         result = gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
@@ -307,7 +526,7 @@ class DataFrame:
             print("Error writing to file:", err)
         return self
         
-    # Chart functions
+    # Chart methods
     def BarChart(self, title, subtitle, groupcol, aggs):
         # Make sure aggs is a list
         if not isinstance(aggs, list):
@@ -370,42 +589,15 @@ class DataFrame:
     # Transform functions
     def Column(self, col_name, col_spec):
         if isinstance(col_spec, ColumnExpr):
-            self.df_json = gophers.ColumnOp(
+            self.df_json = gophers.ColumnWrapper(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 col_spec.to_json().encode('utf-8')
             ).decode('utf-8')
-        # Check for CollectList marker (a string) and call ColumnCollectList.
-        elif isinstance(col_spec, str) and col_spec.startswith("CollectList"):
-            # col_spec is in the form "CollectList:colname"
-            src = col_spec.split(":", 1)[1]
-            self.df_json = gophers.ColumnCollectList(
-                self.df_json.encode('utf-8'),
-                col_name.encode('utf-8'),
-                src.encode('utf-8')
-            ).decode('utf-8')
-        # Similarly for CollectSet.
-        elif isinstance(col_spec, str) and col_spec.startswith("CollectSet"):
-            src = col_spec.split(":", 1)[1]
-            self.df_json = gophers.ColumnCollectSet(
-                self.df_json.encode('utf-8'),
-                col_name.encode('utf-8'),
-                src.encode('utf-8')
-            ).decode('utf-8')
-        # For Split, expect a tuple: (source, delimiter)
-        elif isinstance(col_spec, SplitColumn):
-            src, delim = col_spec
-            self.df_json = gophers.ColumnSplit(
-                self.df_json.encode('utf-8'),
-                col_name.encode('utf-8'),
-                src.encode('utf-8'),
-                delim.encode('utf-8')
-            ).decode('utf-8')
         # Otherwise, treat col_spec as a literal.        
         else:
             print(f"Error running code, cannot run {col_name} within Column function.")
-        return self
-    
+        return self 
     def GroupBy(self, groupCol, aggs):
         # aggs should be a list of JSON objects returned by Sum
         self.df_json = gophers.GroupByWrapper(
@@ -414,10 +606,106 @@ class DataFrame:
             json.dumps(aggs).encode('utf-8')
         ).decode('utf-8')
         return self    
-    def CreateDashboard(self, title):
-        dashboard_json = gophers.CreateDashboardWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
-        # print("CreateDashboard: Created dashboard JSON:", dashboard_json)
-        return Dashboard(dashboard_json)
+    def Select(self, *cols):
+        # cols should be a list of column names
+        self.df_json = gophers.SelectWrapper(
+            self.df_json.encode('utf-8'),
+            json.dumps([col for col in cols]).encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def Union(self, df2):
+        self.df_json = gophers.UnionWrapper(
+            self.df_json.encode('utf-8'),
+            df2.df_json.encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def Join(self, df2, col1, col2, how):
+        self.df_json = gophers.JoinWrapper(
+            self.df_json.encode('utf-8'),
+            df2.df_json.encode('utf-8'),
+            col1.encode('utf-8'),
+            col2.encode('utf-8'),
+            how.encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def Sort(self, *cols):
+        self.df_json = gophers.SortWrapper(
+            self.df_json.encode('utf-8'),
+            json.dumps([col for col in cols]).encode('utf-8')
+        ).decode('utf-8')   
+        return self
+    def Filter(self, condition):
+        self.df_json = gophers.FilterWrapper(
+            self.df_json.encode('utf-8'),
+            condition.to_json().encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def OrderBy(self, col, asc):
+        self.df_json = gophers.OrderByWrapper(
+            self.df_json.encode('utf-8'),
+            col.encode('utf-8'),
+            asc
+        ).decode('utf-8')
+        return self
+    def Drop(self, *cols):
+        self.df_json = gophers.DropWrapper(
+            self.df_json.encode('utf-8'),
+            json.dumps([col for col in cols]).encode('utf-8')
+        ).decode('utf-8')       
+        return self
+    def DropDuplicates(self, cols=None):
+        if cols is None:
+            cols_json = json.dumps([])
+        else:
+            cols_json = json.dumps(cols)
+        self.df_json = gophers.DropDuplicatesWrapper(
+            self.df_json.encode('utf-8'),
+            cols_json.encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def DropNA(self, cols=None):
+        if cols is None:
+            cols_json = json.dumps([])
+        else:
+            cols_json = json.dumps(cols)
+        self.df_json = gophers.DropNAWrapper(
+            self.df_json.encode('utf-8'),
+            cols_json.encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def FillNA(self, value):
+        self.df_json = gophers.FillNAWrapper(
+            self.df_json.encode('utf-8'),
+            value.encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def Rename(self, old_name, new_name):
+        self.df_json = gophers.RenameWrapper(
+            self.df_json.encode('utf-8'),
+            old_name.encode('utf-8'),
+            new_name.encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def Explode(self, *cols):
+        self.df_json = gophers.ExplodeWrapper(
+            self.df_json.encode('utf-8'),
+            json.dumps([col for col in cols]).encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def Filter(self, condition):
+        self.df_json = gophers.FilterWrapper(
+            self.df_json.encode('utf-8'),
+            condition.to_json().encode('utf-8')
+        ).decode('utf-8')
+        return self
+    
+    # Report methods
+    def CreateReport(self, title):
+        report_json = gophers.CreateReportWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
+        # print("CreateReport: Created report JSON:", report_json)
+        return Report(report_json)
+    
+    # Sink Functions
     def ToCSVFile(self, filename):
         gophers.ToCSVFileWrapper(self.df_json.encode('utf-8'), filename.encode('utf-8'))
         # add output giving file name/location
@@ -425,65 +713,7 @@ class DataFrame:
     
 # Example usage:
 def main():
-
-
-    # json_data = '[{"col1": "value1", "col2": 2, "col3": 3}, {"col1": "value4", "col2": 5, "col3": 3}, {"col1": "value7", "col2": 1, "col3": 3}]'
-    #     # Ensure json_data is a string before encoding
-    # if not isinstance(json_data, str):
-    #     json_data = str(json_data)
-    # df = ReadJSON(json_data)
-
-    # print("Head:")
-    # df.Head(25)
-    # print("Tail:")
-    # df.Tail(25)
-    # print("Vertical:")
-    # df.Vertical(25, record_count=3)
-    # print("Columns:")
-    # print(df.Columns())
-    # df.Display()
-    
-    # Example dashboard usage
-    # dashboard = df.CreateDashboard("My Dashboard")
-    # dashboard.AddPage("Page1")
-    # dashboard.AddText("Page1", "This is some text on Page 1")
-    # dashboard.AddHeading("Page1", "Text on Page 1",4)
-    # dashboard.AddPage("Page2")
-    
-    # chart = df.ColumnChart("barchart","subtext","col1", Agg(Sum("col2")))
-    # DisplayChart(chart)
-    # dashboard.AddChart("Page1", chart)
-    # df.GroupBy("col1", Agg(Sum("col2"),Sum("col3"))).Show(25)
-    # dashboard.Save("dashboard.html")
-    # dashboard.Open()
-    yamldata = '''_interval:
-  end: 2023-04-20
-  start: 2023-04-06
-indices_changed:
-  cdm_csm:
-    _jira_references:
-    - CDE-31444
-    attributes_added:
-    - meta
-  cdm_csm_trending:
-    _jira_references:
-    - CDE-31444
-    attributes_added:
-    - meta
-    attributes_changed:
-      meta.owner:
-        data_source:
-          new: Dashboard Process
-          old: Agency
-'''        
-    df = ReadYAML(yamldata)
-    df = df.Column("newcol",Lit("knull"))
-    df = df.Column("newcol", If(Col("newcol").IsNull(),Lit("YES"),Lit("NO")))
-    df.Vertical(50)
-    # df.ToCSVFile('newyamlgophers.csv')
-
-    # print(chart)
-    pas
+    pass
 
 if __name__ == '__main__':
     main()

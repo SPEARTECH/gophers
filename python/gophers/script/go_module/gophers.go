@@ -79,6 +79,7 @@ type ColumnExpr struct {
 	Cols      json.RawMessage `json:"cols,omitempty"`
 	Col       string          `json:"col,omitempty"`
 	Delimiter string          `json:"delimiter,omitempty"`
+    Datatype  string          `json:"datatype,omitempty"`
 }
 
 func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
@@ -102,11 +103,61 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		default:
 			return false
 		}
+	case "isnotnull":
+		var subExpr ColumnExpr
+		json.Unmarshal(expr.Expr, &subExpr)
+		val := Evaluate(subExpr, row)
+		if val == nil {
+			return true
+		}
+		switch v := val.(type) {
+		case string:
+			return !(v == "" || strings.ToLower(v) == "null")
+		case *string:
+			return !(v == nil || *v == "" || strings.ToLower(*v) == "null")
+		default:
+			return true
+		}	
 	case "gt":
 		var leftExpr, rightExpr ColumnExpr
 		json.Unmarshal(expr.Left, &leftExpr)
 		json.Unmarshal(expr.Right, &rightExpr)
 		return Evaluate(leftExpr, row).(float64) > Evaluate(rightExpr, row).(float64)
+	case "lt":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(float64) < Evaluate(rightExpr, row).(float64)
+	case "le":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(float64) <= Evaluate(rightExpr, row).(float64)
+	case "ge":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(float64) >= Evaluate(rightExpr, row).(float64)
+	case "eq":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(float64) == Evaluate(rightExpr, row).(float64)
+	case "ne":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(float64) != Evaluate(rightExpr, row).(float64)
+	case "or":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(bool) || Evaluate(rightExpr, row).(bool)
+	case "and":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(bool) && Evaluate(rightExpr, row).(bool)
 	case "if":
 		var condExpr, trueExpr, falseExpr ColumnExpr
 		json.Unmarshal(expr.Cond, &condExpr)
@@ -144,6 +195,67 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		delimiter := expr.Delimiter
 		val := row[colName].(string)
 		return strings.Split(val, delimiter)
+    case "concat":
+        // "concat" expects a "Cols" field containing a JSON array of ColumnExpr.
+        var cols []ColumnExpr
+        if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+            fmt.Printf("concat unmarshal error: %v\n", err)
+            return ""
+        }
+        var parts []string
+        for _, col := range cols {
+            parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
+        }
+        return strings.Join(parts, "")
+
+    case "concat_ws":
+        // "concat_ws" expects a "Delimiter" field (string) and a "Cols" JSON array.
+        delim := expr.Delimiter
+        var cols []ColumnExpr
+        if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+            fmt.Printf("concat_ws unmarshal error: %v\n", err)
+            return ""
+        }
+        var parts []string
+        for _, col := range cols {
+            parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
+        }
+        return strings.Join(parts, delim)
+	case "cast":
+		// "cast" expects a "Col" field with a JSON object and a "Datatype" field.
+		var subExpr ColumnExpr
+		if err := json.Unmarshal([]byte(expr.Col), &subExpr); err != nil {
+			fmt.Printf("cast unmarshal error (sub expression): %v\n", err)
+			return nil
+		}
+		datatype := expr.Datatype
+		val := Evaluate(subExpr, row)
+		switch datatype {
+		case "int":
+			casted, err := toInt(val)
+			if err != nil {
+				fmt.Printf("cast to int error: %v\n", err)
+				return nil
+			}
+			return casted
+		case "float":
+			casted, err := toFloat64(val)
+			if err != nil {
+				fmt.Printf("cast to float error: %v\n", err)
+				return nil
+			}
+			return casted
+		case "string":
+			casted, err := toString(val)
+			if err != nil {
+				fmt.Printf("cast to string error: %v\n", err)
+				return nil
+			}
+			return casted
+		default:
+			fmt.Printf("unsupported cast type: %s\n", datatype)
+			return nil
+		}	
 	default:
 		return nil
 	}
@@ -171,8 +283,8 @@ type SimpleAggregation struct {
 	ColumnName string
 }
 
-// Dashboard object for adding html pages, charts, and inputs for a single html output
-type Dashboard struct {
+// Report object for adding html pages, charts, and inputs for a single html output
+type Report struct {
 	Top           string
 	Primary       string
 	Secondary     string
@@ -193,12 +305,12 @@ type Dashboard struct {
 	Pagesjs       map[string]map[string]string
 }
 
-func (dash *Dashboard) init() {
-	if dash.Pageshtml == nil {
-		dash.Pageshtml = make(map[string]map[string]string)
+func (report *Report) init() {
+	if report.Pageshtml == nil {
+		report.Pageshtml = make(map[string]map[string]string)
 	}
-	if dash.Pagesjs == nil {
-		dash.Pagesjs = make(map[string]map[string]string)
+	if report.Pagesjs == nil {
+		report.Pagesjs = make(map[string]map[string]string)
 	}
 }
 
@@ -337,6 +449,13 @@ func ReadJSON(jsonStr *C.char) *C.char {
 		jsonContent = goJsonStr
 	}
 
+	// Trim whitespace and check if jsonContent starts with "{".
+	trimmed := strings.TrimSpace(jsonContent)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		// Wrap single JSON object into an array.
+		jsonContent = "[" + jsonContent + "]"
+	}
+	
 	// Unmarshal the JSON string into rows.
 	if err := json.Unmarshal([]byte(jsonContent), &rows); err != nil {
 		log.Fatalf("Error unmarshalling JSON: %v", err)
@@ -1137,7 +1256,7 @@ func DisplayToFileWrapper(dfJson *C.char, filePath *C.char) *C.char {
 	return C.CString("")
 }
 
-// write an html display, chart, or dashboard to a file
+// write an html display, chart, or report to a file
 func (df *DataFrame) DisplayToFile(path string) error {
 	// Ensure the path ends with .html
 	if !strings.HasSuffix(path, ".html") {
@@ -1765,10 +1884,10 @@ func StackedPercentChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char,
 
 // SplineChart (apexcharts...)
 
-// DASHBOARDS --------------------------------------------------
+// REPORTS --------------------------------------------------
 
-// dashboard create
-func (df *DataFrame) CreateDashboard(title string) *Dashboard {
+// report create
+func (df *DataFrame) CreateReport(title string) *Report {
 	HTMLTop := `
 	<!DOCTYPE html>
 	<html>
@@ -1832,7 +1951,7 @@ func (df *DataFrame) CreateDashboard(title string) *Dashboard {
 </html>
 `
 
-	newDashboard := &Dashboard{
+	newReport := &Report{
 		Top:           HTMLTop,
 		Primary:       `primary: "#0000ff",`,
 		Secondary:     `secondary: "#00aaff",`,
@@ -1852,25 +1971,25 @@ func (df *DataFrame) CreateDashboard(title string) *Dashboard {
 		Pageshtml:     make(map[string]map[string]string),
 		Pagesjs:       make(map[string]map[string]string),
 	}
-	// fmt.Println("CreateDashboard: Initialized dashboard:", newDashboard)
-	return newDashboard
+	// fmt.Println("CreateReport: Initialized report:", newReport)
+	return newReport
 }
 
-// Open - open the dashboard in browser
-func (dash *Dashboard) Open() error {
+// Open - open the report in browser
+func (report *Report) Open() error {
 	// add html element for page
-	html := dash.Top +
-		dash.Primary +
-		dash.Secondary +
-		dash.Accent +
-		dash.Neutral +
-		dash.Base100 +
-		dash.Info +
-		dash.Success +
-		dash.Warning +
-		dash.Err +
-		dash.Htmlheading
-	if len(dash.Pageshtml) > 1 {
+	html := report.Top +
+		report.Primary +
+		report.Secondary +
+		report.Accent +
+		report.Neutral +
+		report.Base100 +
+		report.Info +
+		report.Success +
+		report.Warning +
+		report.Err +
+		report.Htmlheading
+	if len(report.Pageshtml) > 1 {
 		html += `
         <div id="app"  style="text-align: center;" class="drawer w-full lg:drawer-open">
             <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
@@ -1878,7 +1997,7 @@ func (dash *Dashboard) Open() error {
                 <!-- Navbar -->
                 <div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
             ` +
-			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="lg:ml-0 ml-14 text-4xl">%s</a></div>`, dash.Title) +
+			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="lg:ml-0 ml-14 text-4xl">%s</a></div>`, report.Title) +
 			`
                 <div class="flex-none lg:hidden">
                     <label for="my-drawer-2" class="btn btn-neutral btn-square shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation">
@@ -1900,19 +2019,19 @@ func (dash *Dashboard) Open() error {
             <div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
         ` +
 			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class=" text-4xl">%s</a></div>
-            </div>`, dash.Title) +
+            </div>`, report.Title) +
 			`<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">`
 
 	}
 	// iterate over pageshtml and add each stored HTML snippet
-	for _, pageMap := range dash.Pageshtml {
+	for _, pageMap := range report.Pageshtml {
 		// iterate in order
 		// fmt.Println(pageMap)
 		for i := 0; i < len(pageMap); i++ {
 			html += pageMap[strconv.Itoa(i)]
 		}
 	}
-	if len(dash.Pageshtml) > 1 {
+	if len(report.Pageshtml) > 1 {
 		html += `
             </div>
         </div>
@@ -1930,7 +2049,7 @@ func (dash *Dashboard) Open() error {
                 </div>
                 <div class="space-y-4">
         `
-		for page, _ := range dash.Pageshtml {
+		for page, _ := range report.Pageshtml {
 			html += fmt.Sprintf(`
             <button v-if="page == '%s' " @click="page = '%s' " class="btn btn-block btn-sm btn-neutral text-white bg-neutral shadow-lg  hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
             <button v-else @click="page = '%s' " class="btn btn-block btn-sm bg-base-100 btn-outline btn-neutral hover:text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
@@ -1943,10 +2062,10 @@ func (dash *Dashboard) Open() error {
         </div>
         `
 	}
-	html += dash.Scriptheading
+	html += report.Scriptheading
 	pages := `pages: [`
 	count := 0
-	for page, _ := range dash.Pageshtml {
+	for page, _ := range report.Pageshtml {
 		if count == 0 {
 			html += fmt.Sprintf("%q", page) + ","
 		}
@@ -1955,9 +2074,9 @@ func (dash *Dashboard) Open() error {
 	}
 	pages = strings.TrimSuffix(pages, ", ") + `],`
 	html += pages
-	html += dash.Scriptmiddle
+	html += report.Scriptmiddle
 	// iterate over pagesjs similarly
-	for _, jsMap := range dash.Pagesjs {
+	for _, jsMap := range report.Pagesjs {
 		fmt.Println("printing jsMap")
 		fmt.Println(jsMap)
 		for i := 0; i < len(jsMap); i++ {
@@ -1965,7 +2084,7 @@ func (dash *Dashboard) Open() error {
 		}
 	}
 
-	html += dash.Bottom
+	html += report.Bottom
 	// fmt.Println("printing html:")
 	// fmt.Println(html)
 	// Create a temporary file
@@ -1999,8 +2118,8 @@ func (dash *Dashboard) Open() error {
 
 }
 
-// Save - save dashboard to html file
-func (dash *Dashboard) Save(filename string) error {
+// Save - save report to html file
+func (report *Report) Save(filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -2008,45 +2127,115 @@ func (dash *Dashboard) Save(filename string) error {
 	defer file.Close()
 
 	// add html element for page
-	html := dash.Top +
-		dash.Primary +
-		dash.Secondary +
-		dash.Accent +
-		dash.Neutral +
-		dash.Base100 +
-		dash.Info +
-		dash.Success +
-		dash.Warning +
-		dash.Err +
-		dash.Htmlheading
+	html := report.Top +
+		report.Primary +
+		report.Secondary +
+		report.Accent +
+		report.Neutral +
+		report.Base100 +
+		report.Info +
+		report.Success +
+		report.Warning +
+		report.Err +
+		report.Htmlheading
 
-		// iterate over pageshtml and add each stored HTML snippet
-	for _, pageMap := range dash.Pageshtml {
+	if len(report.Pageshtml) > 1 {
+		html += `
+		<div id="app"  style="text-align: center;" class="drawer w-full lg:drawer-open">
+			<input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
+			<div class="drawer-content flex flex-col">
+				<!-- Navbar -->
+				<div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
+			` +
+			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class="lg:ml-0 ml-14 text-4xl">%s</a></div>`, report.Title) +
+			`
+				<div class="flex-none lg:hidden">
+					<label for="my-drawer-2" class="btn btn-neutral btn-square shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation">
+					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+						class="inline-block w-6 h-6 stroke-current">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+					</svg>
+					</label>
+					</div>
+				</div>
+				<!-- content goes here! -->
+				<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">
+			`
+
+	} else {
+		html += `
+		<div id="app"  style="text-align: center;">
+			<!-- Navbar -->
+			<div class="w-full navbar bg-neutral text-neutral-content shadow-lg ">
+		` +
+			fmt.Sprintf(`<div class="flex-1 px-2 mx-2 btn btn-sm btn-neutral normal-case text-xl shadow-none hover:bg-neutral hover:border-neutral flex content-center"><a class=" text-4xl">%s</a></div>
+			</div>`, report.Title) +
+			`<div  class="w-full lg:w-3/4 md:w-3/4 sm:w-5/6 mx-auto flex-col justify-self-center">`
+
+	}
+	// iterate over pageshtml and add each stored HTML snippet
+	for _, pageMap := range report.Pageshtml {
 		// iterate in order
+		// fmt.Println(pageMap)
 		for i := 0; i < len(pageMap); i++ {
 			html += pageMap[strconv.Itoa(i)]
 		}
 	}
-	html += dash.Scriptheading
+	if len(report.Pageshtml) > 1 {
+		html += `
+			</div>
+		</div>
+		<!-- <br> -->
+		<div class="drawer-side">
+			<label for="my-drawer-2" class="drawer-overlay bg-neutral"></label>
+			<ul class="menu p-4 w-80 bg-neutral h-full overflow-y-auto min-h-screen text-base-content shadow-none space-y-2 ">
+			<div class="card w-72 bg-base-100 shadow-xl">
+				<div class="card-body">
+					<div class="flex space-x-6 place-content-center">
+						<h2 class="card-title black-text-shadow-sm flex justify">Pages</h2>
+					</div>
+				<div class="flex flex-col w-full h-1px">
+					<div class="divider"></div>
+				</div>
+				<div class="space-y-4">
+		`
+		for page, _ := range report.Pageshtml {
+			html += fmt.Sprintf(`
+			<button v-if="page == '%s' " @click="page = '%s' " class="btn btn-block btn-sm btn-neutral text-white bg-neutral shadow-lg  hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
+			<button v-else @click="page = '%s' " class="btn btn-block btn-sm bg-base-100 btn-outline btn-neutral hover:text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 no-animation " >%s</button>
+			
+			`, page, page, page, page, page)
+		}
+	} else {
+		html += `
+			</div>
+		</div>
+		`
+	}
+	html += report.Scriptheading
 	pages := `pages: [`
 	count := 0
-	for page, _ := range dash.Pageshtml {
+	for page, _ := range report.Pageshtml {
 		if count == 0 {
 			html += fmt.Sprintf("%q", page) + ","
-			count++
 		}
 		pages += fmt.Sprintf("%q", page) + ", "
+		count++
 	}
 	pages = strings.TrimSuffix(pages, ", ") + `],`
 	html += pages
-	html += dash.Scriptmiddle
+	html += report.Scriptmiddle
 	// iterate over pagesjs similarly
-	for _, jsMap := range dash.Pagesjs {
+	for _, jsMap := range report.Pagesjs {
+		fmt.Println("printing jsMap")
+		fmt.Println(jsMap)
 		for i := 0; i < len(jsMap); i++ {
 			html += jsMap[strconv.Itoa(i)]
 		}
 	}
-	html += dash.Bottom
+
+	html += report.Bottom
+	
 
 	// Write the HTML string to the file
 	if _, err := file.Write([]byte(html)); err != nil {
@@ -2056,23 +2245,23 @@ func (dash *Dashboard) Save(filename string) error {
 	return nil
 }
 
-// AddPage adds a new page to the dashboard.
-func (dash *Dashboard) AddPage(name string) {
-	dash.init() // Ensure maps are initialized
+// AddPage adds a new page to the report.
+func (report *Report) AddPage(name string) {
+	report.init() // Ensure maps are initialized
 
 	// Check if the page already exists.
-	if _, exists := dash.Pageshtml[name]; !exists {
-		dash.Pageshtml[name] = make(map[string]string)
+	if _, exists := report.Pageshtml[name]; !exists {
+		report.Pageshtml[name] = make(map[string]string)
 	}
-	if _, exists := dash.Pagesjs[name]; !exists {
-		dash.Pagesjs[name] = make(map[string]string)
+	if _, exists := report.Pagesjs[name]; !exists {
+		report.Pagesjs[name] = make(map[string]string)
 	}
 
 	html := `<h1 v-if="page == '` + name + `' " class="text-8xl pt-24 pb-24"> ` + name + `</h1>` // Page Title at top of page
-	dash.Pageshtml[name][strconv.Itoa(len(dash.Pageshtml[name]))] = html
+	report.Pageshtml[name][strconv.Itoa(len(report.Pageshtml[name]))] = html
 
 	// fmt.Println("AddPage: Added page:", name)
-	// fmt.Println("AddPage: Updated pageshtml:", dash.Pageshtml)
+	// fmt.Println("AddPage: Updated pageshtml:", report.Pageshtml)
 }
 
 // spacing for stuff? card or no card? background?
@@ -2086,49 +2275,49 @@ func (dash *Dashboard) AddPage(name string) {
 // add iframe
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
 // add html to page map
-func (dash *Dashboard) AddHTML(page string, text string) {
-	dash.init() // Ensure maps are initialized
+func (report *Report) AddHTML(page string, text string) {
+	report.init() // Ensure maps are initialized
 
 	// Check if the page exists
-	if _, exists := dash.Pageshtml[page]; !exists {
-		dash.Pageshtml[page] = make(map[string]string)
+	if _, exists := report.Pageshtml[page]; !exists {
+		report.Pageshtml[page] = make(map[string]string)
 	}
 
 	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center sm:w-7/8 w-3/4" srcdoc='` + text + `'></iframe>`
-	dash.Pageshtml[page][strconv.Itoa(len(dash.Pageshtml[page]))] = texthtml
+	report.Pageshtml[page][strconv.Itoa(len(report.Pageshtml[page]))] = texthtml
 
 	fmt.Println("AddHTML: Added HTML to page:", page)
-	fmt.Println("AddHTML: Updated pageshtml:", dash.Pageshtml)
+	fmt.Println("AddHTML: Updated pageshtml:", report.Pageshtml)
 }
 
 // add df (paginate + filter + sort)
-func (dash *Dashboard) AddDataframe(page string, df *DataFrame) {
+func (report *Report) AddDataframe(page string, df *DataFrame) {
 	text := df.Display()["text/html"].(string)
 	// add html to page map
-	if _, exists := dash.Pageshtml[page]; !exists {
+	if _, exists := report.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
-	dash.AddHTML("page2", text)
+	report.AddHTML("page2", text)
 }
 
-// AddChart adds a chart to the specified page in the dashboard.
-func (dash *Dashboard) AddChart(page string, chart Chart) {
-	dash.init() // Ensure maps are initialized
+// AddChart adds a chart to the specified page in the report.
+func (report *Report) AddChart(page string, chart Chart) {
+	report.init() // Ensure maps are initialized
 
 	// Check if the page exists
-	if _, exists := dash.Pageshtml[page]; !exists {
+	if _, exists := report.Pageshtml[page]; !exists {
 		fmt.Println("Page does not exist. Use AddPAge().")
 		return
 	}
-	if _, exists := dash.Pagesjs[page]; !exists {
+	if _, exists := report.Pagesjs[page]; !exists {
 		fmt.Println("Page content does not exist.")
 		return
 	}
 
-	idhtml := strconv.Itoa(len(dash.Pageshtml[page]))
+	idhtml := strconv.Itoa(len(report.Pageshtml[page]))
 	chartId := chart.Htmldivid + idhtml
-	idjs := strconv.Itoa(len(dash.Pagesjs[page]))
+	idjs := strconv.Itoa(len(report.Pagesjs[page]))
 
 	if chart.Htmlpostid == "" {
 		chart.Htmlpostid = ` class="flex justify-center mx-auto p-4"></div>`
@@ -2137,24 +2326,24 @@ func (dash *Dashboard) AddChart(page string, chart Chart) {
 	html := fmt.Sprintf(`<div v-show="page == '%s'" id="%s"%s`, page, chartId, chart.Htmlpostid)
 	js := fmt.Sprintf(`%s%s%s`, chart.Jspreid, chartId, chart.Jspostid)
 
-	dash.Pageshtml[page][idhtml] = html
-	dash.Pagesjs[page][idjs] = js
+	report.Pageshtml[page][idhtml] = html
+	report.Pagesjs[page][idjs] = js
 
-	// fmt.Println("DASH:", dash.Pageshtml)
+	// fmt.Println("DASH:", report.Pageshtml)
 	// fmt.Printf("AddChart: Added chart to page %s at index %s\n", page, idhtml)
-	// fmt.Println("AddChart: Updated pageshtml:", dash.Pageshtml)
-	// fmt.Println("AddChart: Updated pagesjs:", dash.Pagesjs)
+	// fmt.Println("AddChart: Updated pageshtml:", report.Pageshtml)
+	// fmt.Println("AddChart: Updated pagesjs:", report.Pagesjs)
 }
 
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
 // add html to page map
-// AddHeading adds a heading to the specified page in the dashboard.
-func (dash *Dashboard) AddHeading(page string, heading string, size int) {
-	dash.init() // Ensure maps are initialized
+// AddHeading adds a heading to the specified page in the report.
+func (report *Report) AddHeading(page string, heading string, size int) {
+	report.init() // Ensure maps are initialized
 
 	// Check if the page exists
-	if _, exists := dash.Pageshtml[page]; !exists {
-		dash.Pageshtml[page] = make(map[string]string)
+	if _, exists := report.Pageshtml[page]; !exists {
+		report.Pageshtml[page] = make(map[string]string)
 	}
 
 	var text_size string
@@ -2184,57 +2373,57 @@ func (dash *Dashboard) AddHeading(page string, heading string, size int) {
 	}
 
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s p-8 flex justify-start"> `, text_size) + heading + `</h1>`
-	dash.Pageshtml[page][strconv.Itoa(len(dash.Pageshtml[page]))] = html
+	report.Pageshtml[page][strconv.Itoa(len(report.Pageshtml[page]))] = html
 
 	// fmt.Printf("AddHeading: Added heading to page %s with size %d\n", page, size)
-	// fmt.Println("AddHeading: Updated pageshtml:", dash.Pageshtml)
+	// fmt.Println("AddHeading: Updated pageshtml:", report.Pageshtml)
 }
 
 // AddText function fix
-func (dash *Dashboard) AddText(page string, text string) {
-	dash.init() // Ensure maps are initialized
+func (report *Report) AddText(page string, text string) {
+	report.init() // Ensure maps are initialized
 
 	// Check if the page exists
-	if _, exists := dash.Pageshtml[page]; !exists {
-		dash.Pageshtml[page] = make(map[string]string)
+	if _, exists := report.Pageshtml[page]; !exists {
+		report.Pageshtml[page] = make(map[string]string)
 	}
 
 	text_size := "text-md"
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 flex justify-start text-left"> `, text_size) + text + `</h1>`
-	idx := strconv.Itoa(len(dash.Pageshtml[page]))
-	dash.Pageshtml[page][idx] = html
+	idx := strconv.Itoa(len(report.Pageshtml[page]))
+	report.Pageshtml[page][idx] = html
 
 	// fmt.Printf("AddText: Added text to page %s at index %s\n", page, idx)
-	// fmt.Println("AddText: Updated pageshtml:", dash.Pageshtml)
+	// fmt.Println("AddText: Updated pageshtml:", report.Pageshtml)
 }
 
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
 // add html to page map
-func (dash *Dashboard) AddSubText(page string, text string) {
-	dash.init() // Ensure maps are initialized
+func (report *Report) AddSubText(page string, text string) {
+	report.init() // Ensure maps are initialized
 
 	// Check if the page exists
-	if _, exists := dash.Pageshtml[page]; !exists {
-		dash.Pageshtml[page] = make(map[string]string)
+	if _, exists := report.Pageshtml[page]; !exists {
+		report.Pageshtml[page] = make(map[string]string)
 	}
 
 	text_size := "text-sm"
 	html := `<h1 v-if="page == '` + page + fmt.Sprintf(`' " class="%s pl-12 pr-12 pb-8 flex justify-center"> `, text_size) + text + `</h1>`
-	dash.Pageshtml[page][strconv.Itoa(len(dash.Pageshtml[page]))] = html
+	report.Pageshtml[page][strconv.Itoa(len(report.Pageshtml[page]))] = html
 
 	fmt.Println("AddSubText: Added subtext to page:", page)
-	fmt.Println("AddSubText: Updated pageshtml:", dash.Pageshtml)
+	fmt.Println("AddSubText: Updated pageshtml:", report.Pageshtml)
 }
 
 // add bullet list
 // add html to page map
 // add title text-2xl - this should just be the page name and automatically populate at the top of the page...
 // add html to page map
-func (dash *Dashboard) AddBullets(page string, text ...string) {
+func (report *Report) AddBullets(page string, text ...string) {
 
 	// Check if the page exists
-	if _, exists := dash.Pageshtml[page]; !exists {
-		dash.Pageshtml[page] = make(map[string]string)
+	if _, exists := report.Pageshtml[page]; !exists {
+		report.Pageshtml[page] = make(map[string]string)
 	}
 	text_size := "text-md"
 	html := `<ul v-if="page == '` + page + `' " class="list-disc flex-col justify-self-start pl-24 pr-12 py-2"> `
@@ -2242,55 +2431,55 @@ func (dash *Dashboard) AddBullets(page string, text ...string) {
 		html += fmt.Sprintf(`<li class="text-left %s">`, text_size) + bullet + `</li>`
 	}
 	html += `</ul>`
-	dash.Pageshtml[page][strconv.Itoa(len(dash.Pageshtml[page]))] = html
+	report.Pageshtml[page][strconv.Itoa(len(report.Pageshtml[page]))] = html
 
 	fmt.Println("AddBullets: Added bullets to page:", page)
-	fmt.Println("AddBullets: Updated pageshtml:", dash.Pageshtml)
+	fmt.Println("AddBullets: Updated pageshtml:", report.Pageshtml)
 
 }
 
-// CreateDashboardWrapper is an exported function that wraps the CreateDashboard method.
+// CreateReportWrapper is an exported function that wraps the CreateReport method.
 //
-//export CreateDashboardWrapper
-func CreateDashboardWrapper(dfJson *C.char, title *C.char) *C.char {
+//export CreateReportWrapper
+func CreateReportWrapper(dfJson *C.char, title *C.char) *C.char {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		errStr := fmt.Sprintf("CreateDashboardWrapper: unmarshal error: %v", err)
+		errStr := fmt.Sprintf("CreateReportWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 	// fmt.Printf("printing dfjson:%s", []byte(C.GoString(dfJson)))
 	// fmt.Println("")
-	dashboard := df.CreateDashboard(C.GoString(title))
-	// fmt.Printf("printing dashboard:%s", dashboard)
-	dashboardJson, err := json.Marshal(dashboard)
-	// fmt.Printf("printing dashboardJson:%s", dashboardJson)
-	// fmt.Printf("printing stringed dashboardJson:%s", dashboardJson)
+	report := df.CreateReport(C.GoString(title))
+	// fmt.Printf("printing report:%s", report)
+	reportJson, err := json.Marshal(report)
+	// fmt.Printf("printing reportJson:%s", reportJson)
+	// fmt.Printf("printing stringed reportJson:%s", reportJson)
 	if err != nil {
-		errStr := fmt.Sprintf("CreateDashboardWrapper: marshal error: %v", err)
+		errStr := fmt.Sprintf("CreateReportWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	dashboardJsonStr := string(dashboardJson)
-	// fmt.Println("CreateDashboardWrapper: Created dashboard JSON:", dashboardJsonStr)
-	// fmt.Println("printing dashboardJson stringed:", dashboardJsonStr)
-	return C.CString(dashboardJsonStr)
+	reportJsonStr := string(reportJson)
+	// fmt.Println("CreateReportWrapper: Created report JSON:", reportJsonStr)
+	// fmt.Println("printing reportJson stringed:", reportJsonStr)
+	return C.CString(reportJsonStr)
 }
 
-// OpenDashboardWrapper is an exported function that wraps the Open method.
+// OpenReportWrapper is an exported function that wraps the Open method.
 //
-//export OpenDashboardWrapper
-func OpenDashboardWrapper(dashboardJson *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
-		errStr := fmt.Sprintf("OpenDashboardWrapper: unmarshal error: %v", err)
+//export OpenReportWrapper
+func OpenReportWrapper(reportJson *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
+		errStr := fmt.Sprintf("OpenReportWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// fmt.Println("printing dashboard:")
-	// fmt.Println(dashboard)
-	if err := dashboard.Open(); err != nil {
-		errStr := fmt.Sprintf("OpenDashboardWrapper: open error: %v", err)
+	// fmt.Println("printing report:")
+	// fmt.Println(report)
+	if err := report.Open(); err != nil {
+		errStr := fmt.Sprintf("OpenReportWrapper: open error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
@@ -2298,77 +2487,77 @@ func OpenDashboardWrapper(dashboardJson *C.char) *C.char {
 	return C.CString("success")
 }
 
-// SaveDashboardWrapper is an exported function that wraps the Save method.
+// SaveReportWrapper is an exported function that wraps the Save method.
 //
-//export SaveDashboardWrapper
-func SaveDashboardWrapper(dashboardJson *C.char, filename *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
-		errStr := fmt.Sprintf("SaveDashboardWrapper: unmarshal error: %v", err)
+//export SaveReportWrapper
+func SaveReportWrapper(reportJson *C.char, filename *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
+		errStr := fmt.Sprintf("SaveReportWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	if err := dashboard.Save(C.GoString(filename)); err != nil {
-		errStr := fmt.Sprintf("SaveDashboardWrapper: save error: %v", err)
+	if err := report.Save(C.GoString(filename)); err != nil {
+		errStr := fmt.Sprintf("SaveReportWrapper: save error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return nil
+	return C.CString("success")
 }
 
 // AddPageWrapper is an exported function that wraps the AddPage method.
 //
 //export AddPageWrapper
-func AddPageWrapper(dashboardJson *C.char, name *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddPageWrapper(reportJson *C.char, name *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddPageWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
-	dashboard.AddPage(C.GoString(name))
-	// fmt.Println("AddPageWrapper: Dashboard after adding page:", dashboard)
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	// report.init() // Initialize the maps
+	report.AddPage(C.GoString(name))
+	// fmt.Println("AddPageWrapper: Report after adding page:", report)
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddPageWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	// fmt.Println("AddPageWrapper: Updated dashboard JSON:", string(dashboardJsonBytes))
-	return C.CString(string(dashboardJsonBytes))
+	// fmt.Println("AddPageWrapper: Updated report JSON:", string(reportJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AddHTMLWrapper is an exported function that wraps the AddHTML method.
 //
 //export AddHTMLWrapper
-func AddHTMLWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddHTMLWrapper(reportJson *C.char, page *C.char, text *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddHTMLWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
-	dashboard.AddHTML(C.GoString(page), C.GoString(text))
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	// report.init() // Initialize the maps
+	report.AddHTML(C.GoString(page), C.GoString(text))
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddHTMLWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AddDataframeWrapper is an exported function that wraps the AddDataframe method.
 //
 //export AddDataframeWrapper
-func AddDataframeWrapper(dashboardJson *C.char, page *C.char, dfJson *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddDataframeWrapper(reportJson *C.char, page *C.char, dfJson *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddDataframeWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
@@ -2380,24 +2569,24 @@ func AddDataframeWrapper(dashboardJson *C.char, page *C.char, dfJson *C.char) *C
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
-	dashboard.AddDataframe(C.GoString(page), &df)
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	// report.init() // Initialize the maps
+	report.AddDataframe(C.GoString(page), &df)
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddDataframeWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AddChartWrapper is an exported function that wraps the AddChart method.
 //
 //export AddChartWrapper
-func AddChartWrapper(dashboardJson *C.char, page *C.char, chartJson *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddChartWrapper(reportJson *C.char, page *C.char, chartJson *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddChartWrapper: unmarshal error: %v", err)
 		return C.CString(errStr)
 	}
@@ -2408,92 +2597,92 @@ func AddChartWrapper(dashboardJson *C.char, page *C.char, chartJson *C.char) *C.
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
+	// report.init() // Initialize the maps
 	// fmt.Println("adding chart to page...")
 	// fmt.Println("chart:", chart)
 
-	dashboard.AddChart(C.GoString(page), chart)
+	report.AddChart(C.GoString(page), chart)
 
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddChartWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 //export AddHeadingWrapper
-func AddHeadingWrapper(dashboardJson *C.char, page *C.char, heading *C.char, size C.int) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddHeadingWrapper(reportJson *C.char, page *C.char, heading *C.char, size C.int) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddHeadingWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	dashboard.AddHeading(C.GoString(page), C.GoString(heading), int(size))
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	report.AddHeading(C.GoString(page), C.GoString(heading), int(size))
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddHeadingWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AddTextWrapper is an exported function that wraps the AddText method.
 //
 //export AddTextWrapper
-func AddTextWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddTextWrapper(reportJson *C.char, page *C.char, text *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddTextWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
-	dashboard.AddText(C.GoString(page), C.GoString(text))
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	// report.init() // Initialize the maps
+	report.AddText(C.GoString(page), C.GoString(text))
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddTextWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AddSubTextWrapper is an exported function that wraps the AddSubText method.
 //
 //export AddSubTextWrapper
-func AddSubTextWrapper(dashboardJson *C.char, page *C.char, text *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddSubTextWrapper(reportJson *C.char, page *C.char, text *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddSubTextWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
-	dashboard.AddSubText(C.GoString(page), C.GoString(text))
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	// report.init() // Initialize the maps
+	report.AddSubText(C.GoString(page), C.GoString(text))
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddSubTextWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AddBulletsWrapper is an exported function that wraps the AddBullets method.
 //
 //export AddBulletsWrapper
-func AddBulletsWrapper(dashboardJson *C.char, page *C.char, bulletsJson *C.char) *C.char {
-	var dashboard Dashboard
-	if err := json.Unmarshal([]byte(C.GoString(dashboardJson)), &dashboard); err != nil {
+func AddBulletsWrapper(reportJson *C.char, page *C.char, bulletsJson *C.char) *C.char {
+	var report Report
+	if err := json.Unmarshal([]byte(C.GoString(reportJson)), &report); err != nil {
 		errStr := fmt.Sprintf("AddBulletsWrapper: unmarshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
@@ -2505,16 +2694,16 @@ func AddBulletsWrapper(dashboardJson *C.char, page *C.char, bulletsJson *C.char)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
-	// dashboard.init() // Initialize the maps
-	dashboard.AddBullets(C.GoString(page), bullets...)
-	dashboardJsonBytes, err := json.Marshal(dashboard)
+	// report.init() // Initialize the maps
+	report.AddBullets(C.GoString(page), bullets...)
+	reportJsonBytes, err := json.Marshal(report)
 	if err != nil {
 		errStr := fmt.Sprintf("AddBulletsWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
 
-	return C.CString(string(dashboardJsonBytes))
+	return C.CString(string(reportJsonBytes))
 }
 
 // AGGREGATES --------------------------------------------------
@@ -3151,12 +3340,12 @@ func And(c1, c2 Column) Column {
 
 // TRANSFORMS --------------------------------------------------
 
-// ColumnOp applies an operation (identified by opName) to the columns
+// ColumnWrapper applies an operation (identified by opName) to the columns
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
 // The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
 //
-//export ColumnOp
-func ColumnOp(dfJson *C.char, newCol *C.char, colSpecJson *C.char) *C.char {
+//export ColumnWrapper
+func ColumnWrapper(dfJson *C.char, newCol *C.char, colSpecJson *C.char) *C.char {
 	var df DataFrame
 	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
 		log.Fatalf("Error unmarshalling DataFrame JSON in ColumnOp: %v", err)
@@ -3211,27 +3400,521 @@ func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
 	return df
 }
 
-// Concat
+// Concat returns a Column that, when applied to a row,
+// concatenates the string representations of the provided Columns.
+// It converts each value to a string using toString.
+// If conversion fails, it uses an empty string.
+func Concat(cols ...Column) Column {
+	return Column{
+		Name: "concat",
+		Fn: func(row map[string]interface{}) interface{} {
+			var parts []string
+			for _, col := range cols {
+				val := col.Fn(row)
+				str, err := toString(val)
+				if err != nil {
+					str = ""
+				}
+				parts = append(parts, str)
+			}
+			// Customize the delimiter as needed.
+			return strings.Join(parts, "")
+		},
+	}
+}
 
-// Concat_WS
+// Concat_WS returns a Column that, when applied to a row,
+// concatenates the string representations of the provided Columns using the specified delimiter.
+// It converts each value to a string using toString. If conversion fails for a value, it uses an empty string.
+func Concat_WS(delim string, cols ...Column) Column {
+	return Column{
+		Name: "concat_ws",
+		Fn: func(row map[string]interface{}) interface{} {
+			var parts []string
+			for _, col := range cols {
+				val := col.Fn(row)
+				str, err := toString(val)
+				if err != nil {
+					str = ""
+				}
+				parts = append(parts, str)
+			}
+			return strings.Join(parts, delim)
+		},
+	}
+}
 
-// Filter
+// Cast takes in an existing Column and a desired datatype ("int", "float", "string"),
+// and returns a new Column that casts the value returned by the original Column to that datatype.
+func Cast(col Column, datatype string) Column {
+	return Column{
+		Name: col.Name + "_cast",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := col.Fn(row)
+			switch datatype {
+			case "int":
+				casted, err := toInt(val)
+				if err != nil {
+					fmt.Printf("cast to int error: %v\n", err)
+					return nil
+				}
+				return casted
+			case "float":
+				casted, err := toFloat64(val)
+				if err != nil {
+					fmt.Printf("cast to float error: %v\n", err)
+					return nil
+				}
+				return casted
+			case "string":
+				casted, err := toString(val)
+				if err != nil {
+					fmt.Printf("cast to string error: %v\n", err)
+					return nil
+				}
+				return casted
+			default:
+				fmt.Printf("unsupported cast type: %s\n", datatype)
+				return nil
+			}
+		},
+	}
+}
 
-// Explode
+// FilterWrapper is an exported function that wraps the Filter method.
+// It accepts a JSON string representing the DataFrame and a JSON string representing a Column (the condition).
+// It returns the filtered DataFrame as a JSON string.
+//
+//export FilterWrapper
+func FilterWrapper(dfJson *C.char, conditionJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("FilterWrapper: unmarshal error (DataFrame): %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    var cond Column
+    if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &cond); err != nil {
+        errStr := fmt.Sprintf("FilterWrapper: unmarshal error (Condition Column): %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    newDF := df.Filter(cond)
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("FilterWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    return C.CString(string(resultJson))
+}
 
-// Cast
+// Filter returns a new DataFrame containing only the rows for which
+// the condition (a Column that evaluates to a bool) is true.
+func (df *DataFrame) Filter(condition Column) *DataFrame {
+	// Create new DataFrame with the same columns.
+	newDF := &DataFrame{
+		Cols: df.Cols,
+		Data: make(map[string][]interface{}),
+	}
+	for _, col := range df.Cols {
+		newDF.Data[col] = []interface{}{}
+	}
 
-// Rename
+	// Iterate over each row.
+	for i := 0; i < df.Rows; i++ {
+		// Build a row (as a map) for evaluation.
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			row[col] = df.Data[col][i]
+		}
+		// Evaluate the condition.
+		cond := condition.Fn(row)
+		if b, ok := cond.(bool); ok && b {
+			// If true, append data from this row to newDF.
+			for _, col := range df.Cols {
+				newDF.Data[col] = append(newDF.Data[col], row[col])
+			}
+		}
+	}
 
-// FillNA
+	// Set new row count.
+	if len(df.Cols) > 0 {
+		newDF.Rows = len(newDF.Data[df.Cols[0]])
+	}
 
-// - ToFloat64
-// - ToInt
-// - ToString
+	return newDF
+}
 
-// DropDuplicates
+// ExplodeWrapper is an exported function that wraps the Explode method.
+// It accepts a JSON string representing the DataFrame and a JSON string representing an array of column names to explode.
+// It returns the resulting DataFrame as a JSON string.
+//
+//export ExplodeWrapper
+func ExplodeWrapper(dfJson *C.char, colsJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("ExplodeWrapper: unmarshal error (DataFrame): %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    var cols []string
+    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+        errStr := fmt.Sprintf("ExplodeWrapper: unmarshal error (columns): %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    newDF := df.Explode(cols...)
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("ExplodeWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    return C.CString(string(resultJson))
+}
 
-// Select
+// Explode creates a new DataFrame where each value in the specified columns' slices becomes a separate row.
+func (df *DataFrame) Explode(columns ...string) *DataFrame {
+	for _, column := range columns {
+		df = df.explodeSingleColumn(column)
+	}
+	return df
+}
+
+// explodeSingleColumn creates a new DataFrame where each value in the specified column's slice becomes a separate row.
+func (df *DataFrame) explodeSingleColumn(column string) *DataFrame {
+	newCols := df.Cols
+	newData := make(map[string][]interface{})
+
+	// Initialize newData with empty slices for each column.
+	for _, col := range newCols {
+		newData[col] = []interface{}{}
+	}
+
+	// Iterate over each row in the DataFrame.
+	for i := 0; i < df.Rows; i++ {
+		// Get the value of the specified column.
+		val := df.Data[column][i]
+
+		// Check if the value is a slice.
+		if slice, ok := val.([]interface{}); ok {
+			// Create a new row for each value in the slice.
+			for _, item := range slice {
+				for _, col := range newCols {
+					if col == column {
+						newData[col] = append(newData[col], item)
+					} else {
+						newData[col] = append(newData[col], df.Data[col][i])
+					}
+				}
+			}
+		} else {
+			// If the value is not a slice, just copy the row as is.
+			for _, col := range newCols {
+				newData[col] = append(newData[col], df.Data[col][i])
+			}
+		}
+	}
+
+	return &DataFrame{
+		Cols: newCols,
+		Data: newData,
+		Rows: len(newData[newCols[0]]),
+	}
+}
+
+//export RenameWrapper
+func RenameWrapper(dfJson *C.char, oldCol *C.char, newCol *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("RenameWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := df.Rename(C.GoString(oldCol), C.GoString(newCol))
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("RenameWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
+}
+
+// rename column
+func (df *DataFrame) Rename(column string, newcol string) *DataFrame {
+	newcols := make([]string, len(df.Cols))
+	for i, col := range df.Cols {
+		if col == column {
+			newcols[i] = newcol
+		} else {
+			newcols[i] = col
+		}
+	}
+
+	newDF := &DataFrame{
+		Cols: newcols,
+		Data: make(map[string][]interface{}),
+		Rows: df.Rows,
+	}
+
+	// Copy the data from the original DataFrame to the new DataFrame.
+	for _, col := range df.Cols {
+		if col == column {
+			newDF.Data[newcol] = df.Data[col]
+		} else {
+			newDF.Data[col] = df.Data[col]
+		}
+	}
+
+	return newDF
+}
+
+// alias
+// func (c Column) Alias(newname string) Column{
+// 	return
+// }
+
+//export FillNAWrapper
+func FillNAWrapper(dfJson *C.char, replacement *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("FillNAWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := df.FillNA(C.GoString(replacement))
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("FillNAWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
+}
+
+// fillna
+func (df *DataFrame) FillNA(replacement string) *DataFrame {
+	quotedReplacement := fmt.Sprintf("%q", replacement)
+	for col, values := range df.Data {
+		for i, value := range values {
+			if value == nil {
+				df.Data[col][i] = quotedReplacement
+			} else {
+				switch v := value.(type) {
+				case string:
+					if v == "" || strings.ToLower(v) == "null" {
+						df.Data[col][i] = quotedReplacement
+					}
+				}
+			}
+		}
+	}
+	return df
+}
+
+
+//export DropNAWrapper
+func DropNAWrapper(dfJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("DropNAWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := df.DropNA()
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("DropNAWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
+}
+
+// DropNA
+func (df *DataFrame) DropNA() *DataFrame {	
+	// Create a new DataFrame with the same columns.
+	newDF := &DataFrame{
+		Cols: df.Cols,
+		Data: make(map[string][]interface{}),
+	}
+	for _, col := range df.Cols {
+		newDF.Data[col] = []interface{}{}
+	}
+
+	// Iterate over each row.
+	for i := 0; i < df.Rows; i++ {
+		// Build a row (as a map) for evaluation.
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			row[col] = df.Data[col][i]
+		}
+		// Evaluate the condition.
+		keep := true
+		for _, val := range row {
+			if val == nil {
+				keep = false
+				break
+			}
+
+			switch v := val.(type) {
+			case string:
+				if v == "" || strings.ToLower(v) == "null" {
+					keep = false
+					break
+				}
+			}
+		}
+		if keep {
+			// If true, append data from this row to newDF.
+			for _, col := range df.Cols {
+				newDF.Data[col] = append(newDF.Data[col], row[col])
+			}
+		}
+	}
+
+	// Set new row count.
+	if len(df.Cols) > 0 {
+		newDF.Rows = len(newDF.Data[df.Cols[0]])
+	}
+
+	return newDF
+}
+
+//export DropDuplicatesWrapper
+// The wrapper accepts a JSON string representing an array of column names. If empty,
+// then the entire row is used.
+func DropDuplicatesWrapper(dfJson *C.char, colsJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("DropDuplicatesWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    var cols []string
+    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+        // If unmarshalling the columns fails, default to empty slice.
+        cols = []string{}
+    }
+    newDF := df.DropDuplicates(cols...)
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("DropDuplicatesWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
+}
+
+// DropDuplicates removes duplicate rows from the DataFrame.
+// If one or more columns are provided, only those columns are used to determine uniqueness.
+// If no columns are provided, the entire row (all columns) is used.
+func (df *DataFrame) DropDuplicates(columns ...string) *DataFrame {
+	// If no columns are specified, use all columns.
+	uniqueCols := columns
+	if len(uniqueCols) == 0 {
+		uniqueCols = df.Cols
+	}
+
+	seen := make(map[string]bool)
+	newData := make(map[string][]interface{})
+	for _, col := range df.Cols {
+		newData[col] = []interface{}{}
+	}
+
+	for i := 0; i < df.Rows; i++ {
+		// Build a subset row only with the uniqueCols.
+		rowSubset := make(map[string]interface{})
+		for _, col := range uniqueCols {
+			rowSubset[col] = df.Data[col][i]
+		}
+
+		// Convert the subset row to a JSON string to use as a key.
+		rowBytes, err := json.Marshal(rowSubset)
+		if err != nil {
+			// If marshalling fails, skip this row.
+			continue
+		}
+		rowStr := string(rowBytes)
+
+		if !seen[rowStr] {
+			seen[rowStr] = true
+			// Append the full row (all columns) to the new data.
+			for _, col := range df.Cols {
+				newData[col] = append(newData[col], df.Data[col][i])
+			}
+		}
+	}
+
+	// Update the DataFrame with the new data.
+	df.Data = newData
+	if len(df.Cols) > 0 {
+		df.Rows = len(newData[df.Cols[0]])
+	} else {
+		df.Rows = 0
+	}
+
+	return df
+}
+
+// SelectWrapper is an exported function that wraps the Select method.
+// It takes a JSON-string representing the DataFrame and a JSON-string representing the column names.
+// It returns the resulting DataFrame as a JSON string.
+//
+//export SelectWrapper
+func SelectWrapper(dfJson *C.char, colsJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("SelectWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    var selectedCols []string
+    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &selectedCols); err != nil {
+        errStr := fmt.Sprintf("SelectWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    selectedDF := df.Select(selectedCols...)
+    resultJson, err := json.Marshal(selectedDF)
+    if err != nil {
+        errStr := fmt.Sprintf("SelectWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    return C.CString(string(resultJson))
+}
+
+// Select returns a new DataFrame containing only the specified columns.
+func (df *DataFrame) Select(columns ...string) *DataFrame {
+	newDF := &DataFrame{
+		Cols: columns,
+		Data: make(map[string][]interface{}),
+		Rows: df.Rows,
+	}
+
+	for _, col := range columns {
+		if data, exists := df.Data[col]; exists {
+			newDF.Data[col] = data
+		} else {
+			newDF.Data[col] = make([]interface{}, df.Rows)
+		}
+	}
+
+	return newDF
+}
+
 
 // GroupByWrapper is an exported function that wraps the GroupBy method.
 // It takes a JSON-string representing the DataFrame, the group column, and a JSON-string representing the aggregations.
@@ -3347,6 +4030,30 @@ func (df *DataFrame) GroupBy(groupcol string, aggs ...Aggregation) *DataFrame {
 		Data: newData,
 		Rows: len(newData[groupcol]),
 	}
+}
+
+//export JoinWrapper
+// This wrapper accepts two DataFrame JSON strings and join parameters.
+func JoinWrapper(leftDfJson *C.char, rightDfJson *C.char, leftOn *C.char, rightOn *C.char, joinType *C.char) *C.char {
+    var leftDf, rightDf DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(leftDfJson)), &leftDf); err != nil {
+        errStr := fmt.Sprintf("JoinWrapper: unmarshal leftDf error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    if err := json.Unmarshal([]byte(C.GoString(rightDfJson)), &rightDf); err != nil {
+        errStr := fmt.Sprintf("JoinWrapper: unmarshal rightDf error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := leftDf.Join(&rightDf, C.GoString(leftOn), C.GoString(rightOn), C.GoString(joinType))
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("JoinWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
 }
 
 // Join performs a join between the receiver (left DataFrame) and the provided right DataFrame.
@@ -3477,6 +4184,29 @@ func (left *DataFrame) Join(right *DataFrame, leftOn, rightOn, joinType string) 
 	}
 }
 
+//export UnionWrapper
+func UnionWrapper(leftDfJson *C.char, rightDfJson *C.char) *C.char {
+    var leftDf, rightDf DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(leftDfJson)), &leftDf); err != nil {
+        errStr := fmt.Sprintf("UnionWrapper: unmarshal leftDf error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    if err := json.Unmarshal([]byte(C.GoString(rightDfJson)), &rightDf); err != nil {
+        errStr := fmt.Sprintf("UnionWrapper: unmarshal rightDf error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := leftDf.Union(&rightDf)
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("UnionWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
+}
+
 // Union appends the rows of the other DataFrame to the receiver.
 // It returns a new DataFrame that contains the union (vertical concatenation)
 // of rows. Columns missing in one DataFrame are filled with nil.
@@ -3537,6 +4267,30 @@ func (df *DataFrame) Union(other *DataFrame) *DataFrame {
 	}
 }
 
+//export DropWrapper
+func DropWrapper(dfJson *C.char, colsJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("DropWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    var cols []string
+    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+        errStr := fmt.Sprintf("DropWrapper: unmarshal columns error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := df.Drop(cols...)
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("DropWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
+}
+
 // Drop removes the specified columns from the DataFrame.
 func (df *DataFrame) Drop(columns ...string) *DataFrame {
 	// Create a set for quick lookup of columns to drop.
@@ -3560,6 +4314,32 @@ func (df *DataFrame) Drop(columns ...string) *DataFrame {
 	df.Data = newData
 
 	return df
+}
+
+//export OrderByWrapper
+func OrderByWrapper(dfJson *C.char, column *C.char, asc *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("OrderByWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    // Interpret asc as a boolean. For example, pass "true" for ascending.
+    ascStr := strings.ToLower(C.GoString(asc))
+    var ascending bool
+    if ascStr == "true" {
+        ascending = true
+    } else {
+        ascending = false
+    }
+    newDF := df.OrderBy(C.GoString(column), ascending)
+    resultJson, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("OrderByWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(resultJson))
 }
 
 // OrderBy sorts the DataFrame by the specified column.
@@ -3628,6 +4408,52 @@ func (df *DataFrame) OrderBy(column string, asc bool) *DataFrame {
 	df.Data = newData
 
 	return df
+}
+
+// SortWrapper is an exported function that wraps the SortColumns method
+// so that it can be called from Python.
+//
+//export SortWrapper
+func SortWrapper(dfJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("SortWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    df.Sort() // sort columns alphabetically
+
+    resultJson, err := json.Marshal(df)
+    if err != nil {
+        errStr := fmt.Sprintf("SortWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    return C.CString(string(resultJson))
+}
+
+// Sort sorts the DataFrame's columns in alphabetical order.
+func (df *DataFrame) Sort() *DataFrame {
+    // Make a copy of the columns and sort it.
+    sortedCols := make([]string, len(df.Cols))
+    copy(sortedCols, df.Cols)
+    sort.Strings(sortedCols)
+
+    // Build a new data map using the sorted column order.
+    newData := make(map[string][]interface{})
+    for _, col := range sortedCols {
+        if data, exists := df.Data[col]; exists {
+            newData[col] = data
+        } else {
+            newData[col] = make([]interface{}, df.Rows)
+        }
+    }
+
+    df.Cols = sortedCols
+    df.Data = newData
+    return df
 }
 
 // FUNCTIONS --------------------------------------------------
@@ -3752,36 +4578,36 @@ func SHA512(cols ...Column) Column {
 // 	return C.CString(string(newJSON))
 // }
 
-// CollectList returns a Column that is an array of the given column's values.
-func CollectList(name string) Column {
-	return Column{
-		Name: name,
-		Fn: func(row map[string]interface{}) interface{} {
-			values := []interface{}{}
-			values = append(values, row[name])
+// // CollectList returns a Column that is an array of the given column's values.
+// func CollectList(name string) Column {
+// 	return Column{
+// 		Name: name,
+// 		Fn: func(row map[string]interface{}) interface{} {
+// 			values := []interface{}{}
+// 			values = append(values, row[name])
 
-			return values
-		},
-	}
-}
+// 			return values
+// 		},
+// 	}
+// }
 
-// CollectSet returns a Column that is a set of unique values from the given column.
-func CollectSet(name string) Column {
-	return Column{
-		Name: fmt.Sprintf("CollectSet(%s)", name),
-		Fn: func(row map[string]interface{}) interface{} {
-			valueSet := make(map[interface{}]bool)
-			for _, val := range row[name].([]interface{}) {
-				valueSet[val] = true
-			}
-			values := []interface{}{}
-			for val := range valueSet {
-				values = append(values, val)
-			}
-			return values
-		},
-	}
-}
+// // CollectSet returns a Column that is a set of unique values from the given column.
+// func CollectSet(name string) Column {
+// 	return Column{
+// 		Name: fmt.Sprintf("CollectSet(%s)", name),
+// 		Fn: func(row map[string]interface{}) interface{} {
+// 			valueSet := make(map[interface{}]bool)
+// 			for _, val := range row[name].([]interface{}) {
+// 				valueSet[val] = true
+// 			}
+// 			values := []interface{}{}
+// 			for val := range valueSet {
+// 				values = append(values, val)
+// 			}
+// 			return values
+// 		},
+// 	}
+// }
 
 // Split returns a Column that splits the string value of the specified column by the given delimiter.
 func Split(name string, delimiter string) Column {
@@ -3879,6 +4705,9 @@ func ColumnsWrapper(dfJson *C.char) *C.char {
 	}
 	return C.CString(string(colsJSON))
 }
+func (df *DataFrame) Columns() []string {
+	return df.Cols
+}
 
 // CountWrapper returns the number of rows in the DataFrame.
 //
@@ -3889,6 +4718,10 @@ func CountWrapper(dfJson *C.char) C.int {
 		log.Fatalf("CountWrapper: error unmarshalling DataFrame: %v", err)
 	}
 	return C.int(df.Count())
+}
+// count
+func (df *DataFrame) Count() int {
+	return df.Rows
 }
 
 // CountDuplicatesWrapper returns the count of duplicate rows.
@@ -3909,53 +4742,6 @@ func CountDuplicatesWrapper(dfJson *C.char, colsJson *C.char) C.int {
 	dups := df.CountDuplicates(cols...)
 	return C.int(dups)
 }
-
-// CountDistinctWrapper returns the count of unique rows (or unique values in the provided columns).
-// Accepts a JSON array of column names (or an empty array to use all columns).
-//
-//export CountDistinctWrapper
-func CountDistinctWrapper(dfJson *C.char, colsJson *C.char) C.int {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("CountDistinctWrapper: error unmarshalling DataFrame: %v", err)
-	}
-
-	var cols []string
-	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
-		cols = df.Cols
-	}
-	distinct := df.CountDistinct(cols...)
-	return C.int(distinct)
-}
-
-// CollectWrapper returns the collected values from a specified column as a JSON-array.
-//
-//export CollectWrapper
-func CollectWrapper(dfJson *C.char, colName *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		log.Fatalf("CollectWrapper: error unmarshalling DataFrame: %v", err)
-	}
-	col := C.GoString(colName)
-	collected := df.Collect(col)
-	result, err := json.Marshal(collected)
-	if err != nil {
-		log.Fatalf("CollectWrapper: error marshalling collected values: %v", err)
-	}
-	return C.CString(string(result))
-}
-
-func (df *DataFrame) Columns() []string {
-	return df.Cols
-}
-
-// schema of json ?
-
-// count
-func (df *DataFrame) Count() int {
-	return df.Rows
-}
-
 // CountDuplicates returns the count of duplicate rows in the DataFrame.
 // If one or more columns are provided, only those columns are used to determine uniqueness.
 // If no columns are provided, the entire row (all columns) is used.
@@ -3989,7 +4775,23 @@ func (df *DataFrame) CountDuplicates(columns ...string) int {
 
 	return duplicateCount
 }
+// CountDistinctWrapper returns the count of unique rows (or unique values in the provided columns).
+// Accepts a JSON array of column names (or an empty array to use all columns).
+//
+//export CountDistinctWrapper
+func CountDistinctWrapper(dfJson *C.char, colsJson *C.char) C.int {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		log.Fatalf("CountDistinctWrapper: error unmarshalling DataFrame: %v", err)
+	}
 
+	var cols []string
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+		cols = df.Cols
+	}
+	distinct := df.CountDistinct(cols...)
+	return C.int(distinct)
+}
 // CountDistinct returns the count of unique values in given column(s)
 func (df *DataFrame) CountDistinct(columns ...string) int {
 	newDF := &DataFrame{
@@ -4010,12 +4812,37 @@ func (df *DataFrame) CountDistinct(columns ...string) int {
 	return count
 }
 
+// CollectWrapper returns the collected values from a specified column as a JSON-array.
+//
+//export CollectWrapper
+func CollectWrapper(dfJson *C.char, colName *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		log.Fatalf("CollectWrapper: error unmarshalling DataFrame: %v", err)
+	}
+	col := C.GoString(colName)
+	collected := df.Collect(col)
+	result, err := json.Marshal(collected)
+	if err != nil {
+		log.Fatalf("CollectWrapper: error marshalling collected values: %v", err)
+	}
+	return C.CString(string(result))
+}
+// collect
 func (df *DataFrame) Collect(c string) []interface{} {
 	if values, exists := df.Data[c]; exists {
 		return values
 	}
 	return []interface{}{}
 }
+
+// schema of json ?
+
+
+
+
+
+
 
 // SINKS --------------------------------------------------
 
@@ -4060,9 +4887,9 @@ func ToCSVFileWrapper(dfJson *C.char, filename *C.char) *C.char {
 	if err != nil {
 		return C.CString(err.Error())
 	}
-	return nil
+	return C.CString("success")
 }
-
+ 
 // END --------------------------------------------------
 
 func main() {}

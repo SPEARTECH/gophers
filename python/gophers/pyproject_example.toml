@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 name = "gophers"
 version = "0.0.2"
 authors = [
-{ name="Example Author", email="tyler@speartech.org" },
+{ name="Speartech", email="tyler@speartech.org" },
 ]
 description = "A small example package"
 readme = "README.md"
