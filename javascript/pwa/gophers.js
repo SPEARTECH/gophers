@@ -1,6 +1,6 @@
 // gophers.js
 // This function initializes the Go WASM module and returns an object with exported functions.
-export async function loadGoWasm() {
+export async function Gophers() {
   // Dynamically import wasm_exec.js. (Make sure it’s included in your package.)
   await import('./go_wasm/wasm_exec.js');
 
