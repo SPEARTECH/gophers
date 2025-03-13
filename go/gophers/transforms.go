@@ -40,32 +40,9 @@ func (df *DataFrame) Column(column string, col Column) *DataFrame {
 }
 
 // Concat returns a Column that, when applied to a row,
-// concatenates the string representations of the provided Columns.
-// It converts each value to a string using toString.
-// If conversion fails, it uses an empty string.
-func Concat(cols ...Column) Column {
-	return Column{
-		Name: "concat",
-		Fn: func(row map[string]interface{}) interface{} {
-			var parts []string
-			for _, col := range cols {
-				val := col.Fn(row)
-				str, err := toString(val)
-				if err != nil {
-					str = ""
-				}
-				parts = append(parts, str)
-			}
-			// Customize the delimiter as needed.
-			return strings.Join(parts, "")
-		},
-	}
-}
-
-// Concat_WS returns a Column that, when applied to a row,
 // concatenates the string representations of the provided Columns using the specified delimiter.
 // It converts each value to a string using toString. If conversion fails for a value, it uses an empty string.
-func Concat_WS(delim string, cols ...Column) Column {
+func Concat(delim string, cols ...Column) Column {
 	return Column{
 		Name: "concat_ws",
 		Fn: func(row map[string]interface{}) interface{} {

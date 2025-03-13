@@ -196,19 +196,6 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		val := row[colName].(string)
 		return strings.Split(val, delimiter)
     case "concat":
-        // "concat" expects a "Cols" field containing a JSON array of ColumnExpr.
-        var cols []ColumnExpr
-        if err := json.Unmarshal(expr.Cols, &cols); err != nil {
-            fmt.Printf("concat unmarshal error: %v\n", err)
-            return ""
-        }
-        var parts []string
-        for _, col := range cols {
-            parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
-        }
-        return strings.Join(parts, "")
-
-    case "concat_ws":
         // "concat_ws" expects a "Delimiter" field (string) and a "Cols" JSON array.
         delim := expr.Delimiter
         var cols []ColumnExpr
@@ -255,7 +242,20 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		default:
 			fmt.Printf("unsupported cast type: %s\n", datatype)
 			return nil
-		}	
+		}
+	case "arrays_zip":
+		// "arrays_zip" expects a "Cols" field with a JSON array of column names.
+		var cols []ColumnExpr
+		if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+			fmt.Printf("arrays_zip unmarshal error: %v\n", err)
+			return nil
+		}
+		var zipped []interface{}
+		for _, col := range cols {
+			zipped = append(zipped, Evaluate(col, row))
+		}
+		return zipped
+			
 	default:
 		return nil
 	}
@@ -537,8 +537,8 @@ func ReadYAML(yamlStr *C.char) *C.char {
 		log.Fatalf("Error unmarshalling YAML: %v", err)
 	}
 
-	fmt.Println("printing yaml unmarshalled data...")
-	fmt.Println(data)
+	// fmt.Println("printing yaml unmarshalled data...")
+	// fmt.Println(data)
 
 	// Convert the map to a slice of maps with string keys
 	rows := mapToRows(convertMapKeysToString(data))
@@ -573,24 +573,213 @@ func mapToRows(data map[string]interface{}) []map[string]interface{} {
 	return rows
 }
 
-// flattenMap flattens a nested map into a slice of maps
-func flattenMap(data map[string]interface{}, prefix string, rows *[]map[string]interface{}) {
-	for k, v := range data {
-		key := k
-		if prefix != "" {
-			key = prefix + "." + k
-		}
-		switch v := v.(type) {
-		case map[string]interface{}:
-			flattenMap(v, key, rows)
-		default:
-			if len(*rows) == 0 {
-				*rows = append(*rows, make(map[string]interface{}))
-			}
-			(*rows)[0][key] = v
-		}
-	}
+// flattenNestedMap recursively flattens a nested map.
+// It prefixes keys with the given prefix and a dot.
+func flattenNestedMap(m map[string]interface{}, prefix string) map[string]interface{} {
+    result := make(map[string]interface{})
+    for k, v := range m {
+        flatKey := prefix + "." + k
+        switch child := v.(type) {
+        case map[string]interface{}:
+            nested := flattenNestedMap(child, flatKey)
+            for nk, nv := range nested {
+                result[nk] = nv
+            }
+        default:
+            result[flatKey] = v
+        }
+    }
+    return result
 }
+// FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
+//export FlattenWrapper
+func FlattenWrapper(dfJson *C.char, flattenColsJson *C.char) *C.char {
+    // Unmarshal the DataFrame.
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("FlattenWrapper: DataFrame unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    // Unmarshal the flatten columns (JSON array of strings).
+    var flattenCols []string
+    if err := json.Unmarshal([]byte(C.GoString(flattenColsJson)), &flattenCols); err != nil {
+        errStr := fmt.Sprintf("FlattenWrapper: flattenCols unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    // Call the Flatten method.
+    newDF := df.Flatten(flattenCols)
+    
+    // Marshal the new DataFrame to JSON.
+    jsonBytes, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("FlattenWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    
+    return C.CString(string(jsonBytes))
+}
+
+// Flatten is a DataFrame method that takes a slice of column names.
+// For each row, if any specified column contains a nested map (or map[interface{}]interface{}),
+// it will flatten that nested structure using dot-notation
+// and add those flattened fields as new columns while removing the original column.
+func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
+    newRows := []map[string]interface{}{}
+    // Iterate over each row.
+    for i := 0; i < df.Rows; i++ {
+        // Create a copy of the row.
+        row := make(map[string]interface{})
+        for _, col := range df.Cols {
+            row[col] = df.Data[col][i]
+        }
+        // Process each column that should be flattened.
+        for _, fcol := range flattenCols {
+            val, exists := row[fcol]
+            if !exists || val == nil {
+                continue
+            }
+            var nested map[string]interface{}
+            switch t := val.(type) {
+            case map[string]interface{}:
+                nested = t
+            case map[interface{}]interface{}:
+                nested = convertMapKeysToString(t)
+            default:
+                // Not a map; skip.
+                continue
+            }
+            // Flatten the map; use the column name as prefix.
+            flatMap := flattenNestedMap(nested, fcol)
+            // Remove the original nested column.
+            delete(row, fcol)
+            // Merge flattened key/value pairs into the row.
+            for k, v := range flatMap {
+                row[k] = v
+            }
+        }
+        newRows = append(newRows, row)
+    }
+    // Return a new DataFrame built from the new rows.
+    return Dataframe(newRows)
+}
+
+// KeysToColumnsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
+// It converts any nested map in that column into separate columns and returns the updated DataFrame as JSON.
+//export KeysToColumnsWrapper
+func KeysToColumnsWrapper(dfJson *C.char, nestedCol *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("KeysToColumnsWrapper: DataFrame unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    newDF := df.KeysToColumns(C.GoString(nestedCol))
+    jsonBytes, err := json.Marshal(newDF)
+    if err != nil {
+        errStr := fmt.Sprintf("KeysToColumnsWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(jsonBytes))
+}
+
+// KeysToColumns turns the keys of a nested map in column nestedCol into separate columns.
+// For example, if nestedCol contains {"key1": value1, "key2": value2},
+// it creates new columns named "nestedCol.key1" and "nestedCol.key2" with the respective values.
+func (df *DataFrame) KeysToColumns(nestedCol string) *DataFrame {
+    newRows := []map[string]interface{}{}
+    // Iterate over each row.
+    for i := 0; i < df.Rows; i++ {
+        // Create a copy of the row.
+        row := make(map[string]interface{})
+        for _, col := range df.Cols {
+            row[col] = df.Data[col][i]
+        }
+        // Process the specified nested column.
+        val, exists := row[nestedCol]
+        if !exists || val == nil {
+            newRows = append(newRows, row)
+            continue
+        }
+        var nested map[string]interface{}
+        switch t := val.(type) {
+        case map[string]interface{}:
+            nested = t
+        case map[interface{}]interface{}:
+            nested = convertMapKeysToString(t)
+        default:
+            // Not a map; skip processing.
+            newRows = append(newRows, row)
+            continue
+        }
+        // For each key in the nested map, create a new column "nestedCol.key"
+        for k, v := range nested {
+            newKey := nestedCol + "." + k
+            row[newKey] = v
+        }
+        // Remove the original nested column.
+        delete(row, nestedCol)
+        newRows = append(newRows, row)
+    }
+    // Construct a new DataFrame from the updated rows.
+    return Dataframe(newRows)
+}
+
+// StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
+//export StringArrayConvertWrapper
+func StringArrayConvertWrapper(dfJson *C.char, column *C.char) *C.char {
+	// Unmarshal the DataFrame.
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("StringArrayToArrayWrapper: DataFrame unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	// Call the StringArrayConvert method.
+	newDF := df.StringArrayConvert(C.GoString(column))
+
+	// Marshal the new DataFrame to JSON.
+	jsonBytes, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("StringArrayToArrayWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(jsonBytes))
+}
+
+
+func (df *DataFrame) StringArrayConvert(column string) *DataFrame {
+    for i := 0; i < df.Rows; i++ {
+        val := df.Data[column][i]
+        str, ok := val.(string)
+        if !ok {
+            // Value is not a string; skip conversion.
+            continue
+        }
+        str = strings.TrimSpace(str)
+        if len(str) < 2 || str[0] != '[' || str[len(str)-1] != ']' {
+            // Not a stringed array; skip.
+            continue
+        }
+        var arr []interface{}
+        if err := json.Unmarshal([]byte(str), &arr); err != nil {
+            fmt.Printf("ConvertStringArrayToSlice: error unmarshalling row %d in column %s: %v\n", i, column, err)
+            continue
+        }
+        df.Data[column][i] = arr
+    }
+    return df
+}
+
+
 
 // make flatten function - from pyspark methodology (for individual columns)
 // func flattenWrapper(djJson *C.char, col *C.char)
@@ -1302,22 +1491,7 @@ func DisplayChart(chart Chart) map[string]interface{} {
 	return map[string]interface{}{
 		"text/html": html,
 	}
-}
-
-// DisplayHTMLWrapper is an exported function that wraps the DisplayHTML function.
-// It takes a string representing the HTML content and returns the HTML content as a C string.
-//
-//export DisplayHTMLWrapper
-func DisplayHTMLWrapper(html *C.char) *C.char {
-	htmlContent := C.GoString(html)
-	displayHTML := DisplayHTML(htmlContent)
-	htmlResult, ok := displayHTML["text/html"].(string)
-	if !ok {
-		errStr := "DisplayHTMLWrapper: error displaying HTML content"
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
-	return C.CString(htmlResult)
+	
 }
 
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
@@ -3401,32 +3575,9 @@ func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
 }
 
 // Concat returns a Column that, when applied to a row,
-// concatenates the string representations of the provided Columns.
-// It converts each value to a string using toString.
-// If conversion fails, it uses an empty string.
-func Concat(cols ...Column) Column {
-	return Column{
-		Name: "concat",
-		Fn: func(row map[string]interface{}) interface{} {
-			var parts []string
-			for _, col := range cols {
-				val := col.Fn(row)
-				str, err := toString(val)
-				if err != nil {
-					str = ""
-				}
-				parts = append(parts, str)
-			}
-			// Customize the delimiter as needed.
-			return strings.Join(parts, "")
-		},
-	}
-}
-
-// Concat_WS returns a Column that, when applied to a row,
 // concatenates the string representations of the provided Columns using the specified delimiter.
 // It converts each value to a string using toString. If conversion fails for a value, it uses an empty string.
-func Concat_WS(delim string, cols ...Column) Column {
+func Concat(delim string, cols ...Column) Column {
 	return Column{
 		Name: "concat_ws",
 		Fn: func(row map[string]interface{}) interface{} {

@@ -24,7 +24,6 @@ gophers.CollectWrapper.restype = c_char_p
 gophers.DisplayBrowserWrapper.restype = c_char_p
 gophers.DisplayWrapper.restype = c_char_p
 gophers.DisplayToFileWrapper.restype = c_char_p
-gophers.DisplayHTMLWrapper.restype = c_char_p
 gophers.DisplayChartWrapper.restype = c_char_p
 gophers.BarChartWrapper.restype = c_char_p
 gophers.ColumnChartWrapper.restype = c_char_p
@@ -66,7 +65,9 @@ gophers.AddTextWrapper.restype = c_char_p
 gophers.AddSubTextWrapper.restype = c_char_p
 gophers.AddBulletsWrapper.restype = c_char_p
 gophers.ToCSVFileWrapper.restype = c_char_p
-
+gophers.FlattenWrapper.restype = c_char_p
+gophers.StringArrayConvertWrapper.restype = c_char_p
+gophers.KeysToColumnsWrapper.restype = c_char_p
 
 class ColumnExpr:
     def __init__(self, expr):
@@ -76,31 +77,31 @@ class ColumnExpr:
         return json.dumps(self.expr)
 
     def Help(self):
-        print("Column Help:")
-        print("\tIsNull()")
-        print("\tIsNotNull()")
-        print("\tIsIn(values)")
-        print("\tIsBetween(lower, upper)")
-        print("\tLike(pattern)")
-        print("\tNotLike(pattern)")
-        print("\tStartsWith(prefix)")
-        print("\tEndsWith(suffix)")
-        print("\tContains(substr)")
-        print("\tNotContains(substr)")
-        print("\tReplace(old, new)")
-        print("\tTrim()")
-        print("\tLTrim()")
-        print("\tRTrim()")
-        print("\tLower()")
-        print("\tUpper()")
-        print("\tTitle()")
-        print("\tSubstr(start, length)")
-        print("\tGt(other)")
-        print("\tLt(other)")
-        print("\tGe(other)")
-        print("\tLe(other)")
-        print("\tEq(other)")
-        print("\tNe(other)")
+        print("""Column Help:
+    Contains(substr)
+    EndsWith(suffix)
+    Eq(other)
+    Ge(other)
+    Gt(other)
+    IsBetween(lower, upper)
+    IsIn(values)
+    IsNotNull()
+    IsNull()
+    Le(other)
+    Like(pattern)
+    Lower()
+    Lt(other)
+    LTrim()
+    Ne(other)
+    NotContains(substr)
+    NotLike(pattern)
+    Replace(old, new)
+    RTrim()
+    StartsWith(prefix)
+    Substr(start, length)
+    Title()
+    Trim()
+    Upper()""")
         
     def __repr__(self):
         return f"ColumnExpr({self.expr})"
@@ -197,18 +198,18 @@ class Report:
         self.report_json = report_json
 
     def Help(self):
-        print("Report Help:")
-        print("\tOpen()")
-        print("\tSave(filename)")
-        print("\tAddPage(name)")
-        print("\tAddHTML(page, text)")
-        print("\tAddDataframe(page, df)")
-        print("\tAddChart(page, chart)")
-        print("\tAddHeading(page, text, size)")
-        print("\tAddText(page, text)")
-        print("\tAddSubText(page, text)")
-        print("\tAddBullets(page, bullets)")
-
+        print("""Report Help:
+    AddBullets(page, bullets)
+    AddChart(page, chart)
+    AddDataframe(page, df)
+    AddHeading(page, text, size)
+    AddHTML(page, text)
+    AddPage(name)
+    AddSubText(page, text)
+    AddText(page, text)
+    Open()
+    Save(filename)""")
+        
     def Open(self):
         # print("")
         print("printing open report:"+self.report_json)
@@ -299,24 +300,28 @@ class Report:
         return self
 
 def Help():
-    print("Functions Help:")
-    print("\tReadJSON(json_data)")
-    print("\tReadNDJSON(json_data)")
-    print("\tReadCSV(csv_data)")
-    print("\tReadYAML(yaml_data)")
-    print("\tGetAPIJSON(endpoint, headers, query_params)")
-    print("\tSum(column_name)")
-    print("\tAgg(*aggregations)")
-    print("\tCol(name)")
-    print("\tLit(value)")
-    print("\tOr(left, right)")
-    print("\tAnd(left, right)")
-    print("\tIf(condition, trueExpr, falseExpr)")
-    print("\tSHA256(*cols)")
-    print("\tSHA512(*cols)")
-    print("\tCollectList(col_name)")
-    print("\tCollectSet(col_name)")
-    print("\tSplit(col_name, delimiter)")
+    print("""Functions Help:
+    Agg(*aggregations)
+    And(left, right)
+    ArraysZip(*cols)
+    Col(name)
+    CollectList(col_name)
+    CollectSet(col_name)
+    Concat(delimiter, *cols)
+    DisplayChart(chart)
+    DisplayHTML(html)
+    GetAPIJSON(endpoint, headers, query_params)
+    If(condition, trueExpr, falseExpr)
+    Lit(value)
+    Or(left, right)
+    ReadCSV(csv_data)
+    ReadJSON(json_data)
+    ReadNDJSON(json_data)
+    ReadYAML(yaml_data)
+    SHA256(*cols)
+    SHA512(*cols)
+    Split(col_name, delimiter)
+    Sum(column_name)""")
 
     
 # Aggregate functions
@@ -374,17 +379,7 @@ def CollectSet(col_name):
 def Split(col_name, delimiter):
     return ColumnExpr({ "type": "split", "col": col_name, "delimiter": delimiter })
 
-def Concat(*cols):
-    """
-    Returns a ColumnExpr that concatenates the string representations
-    of the given column expressions.
-    """
-    return ColumnExpr({
-        "type": "concat",
-        "cols": [json.loads(col.to_json()) for col in cols]
-    })
-
-def Concat_WS(delimiter, *cols):
+def Concat(delimiter, *cols):
     """
     Returns a ColumnExpr that concatenates the string representations
     of the given column expressions using the specified delimiter.
@@ -392,6 +387,16 @@ def Concat_WS(delimiter, *cols):
     return ColumnExpr({
         "type": "concat_ws",
         "delimiter": delimiter,
+        "cols": [json.loads(col.to_json()) for col in cols]
+    })
+
+def ArraysZip(*cols):
+    """
+    Returns a ColumnExpr that zips the given column expressions
+    into an array of structs.
+    """
+    return ColumnExpr({
+        "type": "arrays_zip",
         "cols": [json.loads(col.to_json()) for col in cols]
     })
 
@@ -421,6 +426,14 @@ def GetAPIJSON(endpoint, headers, query_params):
     df_json = gophers.GetAPIJSON(endpoint.encode('utf-8'), headers.encode('utf-8'), query_params.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
 
+# Display functions
+def DisplayHTML(html):
+    display(HTML(html))
+
+def DisplayChart(chart):
+    html = gophers.DisplayChartWrapper(chart.html.encode('utf-8'))
+    display(HTML(html))
+
 # PANDAS FUNCTIONS
 # loc
 # iloc
@@ -431,38 +444,39 @@ class DataFrame:
         self.df_json = df_json
 
     def Help(self):
-        print("DataFrame Help:")
-        print("\tShow(chars, record_count)")   
-        print("\tColumns()")
-        print("\tCount()")
-        print("\tCountDuplicates(cols)")
-        print("\tCountDistinct(cols)")
-        print("\tCollect(col_name)")
-        print("\tHead(chars)")
-        print("\tTail(chars)")
-        print("\tVertical(chars, record_count)")
-        print("\tDisplayBrowser()")
-        print("\tDisplay()")
-        print("\tDisplayToFile(file_path)")
-        print("\tBarChart(title, subtitle, groupcol, aggs)")
-        print("\tColumnChart(title, subtitle, groupcol, aggs)")
-        print("\tStackedBarChart(title, subtitle, groupcol, aggs)")
-        print("\tStackedPercentChart(title, subtitle, groupcol, aggs)")
-        print("\tColumn(col_name, col_spec)")
-        print("\tGroupBy(groupCol, aggs)")
-        print("\tSelect(*cols)")
-        print("\tUnion(df2)")
-        print("\tJoin(df2, col1, col2, how)")
-        print("\tSort(*cols)")
-        print("\tFilter(condition)")
-        print("\tOrderBy(col, asc)")
-        print("\tDrop(*cols)")
-        print("\tDropDuplicates(cols)")
-        print("\tDropNA(cols)")
-        print("\tFillNA(value)")
-        print("\tRenameWrapper(old_name, new_name)")
-        print("\tCreateReport(title)")
-        print("\tToCSVFile(filename)")
+        print("""DataFrame Help:
+    BarChart(title, subtitle, groupcol, aggs)
+    Column(col_name, col_spec)
+    ColumnChart(title, subtitle, groupcol, aggs)
+    Columns()
+    Collect(col_name)
+    Count()
+    CountDistinct(cols)
+    CountDuplicates(cols)
+    CreateReport(title)
+    Display()
+    DisplayBrowser()
+    DisplayToFile(file_path)
+    Drop(*cols)
+    DropDuplicates(cols)
+    DropNA(cols)
+    FillNA(value)
+    Filter(condition)
+    Flatten(*cols)
+    GroupBy(groupCol, aggs)
+    Head(chars)
+    Join(df2, col1, col2, how)
+    OrderBy(col, asc)
+    Select(*cols)
+    Show(chars, record_count)
+    Sort(*cols)
+    StackedBarChart(title, subtitle, groupcol, aggs)
+    StackedPercentChart(title, subtitle, groupcol, aggs)
+    StringArrayConvert(col_name)
+    Tail(chars)
+    ToCSVFile(filename)
+    Union(df2)
+    Vertical(chars, record_count)""")  
         
     # Display functions
     def Show(self, chars, record_count=100):
@@ -517,8 +531,9 @@ class DataFrame:
     
     def Display(self):
         html = gophers.DisplayWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        print(html)
         display(HTML(html))
-        return self
+        # return self
     
     def DisplayToFile(self, file_path):
         err = gophers.DisplayToFileWrapper(self.df_json.encode('utf-8'), file_path.encode('utf-8')).decode('utf-8')
@@ -698,6 +713,25 @@ class DataFrame:
             condition.to_json().encode('utf-8')
         ).decode('utf-8')
         return self
+    def Flatten(self, *cols):
+        self.df_json = gophers.FlattenWrapper(
+            self.df_json.encode('utf-8'),
+            json.dumps([col for col in cols]).encode('utf-8')
+        ).decode('utf-8')
+        return self
+    def KeysToColumns(self, *cols):
+        self.df_json = gophers.KeysToColumnsWrapper(
+            self.df_json.encode('utf-8'),
+            json.dumps([col for col in cols]).encode('utf-8')
+        ).decode('utf-8')
+        return self
+    
+    def StringArrayConvert(self, col_name):
+        self.df_json = gophers.StringArrayConvertWrapper(
+            self.df_json.encode('utf-8'),
+            col_name.encode('utf-8')
+        ).decode('utf-8')
+        return self
     
     # Report methods
     def CreateReport(self, title):
@@ -713,6 +747,31 @@ class DataFrame:
     
 # Example usage:
 def main():
+
+    yaml = """_interval:
+  end: 2023-04-20
+  start: 2023-04-06
+indices_changed:
+  cdm_csm:
+    _jira_references:
+    - CDE-31444
+    attributes_added:
+    - meta
+  cdm_csm_trending:
+    _jira_references:
+    - CDE-31444
+    attributes_added:
+    - meta
+    attributes_changed:
+      meta.owner:
+        data_source:
+          new: Dashboard Process
+          old: Agency"""
+    
+    df = ReadYAML(yaml)
+    df = df.KeysToColumns("indices_changed")
+    # df = df.Flatten("indices_changed")
+    df.Vertical(100)
     pass
 
 if __name__ == '__main__':

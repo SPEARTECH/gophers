@@ -82,6 +82,16 @@ extern __declspec(dllexport) char* ReadNDJSON(char* jsonStr);
 //
 extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
 
+// FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
+extern __declspec(dllexport) char* FlattenWrapper(char* dfJson, char* flattenColsJson);
+
+// KeysToColumnsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
+// It converts any nested map in that column into separate columns and returns the updated DataFrame as JSON.
+extern __declspec(dllexport) char* KeysToColumnsWrapper(char* dfJson, char* nestedCol);
+
+// StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
+extern __declspec(dllexport) char* StringArrayConvertWrapper(char* dfJson, char* column);
+
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
 // It accepts a C string representing the path (or content) of a parquet file,
 // calls ReadParquet, marshals the resulting DataFrame back to JSON, and returns it as a C string.
@@ -120,11 +130,6 @@ extern __declspec(dllexport) char* DisplayToFileWrapper(char* dfJson, char* file
 // returns the HTML string on success or an error message on failure.
 //
 extern __declspec(dllexport) char* DisplayChartWrapper(char* chartJson);
-
-// DisplayHTMLWrapper is an exported function that wraps the DisplayHTML function.
-// It takes a string representing the HTML content and returns the HTML content as a C string.
-//
-extern __declspec(dllexport) char* DisplayHTMLWrapper(char* html);
 
 // BarChartWrapper is an exported function that wraps the BarChart function.
 //
