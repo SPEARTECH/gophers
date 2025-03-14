@@ -668,34 +668,42 @@ func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
     return Dataframe(newRows)
 }
 
-// KeysToColumnsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
+// KeysToColsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
 // It converts any nested map in that column into separate columns and returns the updated DataFrame as JSON.
-//export KeysToColumnsWrapper
-func KeysToColumnsWrapper(dfJson *C.char, nestedCol *C.char) *C.char {
+//export KeysToColsWrapper
+func KeysToColsWrapper(dfJson *C.char, nestedCol *C.char) *C.char {
     var df DataFrame
     if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("KeysToColumnsWrapper: DataFrame unmarshal error: %v", err)
+        errStr := fmt.Sprintf("KeysToColsWrapper: DataFrame unmarshal error: %v", err)
         log.Fatal(errStr)
         return C.CString(errStr)
     }
-    newDF := df.KeysToColumns(C.GoString(nestedCol))
+    newDF := df.KeysToCols(C.GoString(nestedCol))
     jsonBytes, err := json.Marshal(newDF)
     if err != nil {
-        errStr := fmt.Sprintf("KeysToColumnsWrapper: marshal error: %v", err)
+        errStr := fmt.Sprintf("KeysToColsWrapper: marshal error: %v", err)
         log.Fatal(errStr)
         return C.CString(errStr)
     }
     return C.CString(string(jsonBytes))
 }
 
-// KeysToColumns turns the keys of a nested map in column nestedCol into separate columns.
-// For example, if nestedCol contains {"key1": value1, "key2": value2},
-// it creates new columns named "nestedCol.key1" and "nestedCol.key2" with the respective values.
-func (df *DataFrame) KeysToColumns(nestedCol string) *DataFrame {
+// flattenOnce flattens only one level of the nested map,
+// prefixing each key with the given prefix and a dot.
+func flattenOnce(m map[string]interface{}, prefix string) map[string]interface{} {
+    result := make(map[string]interface{})
+    for k, v := range m {
+        result[prefix+"."+k] = v
+    }
+    return result
+}
+
+// KeysToCols turns the keys of a nested map in column nestedCol into separate columns.
+// It flattens only one level by using flattenOnce.
+func (df *DataFrame) KeysToCols(nestedCol string) *DataFrame {
     newRows := []map[string]interface{}{}
     // Iterate over each row.
     for i := 0; i < df.Rows; i++ {
-        // Create a copy of the row.
         row := make(map[string]interface{})
         for _, col := range df.Cols {
             row[col] = df.Data[col][i]
@@ -713,14 +721,13 @@ func (df *DataFrame) KeysToColumns(nestedCol string) *DataFrame {
         case map[interface{}]interface{}:
             nested = convertMapKeysToString(t)
         default:
-            // Not a map; skip processing.
             newRows = append(newRows, row)
             continue
         }
-        // For each key in the nested map, create a new column "nestedCol.key"
-        for k, v := range nested {
-            newKey := nestedCol + "." + k
-            row[newKey] = v
+        // Flatten only one level from the nested map.
+        flatMap := flattenOnce(nested, nestedCol)
+        for k, v := range flatMap {
+            row[k] = v
         }
         // Remove the original nested column.
         delete(row, nestedCol)
@@ -729,7 +736,6 @@ func (df *DataFrame) KeysToColumns(nestedCol string) *DataFrame {
     // Construct a new DataFrame from the updated rows.
     return Dataframe(newRows)
 }
-
 // StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
 //export StringArrayConvertWrapper
 func StringArrayConvertWrapper(dfJson *C.char, column *C.char) *C.char {

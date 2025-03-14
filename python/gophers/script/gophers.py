@@ -67,7 +67,7 @@ gophers.AddBulletsWrapper.restype = c_char_p
 gophers.ToCSVFileWrapper.restype = c_char_p
 gophers.FlattenWrapper.restype = c_char_p
 gophers.StringArrayConvertWrapper.restype = c_char_p
-gophers.KeysToColumnsWrapper.restype = c_char_p
+gophers.KeysToColsWrapper.restype = c_char_p
 
 class ColumnExpr:
     def __init__(self, expr):
@@ -719,10 +719,10 @@ class DataFrame:
             json.dumps([col for col in cols]).encode('utf-8')
         ).decode('utf-8')
         return self
-    def KeysToColumns(self, *cols):
-        self.df_json = gophers.KeysToColumnsWrapper(
+    def KeysToCols(self, col):
+        self.df_json = gophers.KeysToColsWrapper(
             self.df_json.encode('utf-8'),
-            json.dumps([col for col in cols]).encode('utf-8')
+            col.encode('utf-8')
         ).decode('utf-8')
         return self
     
@@ -769,7 +769,7 @@ indices_changed:
           old: Agency"""
     
     df = ReadYAML(yaml)
-    df = df.KeysToColumns("indices_changed")
+    df = df.KeysToCols("_interval")
     # df = df.Flatten("indices_changed")
     df.Vertical(100)
     pass

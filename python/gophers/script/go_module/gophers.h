@@ -85,9 +85,9 @@ extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
 // FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
 extern __declspec(dllexport) char* FlattenWrapper(char* dfJson, char* flattenColsJson);
 
-// KeysToColumnsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
+// KeysToColsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
 // It converts any nested map in that column into separate columns and returns the updated DataFrame as JSON.
-extern __declspec(dllexport) char* KeysToColumnsWrapper(char* dfJson, char* nestedCol);
+extern __declspec(dllexport) char* KeysToColsWrapper(char* dfJson, char* nestedCol);
 
 // StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
 extern __declspec(dllexport) char* StringArrayConvertWrapper(char* dfJson, char* column);
