@@ -5059,14 +5059,6 @@ func (df *DataFrame) Collect(c string) []interface{} {
 
 // SINKS --------------------------------------------------
 
-func maybeEscapeCSVValue(val interface{}) string {
-    s := fmt.Sprintf("%v", val)
-    if strings.ContainsAny(s, ",\"\n") {
-        s = strings.ReplaceAll(s, `"`, `""`)
-        return `"` + s + `"`
-    }
-    return s
-}
 // dataframe to csv file
 func (df *DataFrame) ToCSVFile(filename string) error {
     file, err := os.Create(filename)
@@ -5078,12 +5070,8 @@ func (df *DataFrame) ToCSVFile(filename string) error {
     writer := csv.NewWriter(file)
     defer writer.Flush()
 
-    // Write the column headers.
-    escapedHeaders := make([]string, len(df.Cols))
-    for i, header := range df.Cols {
-        escapedHeaders[i] = maybeEscapeCSVValue(header)
-    }
-    if err := writer.Write(escapedHeaders); err != nil {
+    // Write the column headers directly.
+    if err := writer.Write(df.Cols); err != nil {
         return err
     }
 
@@ -5092,7 +5080,7 @@ func (df *DataFrame) ToCSVFile(filename string) error {
         row := make([]string, len(df.Cols))
         for j, col := range df.Cols {
             value := df.Data[col][i]
-            row[j] = maybeEscapeCSVValue(value)
+            row[j] = fmt.Sprintf("%v", value)
         }
         if err := writer.Write(row); err != nil {
             return err
