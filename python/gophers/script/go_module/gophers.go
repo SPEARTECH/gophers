@@ -287,17 +287,19 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		if err != nil {
 			return nil
 		}
-	
+		fmt.Printf("Lookup key: %s\n", keyStr)
+		
 		// Evaluate the nested map expression from the Right field.
 		var nestedExpr ColumnExpr
 		if err := json.Unmarshal(expr.Right, &nestedExpr); err != nil {
 			return nil
 		}
 		nestedInterf := Evaluate(nestedExpr, row)
+		fmt.Printf("Nested value: %#v\n", nestedInterf)
 		if nestedInterf == nil {
 			return nil
 		}
-	
+		
 		switch t := nestedInterf.(type) {
 		case map[string]interface{}:
 			return t[keyStr]

@@ -403,24 +403,24 @@ def ArraysZip(*cols):
 def Keys(col_name):
     return ColumnExpr({ "type": "keys", "col": col_name })
 
-def Lookup(nested_col, key_expr):
+def Lookup(key_expr, nested_col):
     """
     Creates a ColumnExpr for lookup.
     
     Parameters:
-      nested_col: the name of the nested column (will be wrapped as Col())
-      key_expr: a ColumnExpr representing the lookup key (e.g. either Col('key') or Lit("some constant"))
+      nested_col: the name of the nested column (will be wrapped with Col())
+      key_expr: a ColumnExpr representing the lookup key (e.g. Col('key') or Lit("some constant"))
     
     Returns:
       A ColumnExpr with type "lookup".
     """
-    # If key_expr is not already a ColumnExpr (e.g. a literal), wrap it with Lit.
+    # If key_expr is not already a ColumnExpr, wrap it.
     if not isinstance(key_expr, ColumnExpr):
         key_expr = Lit(key_expr)
     return ColumnExpr({
         "type": "lookup",
-        "left": key_expr.to_json(),      # key expression can be a column or literal
-        "right": Col(nested_col).to_json() # always use the nested column as a column reference
+        "left": json.loads(key_expr.to_json()),
+        "right": json.loads(Col(nested_col).to_json())
     })
 
 # Source functions
@@ -770,7 +770,6 @@ class DataFrame:
     
 # Example usage:
 def main():
-
 
     pass
 
