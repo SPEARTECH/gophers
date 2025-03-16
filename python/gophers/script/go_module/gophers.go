@@ -255,7 +255,28 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 			zipped = append(zipped, Evaluate(col, row))
 		}
 		return zipped
-			
+	case "keys":
+		colName := expr.Col
+		var keys []string
+		val := row[colName]
+		if val == nil {
+			return keys
+		}
+		switch t := val.(type) {
+		case map[string]interface{}:
+			for k := range t {
+				keys = append(keys, k)
+			}
+		case map[interface{}]interface{}:
+			nested := convertMapKeysToString(t)
+			for k := range nested {
+				keys = append(keys, k)
+			}
+		default:
+			return keys
+		}
+		return keys
+
 	default:
 		return nil
 	}
@@ -736,6 +757,8 @@ func (df *DataFrame) KeysToCols(nestedCol string) *DataFrame {
     // Construct a new DataFrame from the updated rows.
     return Dataframe(newRows)
 }
+
+
 // StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
 //export StringArrayConvertWrapper
 func StringArrayConvertWrapper(dfJson *C.char, column *C.char) *C.char {

@@ -147,6 +147,36 @@ func Split(name string, delimiter string) Column {
 	}
 }
 
+// Keys returns a Column that extracts the keys from the nested map (top level only)
+// found in the specified column.
+func Keys(name string) Column {
+    return Column{
+        Name: fmt.Sprintf("Keys(%s)", name),
+        Fn: func(row map[string]interface{}) interface{} {
+            val := row[name]
+            var keys []string
+            if val == nil {
+                return keys
+            }
+            switch t := val.(type) {
+            case map[string]interface{}:
+                for k := range t {
+                    keys = append(keys, k)
+                }
+            case map[interface{}]interface{}:
+                nested := convertMapKeysToString(t)
+                for k := range nested {
+                    keys = append(keys, k)
+                }
+            default:
+                // If the column isn't a map, return an empty slice.
+                return keys
+            }
+            return keys
+        },
+    }
+}
+
 // pivot (row to column) *
 
 // replace

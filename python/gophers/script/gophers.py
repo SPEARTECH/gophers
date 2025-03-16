@@ -400,6 +400,9 @@ def ArraysZip(*cols):
         "cols": [json.loads(col.to_json()) for col in cols]
     })
 
+def Keys(col_name):
+    return ColumnExpr({ "type": "keys", "col": col_name })
+
 # Source functions
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
@@ -748,30 +751,7 @@ class DataFrame:
 # Example usage:
 def main():
 
-    yaml = """_interval:
-  end: 2023-04-20
-  start: 2023-04-06
-indices_changed:
-  cdm_csm:
-    _jira_references:
-    - CDE-31444
-    attributes_added:
-    - meta
-  cdm_csm_trending:
-    _jira_references:
-    - CDE-31444
-    attributes_added:
-    - meta
-    attributes_changed:
-      meta.owner:
-        data_source:
-          new: Dashboard Process
-          old: Agency"""
-    
-    df = ReadYAML(yaml)
-    df = df.KeysToCols("_interval")
-    # df = df.Flatten("indices_changed")
-    df.Vertical(100)
+
     pass
 
 if __name__ == '__main__':
