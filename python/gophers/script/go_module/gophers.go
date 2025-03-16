@@ -287,7 +287,7 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		if err != nil {
 			return nil
 		}
-		fmt.Printf("Lookup key: %s\n", keyStr)
+		// fmt.Printf("Lookup key: %s\n", keyStr)
 		
 		// Evaluate the nested map expression from the Right field.
 		var nestedExpr ColumnExpr
@@ -295,7 +295,7 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 			return nil
 		}
 		nestedInterf := Evaluate(nestedExpr, row)
-		fmt.Printf("Nested value: %#v\n", nestedInterf)
+		// fmt.Printf("Nested value: %#v\n", nestedInterf)
 		if nestedInterf == nil {
 			return nil
 		}
@@ -5059,12 +5059,13 @@ func (df *DataFrame) Collect(c string) []interface{} {
 
 // SINKS --------------------------------------------------
 
-func escapeCSVValue(val interface{}) string {
+func maybeEscapeCSVValue(val interface{}) string {
     s := fmt.Sprintf("%v", val)
-    // Replace existing double quotes with two double quotes.
-    s = strings.ReplaceAll(s, `"`, `""`)
-    // Surround with double quotes.
-    return `"` + s + `"`
+    if strings.ContainsAny(s, ",\"\n") {
+        s = strings.ReplaceAll(s, `"`, `""`)
+        return `"` + s + `"`
+    }
+    return s
 }
 // dataframe to csv file
 func (df *DataFrame) ToCSVFile(filename string) error {
@@ -5080,7 +5081,7 @@ func (df *DataFrame) ToCSVFile(filename string) error {
     // Write the column headers.
     escapedHeaders := make([]string, len(df.Cols))
     for i, header := range df.Cols {
-        escapedHeaders[i] = escapeCSVValue(header)
+        escapedHeaders[i] = maybeEscapeCSVValue(header)
     }
     if err := writer.Write(escapedHeaders); err != nil {
         return err
@@ -5091,7 +5092,7 @@ func (df *DataFrame) ToCSVFile(filename string) error {
         row := make([]string, len(df.Cols))
         for j, col := range df.Cols {
             value := df.Data[col][i]
-            row[j] = escapeCSVValue(value)
+            row[j] = maybeEscapeCSVValue(value)
         }
         if err := writer.Write(row); err != nil {
             return err
