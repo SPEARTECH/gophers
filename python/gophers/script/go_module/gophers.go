@@ -276,6 +276,36 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 			return keys
 		}
 		return keys
+	case "lookup":
+		// Unmarshal the left field to get the key column name.
+		var keyColStr string
+		if err := json.Unmarshal(expr.Left, &keyColStr); err != nil {
+			return nil
+		}
+		// Unmarshal the right field to get the nested column name.
+		var nestColStr string
+		if err := json.Unmarshal(expr.Right, &nestColStr); err != nil {
+			return nil
+		}
+		// Get the key string from the row.
+		keyVal, err := toString(row[keyColStr])
+		if err != nil {
+			return nil
+		}
+		// Get the nested value from the nested column.
+		nestedVal := row[nestColStr]
+		if nestedVal == nil {
+			return nil
+		}
+		switch t := nestedVal.(type) {
+		case map[string]interface{}:
+			return t[keyVal]
+		case map[interface{}]interface{}:
+			m := convertMapKeysToString(t)
+			return m[keyVal]
+		default:
+			return nil
+		}
 
 	default:
 		return nil

@@ -403,6 +403,17 @@ def ArraysZip(*cols):
 def Keys(col_name):
     return ColumnExpr({ "type": "keys", "col": col_name })
 
+def Lookup(key_col, nested_col):
+    """
+    Creates a ColumnExpr that looks up the value in the nested column (nest_col)
+    using the string from the key column (key_col).
+    """
+    return ColumnExpr({
+        "type": "lookup",
+        "left": key_col,
+        "right": nested_col
+    })
+
 # Source functions
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.

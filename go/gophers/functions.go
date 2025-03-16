@@ -177,6 +177,35 @@ func Keys(name string) Column {
     }
 }
 
+// Lookup returns a Column that extracts the value from a nested map in the column nestCol
+// using the string value from the keyCol column.
+func Lookup(nestCol string, keyCol string) Column {
+    return Column{
+        Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyCol),
+        Fn: func(row map[string]interface{}) interface{} {
+            // Get the key string from keyCol.
+            keyVal, err := toString(row[keyCol])
+            if err != nil {
+                return nil
+            }
+            // Get the nested map from nestCol.
+            nestedVal := row[nestCol]
+            if nestedVal == nil {
+                return nil
+            }
+            switch n := nestedVal.(type) {
+            case map[string]interface{}:
+                return n[keyVal]
+            case map[interface{}]interface{}:
+                m := convertMapKeysToString(n)
+                return m[keyVal]
+            default:
+                return nil
+            }
+        },
+    }
+}
+
 // pivot (row to column) *
 
 // replace
