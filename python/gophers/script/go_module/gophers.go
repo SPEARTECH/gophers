@@ -5059,35 +5059,46 @@ func (df *DataFrame) Collect(c string) []interface{} {
 
 // SINKS --------------------------------------------------
 
+func escapeCSVValue(val interface{}) string {
+    s := fmt.Sprintf("%v", val)
+    // Replace existing double quotes with two double quotes.
+    s = strings.ReplaceAll(s, `"`, `""`)
+    // Surround with double quotes.
+    return `"` + s + `"`
+}
 // dataframe to csv file
 func (df *DataFrame) ToCSVFile(filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+    file, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
+    writer := csv.NewWriter(file)
+    defer writer.Flush()
 
-	// Write the column headers.
-	if err := writer.Write(df.Cols); err != nil {
-		return err
-	}
+    // Write the column headers.
+    escapedHeaders := make([]string, len(df.Cols))
+    for i, header := range df.Cols {
+        escapedHeaders[i] = escapeCSVValue(header)
+    }
+    if err := writer.Write(escapedHeaders); err != nil {
+        return err
+    }
 
-	// Write the rows of data.
-	for i := 0; i < df.Rows; i++ {
-		row := make([]string, len(df.Cols))
-		for j, col := range df.Cols {
-			value := df.Data[col][i]
-			row[j] = fmt.Sprintf("%v", value)
-		}
-		if err := writer.Write(row); err != nil {
-			return err
-		}
-	}
+    // Write the rows of data.
+    for i := 0; i < df.Rows; i++ {
+        row := make([]string, len(df.Cols))
+        for j, col := range df.Cols {
+            value := df.Data[col][i]
+            row[j] = escapeCSVValue(value)
+        }
+        if err := writer.Write(row); err != nil {
+            return err
+        }
+    }
 
-	return nil
+    return nil
 }
 
 //export ToCSVFileWrapper
