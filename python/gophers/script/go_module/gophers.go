@@ -277,32 +277,33 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		}
 		return keys
 	case "lookup":
-		// Unmarshal the left field to get the key column name.
-		var keyColStr string
-		if err := json.Unmarshal(expr.Left, &keyColStr); err != nil {
+		// Evaluate the key expression from the Left field.
+		var keyExpr ColumnExpr
+		if err := json.Unmarshal(expr.Left, &keyExpr); err != nil {
 			return nil
 		}
-		// Unmarshal the right field to get the nested column name.
-		var nestColStr string
-		if err := json.Unmarshal(expr.Right, &nestColStr); err != nil {
-			return nil
-		}
-		// Get the key string from the row.
-		keyVal, err := toString(row[keyColStr])
+		keyInterf := Evaluate(keyExpr, row)
+		keyStr, err := toString(keyInterf)
 		if err != nil {
 			return nil
 		}
-		// Get the nested value from the nested column.
-		nestedVal := row[nestColStr]
-		if nestedVal == nil {
+	
+		// Evaluate the nested map expression from the Right field.
+		var nestedExpr ColumnExpr
+		if err := json.Unmarshal(expr.Right, &nestedExpr); err != nil {
 			return nil
 		}
-		switch t := nestedVal.(type) {
+		nestedInterf := Evaluate(nestedExpr, row)
+		if nestedInterf == nil {
+			return nil
+		}
+	
+		switch t := nestedInterf.(type) {
 		case map[string]interface{}:
-			return t[keyVal]
+			return t[keyStr]
 		case map[interface{}]interface{}:
 			m := convertMapKeysToString(t)
-			return m[keyVal]
+			return m[keyStr]
 		default:
 			return nil
 		}

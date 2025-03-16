@@ -178,13 +178,13 @@ func Keys(name string) Column {
 }
 
 // Lookup returns a Column that extracts the value from a nested map in the column nestCol
-// using the string value from the keyCol column.
-func Lookup(nestCol string, keyCol string) Column {
+// using the string value produced by keyExpr (which can be either a column reference or a literal).
+func Lookup(keyExpr Column, nestCol string) Column {
     return Column{
-        Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyCol),
+        Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyExpr.Name),
         Fn: func(row map[string]interface{}) interface{} {
-            // Get the key string from keyCol.
-            keyVal, err := toString(row[keyCol])
+            // Evaluate the key expression.
+            keyVal, err := toString(keyExpr.Fn(row))
             if err != nil {
                 return nil
             }
