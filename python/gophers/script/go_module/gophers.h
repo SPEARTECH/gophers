@@ -155,7 +155,7 @@ extern __declspec(dllexport) char* StackedPercentChartWrapper(char* dfJson, char
 
 // CreateReportWrapper is an exported function that wraps the CreateReport method.
 //
-extern __declspec(dllexport) char* CreateReportWrapper(char* dfJson, char* title);
+extern __declspec(dllexport) char* CreateReportWrapper(char* title);
 
 // OpenReportWrapper is an exported function that wraps the Open method.
 //

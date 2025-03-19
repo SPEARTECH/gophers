@@ -330,6 +330,41 @@ def Sum(column_name):
     sum_agg_json = gophers.SumWrapper(column_name.encode('utf-8')).decode('utf-8')
     # Parse the JSON string into a Python dict before returning it
     return json.loads(sum_agg_json)
+def Max(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MaxWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Min(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MinWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Median(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MedianWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Mean(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MeanWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Mode(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.ModeWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def First(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.FirstWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Unique(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.UniqueWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
 
 def Agg(*aggregations):
     # Simply return the list of aggregations
@@ -456,6 +491,12 @@ def DisplayHTML(html):
 def DisplayChart(chart):
     html = gophers.DisplayChartWrapper(chart.html.encode('utf-8'))
     display(HTML(html))
+
+# Report methods
+def CreateReport(self, title):
+    report_json = gophers.CreateReportWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
+    # print("CreateReport: Created report JSON:", report_json)
+    return Report(report_json)
 
 # PANDAS FUNCTIONS
 # loc
@@ -756,11 +797,6 @@ class DataFrame:
         ).decode('utf-8')
         return self
     
-    # Report methods
-    def CreateReport(self, title):
-        report_json = gophers.CreateReportWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
-        # print("CreateReport: Created report JSON:", report_json)
-        return Report(report_json)
     
     # Sink Functions
     def ToCSVFile(self, filename):
@@ -770,7 +806,41 @@ class DataFrame:
     
 # Example usage:
 def main():
+    yaml = """C:\\Users\\tyler\\Documents\\PROJECTS\\gophers\\python\\gophers\\script\\exyaml.yaml"""
+    df = ReadYAML(yaml)
+    df = df.KeysToCols("_interval")
+    df = df.Rename("_interval.start", "_interval.start_date")
+    df = df.Rename("_interval.end","_interval.end_date")
+    df = df.OrderBy("_interval.end_date", False)
 
+    df = df.Rename("indices_changed", "indices_changed_values")
+    df = df.Column("indices_changed", Keys("indices_changed_values"))
+    df = df.Explode("indices_changed")
+    df = df.Column("indices_changed_values",Lookup(Col("indices_changed"),"indices_changed_values"))
+
+
+    df = df.Column("attributes_added",Lookup(Lit("attributes_added"),"indices_changed_values"))
+    df = df.Column("attributes_removed",Lookup(Lit("attributes_removed"),"indices_changed_values"))
+    df = df.Column("attributes_changed",Lookup(Lit("attributes_changed"),"indices_changed_values"))
+    # df = df.Drop("indices_changed_values")
+
+    df = df.Column("indices_added", Keys("indices_added"))
+    df = df.Column("indices_removed", Keys("indices_removed"))
+
+    df = df.Drop("changes")
+
+    # df = df.Filter("", Col("").Eq("_jira_references"))
+    # df = df.Flatten("indices_changed_values")
+    # df = df.Drop("indices_changed_values")
+    df = df.Sort()
+    # df.Vertical(50)
+    # print(df.Count())
+    # print(df.Columns())
+    # dash = df.CreateDashboard("new dash")
+    # dash.Open()
+    # df.ToCSVFile('newcsv.csv')
+    # df.DisplayBrowser()
+    df.ToCSVFile("test.csv")
     pass
 
 if __name__ == '__main__':

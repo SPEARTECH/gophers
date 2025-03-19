@@ -2123,7 +2123,7 @@ func StackedPercentChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char,
 // REPORTS --------------------------------------------------
 
 // report create
-func (df *DataFrame) CreateReport(title string) *Report {
+func CreateReport(title string) *Report {
 	HTMLTop := `
 	<!DOCTYPE html>
 	<html>
@@ -2677,16 +2677,10 @@ func (report *Report) AddBullets(page string, text ...string) {
 // CreateReportWrapper is an exported function that wraps the CreateReport method.
 //
 //export CreateReportWrapper
-func CreateReportWrapper(dfJson *C.char, title *C.char) *C.char {
-	var df DataFrame
-	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-		errStr := fmt.Sprintf("CreateReportWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+func CreateReportWrapper(title *C.char) *C.char {
 	// fmt.Printf("printing dfjson:%s", []byte(C.GoString(dfJson)))
 	// fmt.Println("")
-	report := df.CreateReport(C.GoString(title))
+	report := CreateReport(C.GoString(title))
 	// fmt.Printf("printing report:%s", report)
 	reportJson, err := json.Marshal(report)
 	// fmt.Printf("printing reportJson:%s", reportJson)
@@ -4470,8 +4464,12 @@ func (df *DataFrame) Union(other *DataFrame) *DataFrame {
 		appendRow(other, j)
 	}
 
-	// Total rows is the sum of both dataframes' row counts.
-	nRows := df.Rows + other.Rows
+	nRows := 0
+	if len(df.Cols) > 0 {
+		nRows = len(df.Data[df.Cols[0]])
+	} else {
+		nRows = 0
+	}
 
 	return &DataFrame{
 		Cols: newCols,

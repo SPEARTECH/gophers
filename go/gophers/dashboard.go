@@ -32,7 +32,7 @@ type Dashboard struct {
 }
 
 // dashboard create
-func (df *DataFrame) CreateDashboard(title string) *Dashboard {
+func CreateDashboard(title string) *Dashboard {
 	HTMLTop := `
 	<!DOCTYPE html>
 	<html>
