@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gophers"
-version = "0.2.7"
+version = "0.2.9"
 authors = [
 { name="Speartech", email="Tyler@Speartech.org" },
 ]
@@ -51,3 +51,4 @@ include = ["*"]
 
 [tool.hatch.build.targets.wheel]
 include = ["*"]
+
