@@ -839,8 +839,8 @@ def main():
     # dash = df.CreateDashboard("new dash")
     # dash.Open()
     # df.ToCSVFile('newcsv.csv')
-    # df.DisplayBrowser()
-    df.ToCSVFile("test.csv")
+    df.DisplayBrowser()
+    # df.ToCSVFile("test.csv")
     pass
 
 if __name__ == '__main__':
