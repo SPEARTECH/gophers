@@ -79,7 +79,7 @@ type ColumnExpr struct {
 	Cols      json.RawMessage `json:"cols,omitempty"`
 	Col       string          `json:"col,omitempty"`
 	Delimiter string          `json:"delimiter,omitempty"`
-    Datatype  string          `json:"datatype,omitempty"`
+	Datatype  string          `json:"datatype,omitempty"`
 }
 
 func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
@@ -117,7 +117,7 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 			return !(v == nil || *v == "" || strings.ToLower(*v) == "null")
 		default:
 			return true
-		}	
+		}
 	case "gt":
 		var leftExpr, rightExpr ColumnExpr
 		json.Unmarshal(expr.Left, &leftExpr)
@@ -195,19 +195,19 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		delimiter := expr.Delimiter
 		val := row[colName].(string)
 		return strings.Split(val, delimiter)
-    case "concat":
-        // "concat_ws" expects a "Delimiter" field (string) and a "Cols" JSON array.
-        delim := expr.Delimiter
-        var cols []ColumnExpr
-        if err := json.Unmarshal(expr.Cols, &cols); err != nil {
-            fmt.Printf("concat_ws unmarshal error: %v\n", err)
-            return ""
-        }
-        var parts []string
-        for _, col := range cols {
-            parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
-        }
-        return strings.Join(parts, delim)
+	case "concat":
+		// "concat_ws" expects a "Delimiter" field (string) and a "Cols" JSON array.
+		delim := expr.Delimiter
+		var cols []ColumnExpr
+		if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+			fmt.Printf("concat_ws unmarshal error: %v\n", err)
+			return ""
+		}
+		var parts []string
+		for _, col := range cols {
+			parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
+		}
+		return strings.Join(parts, delim)
 	case "cast":
 		// "cast" expects a "Col" field with a JSON object and a "Datatype" field.
 		var subExpr ColumnExpr
@@ -288,7 +288,7 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 			return nil
 		}
 		// fmt.Printf("Lookup key: %s\n", keyStr)
-		
+
 		// Evaluate the nested map expression from the Right field.
 		var nestedExpr ColumnExpr
 		if err := json.Unmarshal(expr.Right, &nestedExpr); err != nil {
@@ -299,7 +299,7 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 		if nestedInterf == nil {
 			return nil
 		}
-		
+
 		switch t := nestedInterf.(type) {
 		case map[string]interface{}:
 			return t[keyStr]
@@ -509,7 +509,7 @@ func ReadJSON(jsonStr *C.char) *C.char {
 		// Wrap single JSON object into an array.
 		jsonContent = "[" + jsonContent + "]"
 	}
-	
+
 	// Unmarshal the JSON string into rows.
 	if err := json.Unmarshal([]byte(jsonContent), &rows); err != nil {
 		log.Fatalf("Error unmarshalling JSON: %v", err)
@@ -630,52 +630,54 @@ func mapToRows(data map[string]interface{}) []map[string]interface{} {
 // flattenNestedMap recursively flattens a nested map.
 // It prefixes keys with the given prefix and a dot.
 func flattenNestedMap(m map[string]interface{}, prefix string) map[string]interface{} {
-    result := make(map[string]interface{})
-    for k, v := range m {
-        flatKey := prefix + "." + k
-        switch child := v.(type) {
-        case map[string]interface{}:
-            nested := flattenNestedMap(child, flatKey)
-            for nk, nv := range nested {
-                result[nk] = nv
-            }
-        default:
-            result[flatKey] = v
-        }
-    }
-    return result
+	result := make(map[string]interface{})
+	for k, v := range m {
+		flatKey := prefix + "." + k
+		switch child := v.(type) {
+		case map[string]interface{}:
+			nested := flattenNestedMap(child, flatKey)
+			for nk, nv := range nested {
+				result[nk] = nv
+			}
+		default:
+			result[flatKey] = v
+		}
+	}
+	return result
 }
+
 // FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
+//
 //export FlattenWrapper
 func FlattenWrapper(dfJson *C.char, flattenColsJson *C.char) *C.char {
-    // Unmarshal the DataFrame.
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("FlattenWrapper: DataFrame unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    // Unmarshal the flatten columns (JSON array of strings).
-    var flattenCols []string
-    if err := json.Unmarshal([]byte(C.GoString(flattenColsJson)), &flattenCols); err != nil {
-        errStr := fmt.Sprintf("FlattenWrapper: flattenCols unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    // Call the Flatten method.
-    newDF := df.Flatten(flattenCols)
-    
-    // Marshal the new DataFrame to JSON.
-    jsonBytes, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("FlattenWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    return C.CString(string(jsonBytes))
+	// Unmarshal the DataFrame.
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("FlattenWrapper: DataFrame unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	// Unmarshal the flatten columns (JSON array of strings).
+	var flattenCols []string
+	if err := json.Unmarshal([]byte(C.GoString(flattenColsJson)), &flattenCols); err != nil {
+		errStr := fmt.Sprintf("FlattenWrapper: flattenCols unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	// Call the Flatten method.
+	newDF := df.Flatten(flattenCols)
+
+	// Marshal the new DataFrame to JSON.
+	jsonBytes, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("FlattenWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(jsonBytes))
 }
 
 // Flatten is a DataFrame method that takes a slice of column names.
@@ -683,116 +685,117 @@ func FlattenWrapper(dfJson *C.char, flattenColsJson *C.char) *C.char {
 // it will flatten that nested structure using dot-notation
 // and add those flattened fields as new columns while removing the original column.
 func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
-    newRows := []map[string]interface{}{}
-    // Iterate over each row.
-    for i := 0; i < df.Rows; i++ {
-        // Create a copy of the row.
-        row := make(map[string]interface{})
-        for _, col := range df.Cols {
-            row[col] = df.Data[col][i]
-        }
-        // Process each column that should be flattened.
-        for _, fcol := range flattenCols {
-            val, exists := row[fcol]
-            if !exists || val == nil {
-                continue
-            }
-            var nested map[string]interface{}
-            switch t := val.(type) {
-            case map[string]interface{}:
-                nested = t
-            case map[interface{}]interface{}:
-                nested = convertMapKeysToString(t)
-            default:
-                // Not a map; skip.
-                continue
-            }
-            // Flatten the map; use the column name as prefix.
-            flatMap := flattenNestedMap(nested, fcol)
-            // Remove the original nested column.
-            delete(row, fcol)
-            // Merge flattened key/value pairs into the row.
-            for k, v := range flatMap {
-                row[k] = v
-            }
-        }
-        newRows = append(newRows, row)
-    }
-    // Return a new DataFrame built from the new rows.
-    return Dataframe(newRows)
+	newRows := []map[string]interface{}{}
+	// Iterate over each row.
+	for i := 0; i < df.Rows; i++ {
+		// Create a copy of the row.
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			row[col] = df.Data[col][i]
+		}
+		// Process each column that should be flattened.
+		for _, fcol := range flattenCols {
+			val, exists := row[fcol]
+			if !exists || val == nil {
+				continue
+			}
+			var nested map[string]interface{}
+			switch t := val.(type) {
+			case map[string]interface{}:
+				nested = t
+			case map[interface{}]interface{}:
+				nested = convertMapKeysToString(t)
+			default:
+				// Not a map; skip.
+				continue
+			}
+			// Flatten the map; use the column name as prefix.
+			flatMap := flattenNestedMap(nested, fcol)
+			// Remove the original nested column.
+			delete(row, fcol)
+			// Merge flattened key/value pairs into the row.
+			for k, v := range flatMap {
+				row[k] = v
+			}
+		}
+		newRows = append(newRows, row)
+	}
+	// Return a new DataFrame built from the new rows.
+	return Dataframe(newRows)
 }
 
 // KeysToColsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
 // It converts any nested map in that column into separate columns and returns the updated DataFrame as JSON.
+//
 //export KeysToColsWrapper
 func KeysToColsWrapper(dfJson *C.char, nestedCol *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("KeysToColsWrapper: DataFrame unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := df.KeysToCols(C.GoString(nestedCol))
-    jsonBytes, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("KeysToColsWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(jsonBytes))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("KeysToColsWrapper: DataFrame unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := df.KeysToCols(C.GoString(nestedCol))
+	jsonBytes, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("KeysToColsWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(jsonBytes))
 }
 
 // flattenOnce flattens only one level of the nested map,
 // prefixing each key with the given prefix and a dot.
 func flattenOnce(m map[string]interface{}, prefix string) map[string]interface{} {
-    result := make(map[string]interface{})
-    for k, v := range m {
-        result[prefix+"."+k] = v
-    }
-    return result
+	result := make(map[string]interface{})
+	for k, v := range m {
+		result[prefix+"."+k] = v
+	}
+	return result
 }
 
 // KeysToCols turns the keys of a nested map in column nestedCol into separate columns.
 // It flattens only one level by using flattenOnce.
 func (df *DataFrame) KeysToCols(nestedCol string) *DataFrame {
-    newRows := []map[string]interface{}{}
-    // Iterate over each row.
-    for i := 0; i < df.Rows; i++ {
-        row := make(map[string]interface{})
-        for _, col := range df.Cols {
-            row[col] = df.Data[col][i]
-        }
-        // Process the specified nested column.
-        val, exists := row[nestedCol]
-        if !exists || val == nil {
-            newRows = append(newRows, row)
-            continue
-        }
-        var nested map[string]interface{}
-        switch t := val.(type) {
-        case map[string]interface{}:
-            nested = t
-        case map[interface{}]interface{}:
-            nested = convertMapKeysToString(t)
-        default:
-            newRows = append(newRows, row)
-            continue
-        }
-        // Flatten only one level from the nested map.
-        flatMap := flattenOnce(nested, nestedCol)
-        for k, v := range flatMap {
-            row[k] = v
-        }
-        // Remove the original nested column.
-        delete(row, nestedCol)
-        newRows = append(newRows, row)
-    }
-    // Construct a new DataFrame from the updated rows.
-    return Dataframe(newRows)
+	newRows := []map[string]interface{}{}
+	// Iterate over each row.
+	for i := 0; i < df.Rows; i++ {
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			row[col] = df.Data[col][i]
+		}
+		// Process the specified nested column.
+		val, exists := row[nestedCol]
+		if !exists || val == nil {
+			newRows = append(newRows, row)
+			continue
+		}
+		var nested map[string]interface{}
+		switch t := val.(type) {
+		case map[string]interface{}:
+			nested = t
+		case map[interface{}]interface{}:
+			nested = convertMapKeysToString(t)
+		default:
+			newRows = append(newRows, row)
+			continue
+		}
+		// Flatten only one level from the nested map.
+		flatMap := flattenOnce(nested, nestedCol)
+		for k, v := range flatMap {
+			row[k] = v
+		}
+		// Remove the original nested column.
+		delete(row, nestedCol)
+		newRows = append(newRows, row)
+	}
+	// Construct a new DataFrame from the updated rows.
+	return Dataframe(newRows)
 }
 
-
 // StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
+//
 //export StringArrayConvertWrapper
 func StringArrayConvertWrapper(dfJson *C.char, column *C.char) *C.char {
 	// Unmarshal the DataFrame.
@@ -817,31 +820,28 @@ func StringArrayConvertWrapper(dfJson *C.char, column *C.char) *C.char {
 	return C.CString(string(jsonBytes))
 }
 
-
 func (df *DataFrame) StringArrayConvert(column string) *DataFrame {
-    for i := 0; i < df.Rows; i++ {
-        val := df.Data[column][i]
-        str, ok := val.(string)
-        if !ok {
-            // Value is not a string; skip conversion.
-            continue
-        }
-        str = strings.TrimSpace(str)
-        if len(str) < 2 || str[0] != '[' || str[len(str)-1] != ']' {
-            // Not a stringed array; skip.
-            continue
-        }
-        var arr []interface{}
-        if err := json.Unmarshal([]byte(str), &arr); err != nil {
-            fmt.Printf("ConvertStringArrayToSlice: error unmarshalling row %d in column %s: %v\n", i, column, err)
-            continue
-        }
-        df.Data[column][i] = arr
-    }
-    return df
+	for i := 0; i < df.Rows; i++ {
+		val := df.Data[column][i]
+		str, ok := val.(string)
+		if !ok {
+			// Value is not a string; skip conversion.
+			continue
+		}
+		str = strings.TrimSpace(str)
+		if len(str) < 2 || str[0] != '[' || str[len(str)-1] != ']' {
+			// Not a stringed array; skip.
+			continue
+		}
+		var arr []interface{}
+		if err := json.Unmarshal([]byte(str), &arr); err != nil {
+			fmt.Printf("ConvertStringArrayToSlice: error unmarshalling row %d in column %s: %v\n", i, column, err)
+			continue
+		}
+		df.Data[column][i] = arr
+	}
+	return df
 }
-
-
 
 // make flatten function - from pyspark methodology (for individual columns)
 // func flattenWrapper(djJson *C.char, col *C.char)
@@ -1553,7 +1553,7 @@ func DisplayChart(chart Chart) map[string]interface{} {
 	return map[string]interface{}{
 		"text/html": html,
 	}
-	
+
 }
 
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
@@ -2471,7 +2471,6 @@ func (report *Report) Save(filename string) error {
 	}
 
 	html += report.Bottom
-	
 
 	// Write the HTML string to the file
 	if _, err := file.Write([]byte(html)); err != nil {
@@ -2534,7 +2533,7 @@ func (report *Report) AddDataframe(page string, df *DataFrame) {
 		fmt.Println("Page does not exist. Use AddPage()")
 		return
 	}
-	report.AddHTML("page2", text)
+	report.AddHTML(page, text)
 }
 
 // AddChart adds a chart to the specified page in the report.
@@ -3694,29 +3693,29 @@ func Cast(col Column, datatype string) Column {
 //
 //export FilterWrapper
 func FilterWrapper(dfJson *C.char, conditionJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("FilterWrapper: unmarshal error (DataFrame): %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    var cond Column
-    if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &cond); err != nil {
-        errStr := fmt.Sprintf("FilterWrapper: unmarshal error (Condition Column): %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    newDF := df.Filter(cond)
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("FilterWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("FilterWrapper: unmarshal error (DataFrame): %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var cond Column
+	if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &cond); err != nil {
+		errStr := fmt.Sprintf("FilterWrapper: unmarshal error (Condition Column): %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	newDF := df.Filter(cond)
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("FilterWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(resultJson))
 }
 
 // Filter returns a new DataFrame containing only the rows for which
@@ -3762,29 +3761,29 @@ func (df *DataFrame) Filter(condition Column) *DataFrame {
 //
 //export ExplodeWrapper
 func ExplodeWrapper(dfJson *C.char, colsJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("ExplodeWrapper: unmarshal error (DataFrame): %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    var cols []string
-    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
-        errStr := fmt.Sprintf("ExplodeWrapper: unmarshal error (columns): %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    newDF := df.Explode(cols...)
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("ExplodeWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("ExplodeWrapper: unmarshal error (DataFrame): %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	var cols []string
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+		errStr := fmt.Sprintf("ExplodeWrapper: unmarshal error (columns): %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	newDF := df.Explode(cols...)
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("ExplodeWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+
+	return C.CString(string(resultJson))
 }
 
 // Explode creates a new DataFrame where each value in the specified columns' slices becomes a separate row.
@@ -3839,20 +3838,20 @@ func (df *DataFrame) explodeSingleColumn(column string) *DataFrame {
 
 //export RenameWrapper
 func RenameWrapper(dfJson *C.char, oldCol *C.char, newCol *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("RenameWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := df.Rename(C.GoString(oldCol), C.GoString(newCol))
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("RenameWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("RenameWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := df.Rename(C.GoString(oldCol), C.GoString(newCol))
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("RenameWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // rename column
@@ -3891,20 +3890,20 @@ func (df *DataFrame) Rename(column string, newcol string) *DataFrame {
 
 //export FillNAWrapper
 func FillNAWrapper(dfJson *C.char, replacement *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("FillNAWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := df.FillNA(C.GoString(replacement))
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("FillNAWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("FillNAWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := df.FillNA(C.GoString(replacement))
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("FillNAWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // fillna
@@ -3927,27 +3926,26 @@ func (df *DataFrame) FillNA(replacement string) *DataFrame {
 	return df
 }
 
-
 //export DropNAWrapper
 func DropNAWrapper(dfJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("DropNAWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := df.DropNA()
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("DropNAWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("DropNAWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := df.DropNA()
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("DropNAWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // DropNA
-func (df *DataFrame) DropNA() *DataFrame {	
+func (df *DataFrame) DropNA() *DataFrame {
 	// Create a new DataFrame with the same columns.
 	newDF := &DataFrame{
 		Cols: df.Cols,
@@ -3996,29 +3994,30 @@ func (df *DataFrame) DropNA() *DataFrame {
 	return newDF
 }
 
-//export DropDuplicatesWrapper
 // The wrapper accepts a JSON string representing an array of column names. If empty,
 // then the entire row is used.
+//
+//export DropDuplicatesWrapper
 func DropDuplicatesWrapper(dfJson *C.char, colsJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("DropDuplicatesWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    var cols []string
-    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
-        // If unmarshalling the columns fails, default to empty slice.
-        cols = []string{}
-    }
-    newDF := df.DropDuplicates(cols...)
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("DropDuplicatesWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("DropDuplicatesWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	var cols []string
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+		// If unmarshalling the columns fails, default to empty slice.
+		cols = []string{}
+	}
+	newDF := df.DropDuplicates(cols...)
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("DropDuplicatesWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // DropDuplicates removes duplicate rows from the DataFrame.
@@ -4078,29 +4077,29 @@ func (df *DataFrame) DropDuplicates(columns ...string) *DataFrame {
 //
 //export SelectWrapper
 func SelectWrapper(dfJson *C.char, colsJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("SelectWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("SelectWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    var selectedCols []string
-    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &selectedCols); err != nil {
-        errStr := fmt.Sprintf("SelectWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	var selectedCols []string
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &selectedCols); err != nil {
+		errStr := fmt.Sprintf("SelectWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    selectedDF := df.Select(selectedCols...)
-    resultJson, err := json.Marshal(selectedDF)
-    if err != nil {
-        errStr := fmt.Sprintf("SelectWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	selectedDF := df.Select(selectedCols...)
+	resultJson, err := json.Marshal(selectedDF)
+	if err != nil {
+		errStr := fmt.Sprintf("SelectWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    return C.CString(string(resultJson))
+	return C.CString(string(resultJson))
 }
 
 // Select returns a new DataFrame containing only the specified columns.
@@ -4121,7 +4120,6 @@ func (df *DataFrame) Select(columns ...string) *DataFrame {
 
 	return newDF
 }
-
 
 // GroupByWrapper is an exported function that wraps the GroupBy method.
 // It takes a JSON-string representing the DataFrame, the group column, and a JSON-string representing the aggregations.
@@ -4239,28 +4237,29 @@ func (df *DataFrame) GroupBy(groupcol string, aggs ...Aggregation) *DataFrame {
 	}
 }
 
-//export JoinWrapper
 // This wrapper accepts two DataFrame JSON strings and join parameters.
+//
+//export JoinWrapper
 func JoinWrapper(leftDfJson *C.char, rightDfJson *C.char, leftOn *C.char, rightOn *C.char, joinType *C.char) *C.char {
-    var leftDf, rightDf DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(leftDfJson)), &leftDf); err != nil {
-        errStr := fmt.Sprintf("JoinWrapper: unmarshal leftDf error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    if err := json.Unmarshal([]byte(C.GoString(rightDfJson)), &rightDf); err != nil {
-        errStr := fmt.Sprintf("JoinWrapper: unmarshal rightDf error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := leftDf.Join(&rightDf, C.GoString(leftOn), C.GoString(rightOn), C.GoString(joinType))
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("JoinWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var leftDf, rightDf DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(leftDfJson)), &leftDf); err != nil {
+		errStr := fmt.Sprintf("JoinWrapper: unmarshal leftDf error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	if err := json.Unmarshal([]byte(C.GoString(rightDfJson)), &rightDf); err != nil {
+		errStr := fmt.Sprintf("JoinWrapper: unmarshal rightDf error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := leftDf.Join(&rightDf, C.GoString(leftOn), C.GoString(rightOn), C.GoString(joinType))
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("JoinWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // Join performs a join between the receiver (left DataFrame) and the provided right DataFrame.
@@ -4393,25 +4392,25 @@ func (left *DataFrame) Join(right *DataFrame, leftOn, rightOn, joinType string) 
 
 //export UnionWrapper
 func UnionWrapper(leftDfJson *C.char, rightDfJson *C.char) *C.char {
-    var leftDf, rightDf DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(leftDfJson)), &leftDf); err != nil {
-        errStr := fmt.Sprintf("UnionWrapper: unmarshal leftDf error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    if err := json.Unmarshal([]byte(C.GoString(rightDfJson)), &rightDf); err != nil {
-        errStr := fmt.Sprintf("UnionWrapper: unmarshal rightDf error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := leftDf.Union(&rightDf)
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("UnionWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var leftDf, rightDf DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(leftDfJson)), &leftDf); err != nil {
+		errStr := fmt.Sprintf("UnionWrapper: unmarshal leftDf error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	if err := json.Unmarshal([]byte(C.GoString(rightDfJson)), &rightDf); err != nil {
+		errStr := fmt.Sprintf("UnionWrapper: unmarshal rightDf error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := leftDf.Union(&rightDf)
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("UnionWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // Union appends the rows of the other DataFrame to the receiver.
@@ -4480,26 +4479,26 @@ func (df *DataFrame) Union(other *DataFrame) *DataFrame {
 
 //export DropWrapper
 func DropWrapper(dfJson *C.char, colsJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("DropWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    var cols []string
-    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
-        errStr := fmt.Sprintf("DropWrapper: unmarshal columns error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    newDF := df.Drop(cols...)
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("DropWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("DropWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	var cols []string
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+		errStr := fmt.Sprintf("DropWrapper: unmarshal columns error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	newDF := df.Drop(cols...)
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("DropWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // Drop removes the specified columns from the DataFrame.
@@ -4529,28 +4528,28 @@ func (df *DataFrame) Drop(columns ...string) *DataFrame {
 
 //export OrderByWrapper
 func OrderByWrapper(dfJson *C.char, column *C.char, asc *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("OrderByWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    // Interpret asc as a boolean. For example, pass "true" for ascending.
-    ascStr := strings.ToLower(C.GoString(asc))
-    var ascending bool
-    if ascStr == "true" {
-        ascending = true
-    } else {
-        ascending = false
-    }
-    newDF := df.OrderBy(C.GoString(column), ascending)
-    resultJson, err := json.Marshal(newDF)
-    if err != nil {
-        errStr := fmt.Sprintf("OrderByWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(resultJson))
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("OrderByWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	// Interpret asc as a boolean. For example, pass "true" for ascending.
+	ascStr := strings.ToLower(C.GoString(asc))
+	var ascending bool
+	if ascStr == "true" {
+		ascending = true
+	} else {
+		ascending = false
+	}
+	newDF := df.OrderBy(C.GoString(column), ascending)
+	resultJson, err := json.Marshal(newDF)
+	if err != nil {
+		errStr := fmt.Sprintf("OrderByWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(resultJson))
 }
 
 // OrderBy sorts the DataFrame by the specified column.
@@ -4626,45 +4625,45 @@ func (df *DataFrame) OrderBy(column string, asc bool) *DataFrame {
 //
 //export SortWrapper
 func SortWrapper(dfJson *C.char) *C.char {
-    var df DataFrame
-    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
-        errStr := fmt.Sprintf("SortWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		errStr := fmt.Sprintf("SortWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    df.Sort() // sort columns alphabetically
+	df.Sort() // sort columns alphabetically
 
-    resultJson, err := json.Marshal(df)
-    if err != nil {
-        errStr := fmt.Sprintf("SortWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	resultJson, err := json.Marshal(df)
+	if err != nil {
+		errStr := fmt.Sprintf("SortWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    return C.CString(string(resultJson))
+	return C.CString(string(resultJson))
 }
 
 // Sort sorts the DataFrame's columns in alphabetical order.
 func (df *DataFrame) Sort() *DataFrame {
-    // Make a copy of the columns and sort it.
-    sortedCols := make([]string, len(df.Cols))
-    copy(sortedCols, df.Cols)
-    sort.Strings(sortedCols)
+	// Make a copy of the columns and sort it.
+	sortedCols := make([]string, len(df.Cols))
+	copy(sortedCols, df.Cols)
+	sort.Strings(sortedCols)
 
-    // Build a new data map using the sorted column order.
-    newData := make(map[string][]interface{})
-    for _, col := range sortedCols {
-        if data, exists := df.Data[col]; exists {
-            newData[col] = data
-        } else {
-            newData[col] = make([]interface{}, df.Rows)
-        }
-    }
+	// Build a new data map using the sorted column order.
+	newData := make(map[string][]interface{})
+	for _, col := range sortedCols {
+		if data, exists := df.Data[col]; exists {
+			newData[col] = data
+		} else {
+			newData[col] = make([]interface{}, df.Rows)
+		}
+	}
 
-    df.Cols = sortedCols
-    df.Data = newData
-    return df
+	df.Cols = sortedCols
+	df.Data = newData
+	return df
 }
 
 // FUNCTIONS --------------------------------------------------
@@ -4930,6 +4929,7 @@ func CountWrapper(dfJson *C.char) C.int {
 	}
 	return C.int(df.Count())
 }
+
 // count
 func (df *DataFrame) Count() int {
 	return df.Rows
@@ -4953,6 +4953,7 @@ func CountDuplicatesWrapper(dfJson *C.char, colsJson *C.char) C.int {
 	dups := df.CountDuplicates(cols...)
 	return C.int(dups)
 }
+
 // CountDuplicates returns the count of duplicate rows in the DataFrame.
 // If one or more columns are provided, only those columns are used to determine uniqueness.
 // If no columns are provided, the entire row (all columns) is used.
@@ -4986,6 +4987,7 @@ func (df *DataFrame) CountDuplicates(columns ...string) int {
 
 	return duplicateCount
 }
+
 // CountDistinctWrapper returns the count of unique rows (or unique values in the provided columns).
 // Accepts a JSON array of column names (or an empty array to use all columns).
 //
@@ -5003,6 +5005,7 @@ func CountDistinctWrapper(dfJson *C.char, colsJson *C.char) C.int {
 	distinct := df.CountDistinct(cols...)
 	return C.int(distinct)
 }
+
 // CountDistinct returns the count of unique values in given column(s)
 func (df *DataFrame) CountDistinct(columns ...string) int {
 	newDF := &DataFrame{
@@ -5039,6 +5042,7 @@ func CollectWrapper(dfJson *C.char, colName *C.char) *C.char {
 	}
 	return C.CString(string(result))
 }
+
 // collect
 func (df *DataFrame) Collect(c string) []interface{} {
 	if values, exists := df.Data[c]; exists {
@@ -5049,43 +5053,37 @@ func (df *DataFrame) Collect(c string) []interface{} {
 
 // schema of json ?
 
-
-
-
-
-
-
 // SINKS --------------------------------------------------
 
 // dataframe to csv file
 func (df *DataFrame) ToCSVFile(filename string) error {
-    file, err := os.Create(filename)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-    writer := csv.NewWriter(file)
-    defer writer.Flush()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
 
-    // Write the column headers directly.
-    if err := writer.Write(df.Cols); err != nil {
-        return err
-    }
+	// Write the column headers directly.
+	if err := writer.Write(df.Cols); err != nil {
+		return err
+	}
 
-    // Write the rows of data.
-    for i := 0; i < df.Rows; i++ {
-        row := make([]string, len(df.Cols))
-        for j, col := range df.Cols {
-            value := df.Data[col][i]
-            row[j] = fmt.Sprintf("%v", value)
-        }
-        if err := writer.Write(row); err != nil {
-            return err
-        }
-    }
+	// Write the rows of data.
+	for i := 0; i < df.Rows; i++ {
+		row := make([]string, len(df.Cols))
+		for j, col := range df.Cols {
+			value := df.Data[col][i]
+			row[j] = fmt.Sprintf("%v", value)
+		}
+		if err := writer.Write(row); err != nil {
+			return err
+		}
+	}
 
-    return nil
+	return nil
 }
 
 //export ToCSVFileWrapper
@@ -5100,7 +5098,7 @@ func ToCSVFileWrapper(dfJson *C.char, filename *C.char) *C.char {
 	}
 	return C.CString("success")
 }
- 
+
 // END --------------------------------------------------
 
 func main() {}

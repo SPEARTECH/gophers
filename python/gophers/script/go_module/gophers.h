@@ -83,13 +83,16 @@ extern __declspec(dllexport) char* ReadNDJSON(char* jsonStr);
 extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
 
 // FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
+//
 extern __declspec(dllexport) char* FlattenWrapper(char* dfJson, char* flattenColsJson);
 
 // KeysToColsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
 // It converts any nested map in that column into separate columns and returns the updated DataFrame as JSON.
+//
 extern __declspec(dllexport) char* KeysToColsWrapper(char* dfJson, char* nestedCol);
 
 // StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
+//
 extern __declspec(dllexport) char* StringArrayConvertWrapper(char* dfJson, char* column);
 
 // ReadParquetWrapper is a c-shared exported function that wraps ReadParquet.
@@ -258,6 +261,7 @@ extern __declspec(dllexport) char* DropNAWrapper(char* dfJson);
 
 // The wrapper accepts a JSON string representing an array of column names. If empty,
 // then the entire row is used.
+//
 extern __declspec(dllexport) char* DropDuplicatesWrapper(char* dfJson, char* colsJson);
 
 // SelectWrapper is an exported function that wraps the Select method.
@@ -273,6 +277,7 @@ extern __declspec(dllexport) char* SelectWrapper(char* dfJson, char* colsJson);
 extern __declspec(dllexport) char* GroupByWrapper(char* dfJson, char* groupCol, char* aggsJson);
 
 // This wrapper accepts two DataFrame JSON strings and join parameters.
+//
 extern __declspec(dllexport) char* JoinWrapper(char* leftDfJson, char* rightDfJson, char* leftOn, char* rightOn, char* joinType);
 extern __declspec(dllexport) char* UnionWrapper(char* leftDfJson, char* rightDfJson);
 extern __declspec(dllexport) char* DropWrapper(char* dfJson, char* colsJson);

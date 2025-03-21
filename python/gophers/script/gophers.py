@@ -493,8 +493,8 @@ def DisplayChart(chart):
     display(HTML(html))
 
 # Report methods
-def CreateReport(self, title):
-    report_json = gophers.CreateReportWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
+def CreateReport(title):
+    report_json = gophers.CreateReportWrapper(title.encode('utf-8')).decode('utf-8')
     # print("CreateReport: Created report JSON:", report_json)
     return Report(report_json)
 
