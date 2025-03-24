@@ -714,10 +714,11 @@ class DataFrame:
         ).decode('utf-8')   
         return self
     def Filter(self, condition):
-        if isinstance(condition, ColumnExpr):
+        colspec = ColumnExpr(json.loads(condition.to_json()))
+        if isinstance(colspec, ColumnExpr):
             self.df_json = gophers.FilterWrapper(
                 self.df_json.encode('utf-8'),
-                condition.to_json().encode('utf-8')
+                colspec.to_json().encode('utf-8')
             ).decode('utf-8')
         else:
             print(f"Error: condition must be a ColumnExpr, got {type(condition)}")
@@ -809,8 +810,12 @@ class DataFrame:
     
 # Example usage:
 def main():
-    yaml = r"""C:\Mac\Home\Desktop\Projects\gophers\python\gophers\script\exyaml.yaml"""
+    yaml = r"""C:\Users\tyler\Documents\PROJECTS\gophers\python\gophers\script\exyaml.yaml"""
     df = ReadYAML(yaml)
+    # jsondata = r"""[{"name": "Alice", "age": 34, "city": "Toronto"},
+    #                 {"name": "Bob", "age": 45, "city": "Vancouver"},
+    #                 {"name": "Charlie", "age": 23, "city": "Montreal"}]"""
+    # df = ReadJSON(jsondata)
     df = df.KeysToCols("_interval")
     df = df.Rename("_interval.start", "_interval.start_date")
     df = df.Rename("_interval.end","_interval.end_date")
@@ -832,12 +837,15 @@ def main():
 
     df = df.Drop("changes")
 
+###
     # df = df.Filter("", Col("").Eq("_jira_references"))
     # df = df.Flatten("indices_changed_values")
     # df = df.Drop("indices_changed_values")
     df = df.Sort()
     # df = df.FillNA("")
-    df = df.Filter(Col("_interval.start_date").IsNull())
+    # df = df.Filter(Col("attributes_removed").IsNull())
+    # df = df.Filter(Col("name").IsNull())
+    # df = df.Column("concat", If(Col("name").IsNull(), Lit("not null"), Lit("null")))
     # df = df.DropNA(["indices_added"])
     # df.Vertical(50)
     # print(df.Count())
