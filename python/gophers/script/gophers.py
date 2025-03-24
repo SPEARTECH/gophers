@@ -714,10 +714,13 @@ class DataFrame:
         ).decode('utf-8')   
         return self
     def Filter(self, condition):
-        self.df_json = gophers.FilterWrapper(
-            self.df_json.encode('utf-8'),
-            condition.to_json().encode('utf-8')
-        ).decode('utf-8')
+        if isinstance(condition, ColumnExpr):
+            self.df_json = gophers.FilterWrapper(
+                self.df_json.encode('utf-8'),
+                condition.to_json().encode('utf-8')
+            ).decode('utf-8')
+        else:
+            print(f"Error: condition must be a ColumnExpr, got {type(condition)}")
         return self
     def OrderBy(self, col, asc):
         self.df_json = gophers.OrderByWrapper(
@@ -771,12 +774,12 @@ class DataFrame:
             json.dumps([col for col in cols]).encode('utf-8')
         ).decode('utf-8')
         return self
-    def Filter(self, condition):
-        self.df_json = gophers.FilterWrapper(
-            self.df_json.encode('utf-8'),
-            condition.to_json().encode('utf-8')
-        ).decode('utf-8')
-        return self
+    # def Filter(self, condition):
+    #     self.df_json = gophers.FilterWrapper(
+    #         self.df_json.encode('utf-8'),
+    #         condition.to_json().encode('utf-8')
+    #     ).decode('utf-8')
+    #     return self
     def Flatten(self, *cols):
         self.df_json = gophers.FlattenWrapper(
             self.df_json.encode('utf-8'),
@@ -806,7 +809,7 @@ class DataFrame:
     
 # Example usage:
 def main():
-    yaml = """C:\\Users\\tyler\\Documents\\PROJECTS\\gophers\\python\\gophers\\script\\exyaml.yaml"""
+    yaml = r"""C:\Mac\Home\Desktop\Projects\gophers\python\gophers\script\exyaml.yaml"""
     df = ReadYAML(yaml)
     df = df.KeysToCols("_interval")
     df = df.Rename("_interval.start", "_interval.start_date")
@@ -833,6 +836,9 @@ def main():
     # df = df.Flatten("indices_changed_values")
     # df = df.Drop("indices_changed_values")
     df = df.Sort()
+    # df = df.FillNA("")
+    df = df.Filter(Col("_interval.start_date").IsNull())
+    # df = df.DropNA(["indices_added"])
     # df.Vertical(50)
     # print(df.Count())
     # print(df.Columns())

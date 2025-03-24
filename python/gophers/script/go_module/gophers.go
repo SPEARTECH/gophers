@@ -89,6 +89,10 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 	case "lit":
 		return expr.Value
 	case "isnull":
+		// Check if the sub-expression is provided.
+		if len(expr.Expr) == 0 {
+			return true // or false depending on how you want to handle it
+		}
 		var subExpr ColumnExpr
 		json.Unmarshal(expr.Expr, &subExpr)
 		val := Evaluate(subExpr, row)
@@ -104,6 +108,9 @@ func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
 			return false
 		}
 	case "isnotnull":
+		if len(expr.Expr) == 0 {
+			return false
+		}
 		var subExpr ColumnExpr
 		json.Unmarshal(expr.Expr, &subExpr)
 		val := Evaluate(subExpr, row)
@@ -3687,6 +3694,59 @@ func Cast(col Column, datatype string) Column {
 	}
 }
 
+// Filter returns a new DataFrame containing only the rows for which
+// the condition (a Column that evaluates to a bool) is true.
+func (df *DataFrame) Filter(condition ColumnExpr) *DataFrame {
+	// Ensure df.Data is non-nil.
+	if df.Data == nil {
+		df.Data = make(map[string][]interface{})
+	}
+
+	// Create new DataFrame with the same columns.
+	newDF := &DataFrame{
+		Cols: df.Cols,
+		Data: make(map[string][]interface{}),
+	}
+	// Compute the minimum row count across all columns.
+	minRows := df.Rows
+	for _, col := range df.Cols {
+		if data, ok := df.Data[col]; ok && data != nil {
+			if len(data) < minRows {
+				minRows = len(data)
+			}
+		} else {
+			minRows = 0
+		}
+	}
+
+	for i := 0; i < minRows; i++ {
+		// Build a row for evaluation.
+		row := make(map[string]interface{})
+		for _, col := range df.Cols {
+			if data, ok := df.Data[col]; ok && data != nil && i < len(data) {
+				row[col] = data[i]
+			} else {
+				row[col] = nil
+			}
+		}
+		res := Evaluate(condition, row)
+		include, ok := res.(bool)
+		if !ok {
+			include = false
+		}
+		if include {
+			for _, col := range df.Cols {
+				newDF.Data[col] = append(newDF.Data[col], row[col])
+			}
+		}
+	}
+	// Set new row count.
+	if len(df.Cols) > 0 {
+		newDF.Rows = len(newDF.Data[df.Cols[0]])
+	}
+	return newDF
+}
+
 // FilterWrapper is an exported function that wraps the Filter method.
 // It accepts a JSON string representing the DataFrame and a JSON string representing a Column (the condition).
 // It returns the filtered DataFrame as a JSON string.
@@ -3700,14 +3760,15 @@ func FilterWrapper(dfJson *C.char, conditionJson *C.char) *C.char {
 		return C.CString(errStr)
 	}
 
-	var cond Column
-	if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &cond); err != nil {
-		errStr := fmt.Sprintf("FilterWrapper: unmarshal error (Condition Column): %v", err)
+	var expr ColumnExpr
+	if err := json.Unmarshal([]byte(C.GoString(conditionJson)), &expr); err != nil {
+		errStr := fmt.Sprintf("FilterWrapper: unmarshal error (Condition ColumnExpr): %v", err)
 		log.Fatal(errStr)
 		return C.CString(errStr)
 	}
+	// Create a Column with the parsed ColumnExpr.
 
-	newDF := df.Filter(cond)
+	newDF := df.Filter(expr)
 	resultJson, err := json.Marshal(newDF)
 	if err != nil {
 		errStr := fmt.Sprintf("FilterWrapper: marshal error: %v", err)
@@ -3716,43 +3777,6 @@ func FilterWrapper(dfJson *C.char, conditionJson *C.char) *C.char {
 	}
 
 	return C.CString(string(resultJson))
-}
-
-// Filter returns a new DataFrame containing only the rows for which
-// the condition (a Column that evaluates to a bool) is true.
-func (df *DataFrame) Filter(condition Column) *DataFrame {
-	// Create new DataFrame with the same columns.
-	newDF := &DataFrame{
-		Cols: df.Cols,
-		Data: make(map[string][]interface{}),
-	}
-	for _, col := range df.Cols {
-		newDF.Data[col] = []interface{}{}
-	}
-
-	// Iterate over each row.
-	for i := 0; i < df.Rows; i++ {
-		// Build a row (as a map) for evaluation.
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-		// Evaluate the condition.
-		cond := condition.Fn(row)
-		if b, ok := cond.(bool); ok && b {
-			// If true, append data from this row to newDF.
-			for _, col := range df.Cols {
-				newDF.Data[col] = append(newDF.Data[col], row[col])
-			}
-		}
-	}
-
-	// Set new row count.
-	if len(df.Cols) > 0 {
-		newDF.Rows = len(newDF.Data[df.Cols[0]])
-	}
-
-	return newDF
 }
 
 // ExplodeWrapper is an exported function that wraps the Explode method.
@@ -3908,16 +3932,16 @@ func FillNAWrapper(dfJson *C.char, replacement *C.char) *C.char {
 
 // fillna
 func (df *DataFrame) FillNA(replacement string) *DataFrame {
-	quotedReplacement := fmt.Sprintf("%q", replacement)
+	// quotedReplacement := fmt.Sprintf("%q", replacement)
 	for col, values := range df.Data {
 		for i, value := range values {
 			if value == nil {
-				df.Data[col][i] = quotedReplacement
+				df.Data[col][i] = replacement
 			} else {
 				switch v := value.(type) {
 				case string:
 					if v == "" || strings.ToLower(v) == "null" {
-						df.Data[col][i] = quotedReplacement
+						df.Data[col][i] = replacement
 					}
 				}
 			}

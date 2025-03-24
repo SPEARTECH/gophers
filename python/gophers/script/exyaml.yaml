@@ -1,0 +1,663 @@
+_interval:
+  end: 2023-03-09
+  start: 2023-02-23
+indices_added:
+  cdm_system_boundary_trending:
+    _jira_references:
+    - CDE-30182
+indices_changed:
+  cdm_csm:
+    _jira_references:
+    - CDE-29797
+    - CDE-29716
+    - CDE-28971
+    - CDE-30721
+    - CDE-29699
+    - CDE-29700
+    - CDE-29052
+    attributes_added:
+    - device_scan.observer.host
+    - host.hva_system
+    - host.hva_system.id
+    - host.hva_system.name
+    - stig.benchmark
+    - stig.benchmark.titles
+    - stig.benchmark.name
+    - stig.benchmark.release
+    - stig.benchmark.version
+    - stig.cce_source
+    - system_boundary.hva_system
+    - system_boundary.hva_system.id
+    - system_boundary.hva_system.name
+    attributes_changed:
+      csm_finding.first_found_date:
+        last_updated:
+          new: 9/17/2020
+          old: 2/08/2023
+        required:
+          new: true
+          old: false
+      stig.id:
+        data_source:
+          new: Dashboard Process
+          old: DISA - STIG
+        integrator_provided:
+          new: false
+          old: true
+        last_updated:
+          new: 03/01/2023
+          old: 6/16/2020
+      stig.severity:
+        data_source:
+          new: Dashboard Process
+          old: DISA - STIG
+        integrator_provided:
+          new: false
+          old: true
+        last_updated:
+          new: 03/01/2023
+          old: 6/16/2020
+      stig.title:
+        data_source:
+          new: Dashboard Process
+          old: DISA - STIG
+        integrator_provided:
+          new: false
+          old: true
+        last_updated:
+          new: 03/01/2023
+          old: 9/29/2022
+  cdm_csm_trending:
+    _jira_references:
+    - CDE-30993
+    - CDE-30721
+    - CDE-29797
+    - CDE-29716
+    - CDE-28971
+    attributes_added:
+    - aware.errors
+    - aware.errors.count
+    - aware.errors.findings
+    - csm_finding.actual_setting
+    - csm_finding.cdm_category
+    - csm_finding.check_benchmark
+    - csm_finding.check_parameter
+    - csm_finding.description
+    - csm_finding.exception_description
+    - csm_finding.rule_fix
+    - csm_finding.remediated_date
+    - device_scan.observer.host
+    - facility.address
+    - facility.location
+    - facility.name
+    - facility.type
+    - host.architecture
+    - host.first_found_date
+    - host.hardware_inventory_update_date
+    - host.has_antiexploit_software
+    - host.has_security_software
+    - host.hva_system
+    - host.hva_system.id
+    - host.hva_system.name
+    - host.interface
+    - host.interface.agency_owned_ips
+    - host.interface.ip
+    - host.interface.mac
+    - host.interface.name
+    - host.last_seen_date
+    - host.make
+    - host.managed
+    - host.manager
+    - host.manager.user.id
+    - host.mobile
+    - host.mobile.access_deniable_by_agency
+    - host.mobile.emm_removable_by_user
+    - host.encrypted
+    - host.mobile.emm_last_seen_date
+    - host.mobile.imei
+    - host.mobile.management_server
+    - host.mobile.mtd_protected
+    - host.mobile.prevents_unauthorized_software
+    - host.mobile.assigned_phone_numbers
+    - host.mobile.remote_wipeable
+    - host.mobile.telecom_providers
+    - host.mobile.serial_number
+    - host.model
+    - host.name
+    - host.operator
+    - host.operator.user.id
+    - host.operator.name
+    - host.operator.email
+    - host.operator.phone
+    - host.operator.lead_poc
+    - host.os.configuration_benchmark
+    - host.os.family
+    - host.os.full
+    - host.os.kernel
+    - host.os.platform
+    - host.os.version
+    - host.security_update_date
+    - host.software_inventory_covered
+    - host.system_boundary_assignment_date
+    - organization.is_cfo_act
+    - organization.path
+    - organization.type
+    - stig
+    - stig.benchmark
+    - stig.benchmark.titles
+    - stig.benchmark.name
+    - stig.benchmark.release
+    - stig.benchmark.version
+    - stig.check_system
+    - stig.config_params
+    - stig.cce_source
+    - stig.description
+    - stig.mitigation_info
+    - stig.title
+    - system_boundary.authorization_decision_date
+    - system_boundary.authorization_decision_expiration_date
+    - system_boundary.authorization_decision_type
+    - system_boundary.authorization_type
+    - system_boundary.authorizing_official_id
+    - system_boundary.fips_199_rating
+    - system_boundary.fips_199_rating.availability
+    - system_boundary.fips_199_rating.confidentiality
+    - system_boundary.fips_199_rating.integrity
+    - system_boundary.hva_system
+    - system_boundary.hva_system.id
+    - system_boundary.hva_system.name
+    attributes_changed:
+      '@timestamp':
+        affects_reporting:
+          new: false
+          old: ''
+        data_source:
+          new: Dashboard Process
+          old: Agency
+        description:
+          new: Datetime of when the document is created in Elasticsearch.
+          old: Date/time when the trending event originated. This is the date/time
+            extracted from the event, typically representing when the event was generated
+            by the source. If the event source has no original timestamp, this value
+            is typically populated by the first time the event was received by the
+            pipeline
+        description_source:
+          new: ECS
+          old: Elastic
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+      aware:
+        affects_reporting:
+          new: true
+          old: ''
+        data_source:
+          new: Agency
+          old: Dashboard Process
+        description:
+          new: An entity that captures metadata about the hardware asset's aware score.
+          old: ''
+        description_source:
+          new: ECS
+          old: ''
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+        maps_to_ldm:
+          new: false
+          old: ''
+        required:
+          new: true
+          old: ''
+        supports_array:
+          new: false
+          old: ''
+      aware.date:
+        affects_reporting:
+          new: true
+          old: ''
+        data_source:
+          new: Agency
+          old: Dashboard Process
+        description:
+          new: The date the AWARE score was calculated.
+          old: the date the AWARE score was calculated
+        description_source:
+          new: ECS
+          old: ''
+        example:
+          new: '2019-05-23T08:05:34.853Z'
+          old: ''
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+        maps_to_ldm:
+          new: false
+          old: ''
+        required:
+          new: true
+          old: ''
+        supports_array:
+          new: false
+          old: ''
+      aware.score:
+        data_source:
+          new: Agency
+          old: Dashboard Process
+        description_source:
+          new: ECS
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      aware.tolerance_adjusted_score:
+        data_source:
+          new: Agency
+          old: Dashboard Process
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/14/2022
+          old: 2/8/2023
+        ldm_field:
+          new: DeviceAWARECSMSubScore
+          old: DeviceCSMSubScore
+      cdm_doc_id:
+        data_source:
+          new: Agency
+          old: Dashboard Process
+        description:
+          new: Per elastic documentation, if sorting or aggregating on the _id field
+            is required, it is advised to duplicate the content of the _id field in
+            another field that has doc_values enabled.  This field serves that exact
+            purpose.
+          old: Per elastic documentation, if sorting or aggregating on the _id field
+            is required, it is advised to duplicate the content of the _id field in
+            another field that has doc_values enabled.  This field serves that exact
+            purpose.  This field is therefore a concatination of host.id and stig.rule_id.
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+      csm_finding:
+        description:
+          new: An entity that represents a single discovered misconfiguration on an
+            agency device. Misconfigurations are a deviation from the allowable federally
+            and/or agency defined configuration baseline for any particular device
+            and represent a potential IT security risk that should be addressed. Federal
+            configuration baselines are defined through the adoption of benchmarks
+            that are well-defined and represent industry best practice. (see Benchmark
+            and CCE Dictionary in Data Model Key Terms for additional context.) [CDM
+            PMO]
+          old: An entity that represents a single discovered misconfiguration on an
+            agency device. Misconfigurations are a deviation from the allowable federally
+            and/or agency defined configuration baseline for any particular device
+            and represent a potential IT security risk that should be addressed. Federal
+            configuration baselines are defined through the adoption of benchmarks
+            that are well-defined and represent industry ""best practice"". (see Benchmark
+            and CCE Dictionary in Data Model Key Terms for additional context.) [CDM
+            PMO]
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      csm_finding.affected_software:
+        description:
+          new: An entity that represents information about a software product inventory
+            item that is discovered in an agency
+          old: ''
+        description_source:
+          new: CDM PMO - CDM Data Model Document
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/31/2022
+          old: 2/8/2023
+        ldm_field:
+          new: UniqueSoftware (table)
+          old: ''
+        maps_to_ldm:
+          new: true
+          old: false
+        required:
+          new: true
+          old: false
+      csm_finding.affected_software.cpe_id:
+        description:
+          new: An attribute that captures the CPE 2.3 URI associated with the uniquely
+            identified software. The CPEinfo attribute shall be referenced by its
+            full CPE v2.3 URI using the well-formed CPE named (WFN) components (*CPE
+            URI is expected to be the formally constructed, documented CPE as provided
+            by the NVD. In the absence of a formal, standard, NVD provided CPE URI,
+            the CDM solution shall employ a custom constructed URI that is built using
+            the same specification of CPE:/PART:VENDOR:PRODUCT:VERSION:UPDATE ) [CDM
+            PMO]
+          old: "An attribute that captures the CPE URI* of software impacted by the\
+            \ configuration setting inventoried.\n (*CPE URI is expected to be the\
+            \ formally constructed, documented CPE as provided by the NVD. In the\
+            \ absence of a formal, standard, NVD provided CPE URI, the CDM solution\
+            \ shall employ a custom constructed URI that is built using the same specification\
+            \ of CPE:/PART:VENDOR:PRODUCT:VERSION:UPDATE ) [CDM PMO]"
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 2/19/2021
+          old: 2/8/2023
+      csm_finding.affected_software.id:
+        description:
+          new: An attribute that captures a unique identifier that references a specific
+            inventoried software in the CDM solution.
+          old: ''
+        description_source:
+          new: CDM PMO - CDM Data Model Document
+          old: ''
+        example:
+          new: id-1672
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/17/2022
+          old: 2/15/2023
+        ldm_field:
+          new: UniqueSoftwareID
+          old: ''
+        maps_to_ldm:
+          new: true
+          old: false
+        required:
+          new: true
+          old: false
+      csm_finding.affected_software.name:
+        description:
+          new: "An attribute that captures an alternate common name used to identify\
+            \ executable software discovered by CDM, for example an alias applied/used\
+            \ by an agency or colloquial used by OEM/industry (e.g., Microsoft Word\
+            \ 2013, Acrobat Pro 10, etc.).\n (Examples: Windows 2012R2, Red Hat Enterprise\
+            \ Linux, Internet Information Services (IIS), SQL Server, etc.)"
+          old: "An attribute that captures the common product name of software impacted\
+            \ by the configuration setting inventoried. [CDM PMO]\n (Examples: Windows\
+            \ 2012R2, Red Hat Enterprise Linux, Internet Information Services (IIS),\
+            \ SQL Server, etc.)"
+        example:
+          new: Windows 2012R2
+          old: Windows 2012R2, Red Hat Enterprise Linux, Internet Information Services
+            (IIS), SQL Server,
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/14/2022
+          old: 2/8/2023
+      csm_finding.exception:
+        additional_info:
+          new: Please populate Boolean fields with true or false in order for dashboard
+            health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.
+            ECS is aware Elastic documentation does provide these values as valid
+            options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.
+            Please note that any other values other than the ones listed by ECS, true
+            or false, will be restricted/flagged from the dashboard in the future.
+          old: "Please populate Boolean fields with true or false in order for dashboard\
+            \ health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.\
+            \ \nECS is aware Elastic documentation does provide these values as valid\
+            \ options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.\
+            \ \nPlease note that any other values other than the ones listed by ECS,\
+            \ true or false, will be restricted/flagged from the dashboard in the\
+            \ future."
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      csm_finding.first_found_date:
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      csm_finding.id:
+        key:
+          new: true
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+      csm_finding.last_found_date:
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      csm_finding.remediated:
+        additional_info:
+          new: Please populate Boolean fields with true or false in order for dashboard
+            health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.
+            ECS is aware Elastic documentation does provide these values as valid
+            options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.
+            Please note that any other values other than the ones listed by ECS, true
+            or false, will be restricted/flagged from the dashboard in the future.
+          old: "Please populate Boolean fields with true or false in order for dashboard\
+            \ health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.\
+            \ \nECS is aware Elastic documentation does provide these values as valid\
+            \ options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.\
+            \ \nPlease note that any other values other than the ones listed by ECS,\
+            \ true or false, will be restricted/flagged from the dashboard in the\
+            \ future."
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      device_scan.auth_outcome:
+        last_updated:
+          new: 2/08/2023
+          old: 2/15/2023
+        required_condition:
+          new: device_scan.credentialed = TRUE
+          old: IF device_scan.credentialed = TRUE THEN required;
+      facility:
+        affects_reporting:
+          new: false
+          old: ''
+        description:
+          new: An entity that captures the relevant characteristics of a physical
+            site, hosting provider (e.g., Amazon Web Services GOVCLOUDTM), and/or
+            location that is used to house physical IT assets (e.g., endpoints, sub-components
+            of a FISMA system) and/or agency personnel.
+          old: 'For the purposes of the CDM, facilities are any physical space (site,
+            campus, building, etc.) that can be documented to facilitate the assignment
+            of geographical information for agency personnel or FISMA system components
+            (e.g., devices, software, etc.) for physical asset accountability. Facilities
+            can be official duty stations, datacenters, or some combination of both.
+            In the CDM Data Model, facilities may also be interrelated where one larger
+            facility holds and is related to a more specific locale that is more informational
+            for documenting an assets physical location (e.g., a server room or datacenter
+            inside an agencys campus location). Where the physical location of assets
+            is fluid, as is the case with cloud services, provider related information
+            (e.g., company name, specific information on hosting agreements) may be
+            provided. Facilities may be agency owned/operated or provided as a service
+            through a hosting agreement. Under CDM, all co-location, contractor owned/operated,
+            and cloud hosting providers should be documented if they are relevant
+            to people or devices that are covered by CDM. Note: In many circumstances
+            under shared services (e.g., cloud providers) it might not be realistic
+            to document actual geographical location. In these scenarios, it is critical
+            not to capture the physical location, such as an address, but rather the
+            organizational information of the hosting company and any related geographic
+            information on the location of the hosting center that is available, which
+            may vary by vendor. For example, AWS GovCloud US-EAST Region 1 would be
+            an appropriate moniker for virtual servers that are hosted by AWS on behalf
+            on an agency.'
+        description_source:
+          new: CDM PMO - CDM Data Model Document
+          old: ''
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+      facility.id:
+        affects_reporting:
+          new: false
+          old: ''
+        example:
+          new: facility1
+          old: datacenter1
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      host:
+        affects_reporting:
+          new: true
+          old: ''
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+        ldm_field:
+          new: DeviceOnNetwork (table)
+          old: DeviceOnNetwork
+      host.authorized:
+        additional_info:
+          new: Please populate Boolean fields with true or false in order for dashboard
+            health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.
+            ECS is aware Elastic documentation does provide these values as valid
+            options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.
+            Please note that any other values other than the ones listed by ECS, true
+            or false, will be restricted/flagged from the dashboard in the future.
+          old: "Please populate Boolean fields with true or false in order for dashboard\
+            \ health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.\
+            \ \nECS is aware Elastic documentation does provide these values as valid\
+            \ options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.\
+            \ \nPlease note that any other values other than the ones listed by ECS,\
+            \ true or false, will be restricted/flagged from the dashboard in the\
+            \ future."
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/14/2022
+          old: 2/8/2023
+      host.category:
+        additional_info:
+          new: Device category must be populated with one, and only one value from
+            the example list. Failure to provide this information will affect summary
+            reports and accuracy of federal dashboard reporting. GFI (LDM) is the
+            official source for this enumeration and supercedes this list which represents
+            a 'snapshot in time' of this list.
+          old: Device category must be populated with one, and only one value from
+            the example list.Failure to provide this information will affect summary
+            reports and accuracy of federal dashboard reporting.GFI (LDM) is the official
+            source for this enumeration and supercedes this list which represents
+            a 'snapshot in time' of this list.
+        affects_reporting:
+          new: true
+          old: ''
+        description:
+          new: 'A keyword attribute that captures the device category shall be ONE
+            and only one of the following values: ENDPOINT (both physical and virtual
+            endpoints); NETWORKING DEVICE (both physical and virtual); MOBILE DEVICE;
+            OTHER IO DEVICE (other devices not explicitly called out). [FY16/FY17
+            CIO FISMA Metrics]'
+          old: 'DeviceCategory shall be ONE and only one of the following values:
+            ENDPOINT (both physical and virtual endpoints); NETWORKING DEVICE (both
+            physical and virtual); MOBILE DEVICE; OTHER IO DEVICE (other ""I/O"" devices
+            not explicitly called out). [FY16/FY17 CIO FISMA Metrics]'
+        example:
+          new: MOBILE DEVICE
+          old: '"ENDPOINT"'
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/26/2020
+          old: 2/8/2023
+      host.high_value_asset:
+        additional_info:
+          new: Please populate Boolean fields with true or false in order for dashboard
+            health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.
+            ECS is aware Elastic documentation does provide these values as valid
+            options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.
+            Please note that any other values other than the ones listed by ECS, true
+            or false, will be restricted/flagged from the dashboard in the future.
+          old: "Please populate Boolean fields with true or false in order for dashboard\
+            \ health and accuracy, particularly AWARE https://confluence.cdmdashboard.com/display/CDE/AWARE+Score+Calculation#AWAREScoreCalculation-FieldrequirementsforAWARECalculation.\
+            \ \nECS is aware Elastic documentation does provide these values as valid\
+            \ options https://www.elastic.co/guide/en/elasticsearch/reference/current/boolean.html.\
+            \ \nPlease note that any other values other than the ones listed by ECS,\
+            \ true or false, will be restricted/flagged from the dashboard in the\
+            \ future."
+        affects_reporting:
+          new: true
+          old: ''
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 10/14/2022
+          old: 2/8/2023
+      host.hostname:
+        affects_reporting:
+          new: true
+          old: ''
+        is_enumerated_list:
+          new: false
+          old: ''
+        key:
+          new: false
+          old: ''
+        last_updated:
+          new: 9/17/2020
+          old: 2/8/2023
+      host.id:
+        affects_reporting:
+          new: true
+          old: ''
