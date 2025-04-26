@@ -714,10 +714,11 @@ class DataFrame:
         ).decode('utf-8')   
         return self
     def Filter(self, condition):
-        if isinstance(condition, ColumnExpr):
+        colspec = ColumnExpr(json.loads(condition.to_json()))
+        if isinstance(colspec, ColumnExpr):
             self.df_json = gophers.FilterWrapper(
                 self.df_json.encode('utf-8'),
-                condition.to_json().encode('utf-8')
+                colspec.to_json().encode('utf-8')
             ).decode('utf-8')
         else:
             print(f"Error: condition must be a ColumnExpr, got {type(condition)}")
@@ -809,44 +810,6 @@ class DataFrame:
     
 # Example usage:
 def main():
-    yaml = r"""C:\Mac\Home\Desktop\Projects\gophers\python\gophers\script\exyaml.yaml"""
-    df = ReadYAML(yaml)
-    df = df.KeysToCols("_interval")
-    df = df.Rename("_interval.start", "_interval.start_date")
-    df = df.Rename("_interval.end","_interval.end_date")
-    df = df.OrderBy("_interval.end_date", False)
-
-    df = df.Rename("indices_changed", "indices_changed_values")
-    df = df.Column("indices_changed", Keys("indices_changed_values"))
-    df = df.Explode("indices_changed")
-    df = df.Column("indices_changed_values",Lookup(Col("indices_changed"),"indices_changed_values"))
-
-
-    df = df.Column("attributes_added",Lookup(Lit("attributes_added"),"indices_changed_values"))
-    df = df.Column("attributes_removed",Lookup(Lit("attributes_removed"),"indices_changed_values"))
-    df = df.Column("attributes_changed",Lookup(Lit("attributes_changed"),"indices_changed_values"))
-    # df = df.Drop("indices_changed_values")
-
-    df = df.Column("indices_added", Keys("indices_added"))
-    df = df.Column("indices_removed", Keys("indices_removed"))
-
-    df = df.Drop("changes")
-
-    # df = df.Filter("", Col("").Eq("_jira_references"))
-    # df = df.Flatten("indices_changed_values")
-    # df = df.Drop("indices_changed_values")
-    df = df.Sort()
-    # df = df.FillNA("")
-    df = df.Filter(Col("_interval.start_date").IsNull())
-    # df = df.DropNA(["indices_added"])
-    # df.Vertical(50)
-    # print(df.Count())
-    # print(df.Columns())
-    # dash = df.CreateDashboard("new dash")
-    # dash.Open()
-    # df.ToCSVFile('newcsv.csv')
-    df.DisplayBrowser()
-    # df.ToCSVFile("test.csv")
     pass
 
 if __name__ == '__main__':
