@@ -25,7 +25,7 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
-
+	"html"
 	"gopkg.in/yaml.v2"
 )
 
@@ -494,7 +494,7 @@ func ReadJSON(jsonStr *C.char) *C.char {
 	}
 
 	goJsonStr := C.GoString(jsonStr)
-	log.Printf("ReadJSON: Input string: %s", goJsonStr) // Log the input string
+	// log.Printf("ReadJSON: Input string: %s", goJsonStr) // Log the input string
 
 	var rows []map[string]interface{}
 	var jsonContent string
@@ -1313,17 +1313,30 @@ func (df *DataFrame) DisplayBrowser() error {
 			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 		</head>
 		<body>
-			<div id="app" style="text-align: center;" class="overflow-x-auto">
+			<button class="btn btn-sm fixed top-2 right-2 z-50" @Click="openInNewTab()">Open in New Tab</button>
+			<div id="app" style="text-align: center;" class="overflow-x-auto h-screen pt-12">
 				<table class="table table-xs">
 	  				<thead>
 						<tr>
 							<th></th>
-							<th v-for="col in cols"><a class="btn btn-sm btn-ghost justify justify-start">[[ col ]]<span class="material-symbols-outlined">arrow_drop_down</span></a></th>
+						<th v-for="col in cols"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
+							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
+								<li><a>Sort</a></li>
+								<li>
+									<details closed>
+									<summary>Filter</summary>
+									<ul>
+										<li><a>Submenu 1</a></li>
+									</ul>
+									</details>
+								</li>
+							</ul>
+						</div></th>
 						</tr>
 					</thead>
 					<tbody>
 					<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
-							<th class="pl-5">[[ i ]]</th>
+							<th class="pl-5">[[ i + 1 ]]</th>
 							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col][i] ]]</td>
 						</tr>
 					</tbody>
@@ -1345,7 +1358,12 @@ func (df *DataFrame) DisplayBrowser() error {
 					}
 				},
 				methods: {
-
+					openInNewTab() {
+						const htmlContent = document.documentElement.outerHTML;
+						const blob = new Blob([htmlContent], { type: 'text/html' });
+						const url = URL.createObjectURL(blob);
+						window.open(url, '_blank');
+					}
 				},
 				watch: {
 
@@ -1436,12 +1454,25 @@ func (df *DataFrame) Display() map[string]interface{} {
 		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 	</head>
 	<body>
-		<div id="table" style="text-align: center;" class="overflow-x-auto">
-			<table class="table">
+		<button class="btn btn-sm fixed top-2 right-2 z-50" @Click="openInNewTab()">Open in New Tab</button>
+		<div id="table" style="text-align: center;" class="overflow-x-auto h-screen pt-12 ">
+			<table class="table table-xs">
 				<thead>
 					<tr>
 						<th></th>
-						<th v-for="col in cols">[[ col ]]</th>
+						<th v-for="col in cols"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
+							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
+								<li><a>Sort</a></li>
+								<li>
+									<details closed>
+									<summary>Filter</summary>
+									<ul>
+										<li><a>Submenu 1</a></li>
+									</ul>
+									</details>
+								</li>
+							</ul>
+						</div></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -1464,7 +1495,12 @@ func (df *DataFrame) Display() map[string]interface{} {
 				}
 			},
 			methods: {
-
+				openInNewTab() {
+					const htmlContent = document.documentElement.outerHTML;
+					const blob = new Blob([htmlContent], { type: 'text/html' });
+					const url = URL.createObjectURL(blob);
+					window.open(url, '_blank');
+				}
 			},
 			watch: {
 
@@ -2524,8 +2560,8 @@ func (report *Report) AddHTML(page string, text string) {
 	if _, exists := report.Pageshtml[page]; !exists {
 		report.Pageshtml[page] = make(map[string]string)
 	}
-
-	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center sm:w-7/8 w-3/4" srcdoc='` + text + `'></iframe>`
+	escapedtext := html.EscapeString(text)
+	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center w-full h-screen" srcdoc='` + escapedtext + `'></iframe>`
 	report.Pageshtml[page][strconv.Itoa(len(report.Pageshtml[page]))] = texthtml
 
 	fmt.Println("AddHTML: Added HTML to page:", page)

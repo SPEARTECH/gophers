@@ -810,7 +810,138 @@ class DataFrame:
     
 # Example usage:
 def main():
-    pass
+    json = '''
+[
+        {
+            "name": "Julie Skels",
+            "alignment": "Melee Maniac",
+            "health": 90,
+            "max_health": 100,
+            "gold": 100,
+            "background_history": "Works as a mercenary for the Red Company.",
+            "body_appearance": "White woman with several scars etched on her body.",
+            "inventory": [
+                {
+                    "name": "Custom-blade Knife",
+                    "item_id": 2,
+                    "equipped": true,
+                    "description": "A sharp blade",
+                    "estimated_value": 5,
+                    "weight": 3,
+                    "history": [
+                        {
+                            "date": "1st of September, 1069",
+                            "event": "Received from the blacksmith in Anton."
+                        }
+                    ]
+                }
+            ],
+            "stats": {
+                "Strength": 15,
+                "Intelligence": 10,
+                "Dexterity": 12,
+                "Charisma": 8,
+                "Constitution": 14,
+                "Wisdom": 11
+            },
+            "character_id": 0,
+            "player_id": 0,
+            "is_npc": false,
+            "image_filename": "julie_skels.png",
+            "in_party": true,
+            "location_id": 2,
+            "history": [
+                {
+                    "date": "1st of September, 1069",
+                    "event": "Arrived at the marketplace for the festival."
+                }
+            ]
+        },
+        {
+            "name": "Bob",
+            "alignment": "Good",
+            "health": 80,
+            "max_health": 100,
+            "gold": 30,
+            "background_history": "Is the mayor of Anton.",
+            "body_appearance": "Burly white man with a sword-bow.",
+            "inventory": [
+                {
+                    "name": "Bow",
+                    "item_id": 3,
+                    "equipped": true,
+                    "description": "A long bow",
+                    "estimated_value": 3,
+                    "weight": 2,
+                    "history": []
+                }
+            ],
+            "stats": {
+                "Strength": 7,
+                "Intelligence": 12,
+                "Constitution": 10,
+                "Dexterity": 15,
+                "Wisdom": 8,
+                "Charisma": 9
+            },
+            "character_id": 1,
+            "player_id": -1,
+            "is_npc": true,
+            "image_filename": "bob.png",
+            "in_party": true,
+            "location_id": 2,
+            "history": [
+                {
+                    "date": "1st of September, 1069",
+                    "event": "Noticed goblin activity near Anton."
+                }
+            ]
+        },
+        {
+            "name": "Alice",
+            "alignment": "Neutral",
+            "health": 100,
+            "max_health": 100,
+            "gold": 50,
+            "background_history": "Daughter of Wolves.",
+            "body_appearance": "Slim tall body, free of marks or scars.",
+            "inventory": [
+                {
+                    "name": "Sword",
+                    "item_id": 4,
+                    "equipped": true,
+                    "description": "A sharp sword",
+                    "estimated_value": 12,
+                    "weight": 5,
+                    "history": []
+                }
+            ],
+            "stats": {
+                "Strength": 10,
+                "Intelligence": 8,
+                "Constitution": 12,
+                "Dexterity": 13,
+                "Wisdom": 9,
+                "Charisma": 11
+            },
+            "character_id": 2,
+            "player_id": -1,
+            "is_npc": true,
+            "image_filename": "alice.png",
+            "in_party": false,
+            "location_id": 1,
+            "history": []
+        }
+    ]
+'''
+    df = ReadJSON(json)
+    # report = CreateReport("Test Report")
+    # report.AddPage("Main Page")
+    # report.AddHeading("Main Page", "This is the main page of the report", 1)
+    # report.AddDataframe("Main Page", df)
+    # report.Open()
+    df.DisplayBrowser()
+    # pass
 
 if __name__ == '__main__':
     main()
