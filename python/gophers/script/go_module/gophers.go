@@ -1313,20 +1313,19 @@ func (df *DataFrame) DisplayBrowser() error {
 			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 		</head>
 		<body>
-			<button class="btn btn-sm fixed top-2 right-2 z-50" @Click="openInNewTab()">Open in New Tab</button>
-			<div id="app" style="text-align: center;" class="overflow-x-auto h-screen pt-12">
+			<div id="app" style="text-align: center;" class=" h-screen pt-12">
 				<table class="table table-xs">
 	  				<thead>
 						<tr>
 							<th></th>
 						<th v-for="col in cols"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
 							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
-								<li><a>Sort</a></li>
 								<li>
 									<details closed>
-									<summary>Filter</summary>
+									<summary>Sort</summary>
 									<ul>
-										<li><a>Submenu 1</a></li>
+										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center">Ascending<span class="material-symbols-outlined">north</span></a></li>
+										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center">Descending<span class="material-symbols-outlined">south</span></a></li>
 									</ul>
 									</details>
 								</li>
@@ -1358,11 +1357,43 @@ func (df *DataFrame) DisplayBrowser() error {
 					}
 				},
 				methods: {
-					openInNewTab() {
-						const htmlContent = document.documentElement.outerHTML;
-						const blob = new Blob([htmlContent], { type: 'text/html' });
-						const url = URL.createObjectURL(blob);
-						window.open(url, '_blank');
+					sortColumnAsc(col) {
+						// Create an array of row indices
+						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
+
+						// Sort the row indices based on the values in the specified column (ascending)
+						rowIndices.sort((a, b) => {
+							if (this.data[col][a] < this.data[col][b]) return -1;
+							if (this.data[col][a] > this.data[col][b]) return 1;
+							return 0;
+						});
+
+						// Reorder all columns based on the sorted row indices
+						for (const key in this.data) {
+							this.data[key] = rowIndices.map(i => this.data[key][i]);
+						}
+
+						// Update the selected column
+						this.selected_col = col;
+					},
+					sortColumnDesc(col) {
+						// Create an array of row indices
+						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
+
+						// Sort the row indices based on the values in the specified column (descending)
+						rowIndices.sort((a, b) => {
+							if (this.data[col][a] > this.data[col][b]) return -1;
+							if (this.data[col][a] < this.data[col][b]) return 1;
+							return 0;
+						});
+
+						// Reorder all columns based on the sorted row indices
+						for (const key in this.data) {
+							this.data[key] = rowIndices.map(i => this.data[key][i]);
+						}
+
+						// Update the selected column
+						this.selected_col = col;
 					}
 				},
 				watch: {
@@ -1454,20 +1485,20 @@ func (df *DataFrame) Display() map[string]interface{} {
 		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 	</head>
 	<body>
-		<button class="btn btn-sm fixed top-2 right-2 z-50" @Click="openInNewTab()">Open in New Tab</button>
-		<div id="table" style="text-align: center;" class="overflow-x-auto h-screen pt-12 ">
+		<button class="btn btn-sm fixed top-2 right-2 z-50" @Click="openInNewTab()">Open in Browser</button>
+		<div id="table" style="text-align: center;" class=" h-screen pt-12 ">
 			<table class="table table-xs">
 				<thead>
 					<tr>
 						<th></th>
 						<th v-for="col in cols"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
 							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
-								<li><a>Sort</a></li>
 								<li>
 									<details closed>
-									<summary>Filter</summary>
+									<summary>Sort</summary>
 									<ul>
-										<li><a>Submenu 1</a></li>
+										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center">Ascending<span class="material-symbols-outlined">north</span></a></li>
+										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center">Descending<span class="material-symbols-outlined">south</span></a></li>
 									</ul>
 									</details>
 								</li>
@@ -1500,7 +1531,45 @@ func (df *DataFrame) Display() map[string]interface{} {
 					const blob = new Blob([htmlContent], { type: 'text/html' });
 					const url = URL.createObjectURL(blob);
 					window.open(url, '_blank');
-				}
+				},
+					sortColumnAsc(col) {
+						// Create an array of row indices
+						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
+
+						// Sort the row indices based on the values in the specified column (ascending)
+						rowIndices.sort((a, b) => {
+							if (this.data[col][a] < this.data[col][b]) return -1;
+							if (this.data[col][a] > this.data[col][b]) return 1;
+							return 0;
+						});
+
+						// Reorder all columns based on the sorted row indices
+						for (const key in this.data) {
+							this.data[key] = rowIndices.map(i => this.data[key][i]);
+						}
+
+						// Update the selected column
+						this.selected_col = col;
+					},
+					sortColumnDesc(col) {
+						// Create an array of row indices
+						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
+
+						// Sort the row indices based on the values in the specified column (descending)
+						rowIndices.sort((a, b) => {
+							if (this.data[col][a] > this.data[col][b]) return -1;
+							if (this.data[col][a] < this.data[col][b]) return 1;
+							return 0;
+						});
+
+						// Reorder all columns based on the sorted row indices
+						for (const key in this.data) {
+							this.data[key] = rowIndices.map(i => this.data[key][i]);
+						}
+
+						// Update the selected column
+						this.selected_col = col;
+					}
 			},
 			watch: {
 
