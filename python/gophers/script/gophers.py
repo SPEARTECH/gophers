@@ -787,6 +787,7 @@ class DataFrame:
             json.dumps([col for col in cols]).encode('utf-8')
         ).decode('utf-8')
         return self
+    
     def KeysToCols(self, col):
         self.df_json = gophers.KeysToColsWrapper(
             self.df_json.encode('utf-8'),
@@ -934,13 +935,16 @@ def main():
         }
     ]
 '''
-    df = ReadJSON(json)
+    # df = ReadJSON(json)
     # report = CreateReport("Test Report")
     # report.AddPage("Main Page")
     # report.AddHeading("Main Page", "This is the main page of the report", 1)
     # report.AddDataframe("Main Page", df)
     # report.Open()
+    df = GetAPIJSON("https://poetrydb.org/title/Ozymandias/lines.json","","")
+    df = df.Explode("lines")
     df.DisplayBrowser()
+    df.Vertical(100, 10)
     # pass
 
 if __name__ == '__main__':
