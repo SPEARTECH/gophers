@@ -81,6 +81,9 @@ extern __declspec(dllexport) char* ReadNDJSON(char* jsonStr);
 // ReadYAML reads a YAML string or file and converts it to a DataFrame.
 //
 extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
+extern __declspec(dllexport) char* ReadSqlite(char* dbPath, char* table, char* query);
+extern __declspec(dllexport) char* GetSqliteTables(char* dbPath);
+extern __declspec(dllexport) char* GetSqliteSchema(char* dbPath, char* table);
 
 // FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
 //
@@ -307,6 +310,7 @@ extern __declspec(dllexport) int CountDistinctWrapper(char* dfJson, char* colsJs
 //
 extern __declspec(dllexport) char* CollectWrapper(char* dfJson, char* colName);
 extern __declspec(dllexport) char* ToCSVFileWrapper(char* dfJson, char* filename);
+extern __declspec(dllexport) char* WriteSqlite(char* dbPath, char* table, char* dfJson, char* mode, char* keyColsJson, int createIdx);
 
 #ifdef __cplusplus
 }

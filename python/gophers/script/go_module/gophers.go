@@ -27,6 +27,9 @@ import (
 	"sort"
 	"html"
 	"gopkg.in/yaml.v2"
+	"database/sql"
+	_ "github.com/mattn/go-sqlite3"
+	"time"
 )
 
 // DataFrame represents a very simple dataframe structure.
@@ -610,6 +613,309 @@ func ReadYAML(yamlStr *C.char) *C.char {
 	}
 
 	return C.CString(string(jsonBytes))
+}
+
+func fetchRows(db *sql.DB, query string, tableLabel string) ([]map[string]interface{}, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]map[string]interface{}, 0, 128)
+	for rows.Next() {
+		vals := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		row := make(map[string]interface{}, len(cols)+1)
+		for i, c := range cols {
+			v := vals[i]
+			switch t := v.(type) {
+			case []byte:
+				row[c] = string(t)
+			case time.Time:
+				row[c] = t.Format(time.RFC3339Nano)
+			default:
+				row[c] = v
+			}
+		}
+		if tableLabel != "" {
+			row["_table"] = tableLabel
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+	
+//export ReadSqlite
+func ReadSqlite(dbPath *C.char, table *C.char, query *C.char) *C.char {
+	path := C.GoString(dbPath)
+	tbl := C.GoString(table)
+	q := C.GoString(query)
+
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		log.Fatalf("ReadSqlite: open error: %v", err)
+	}
+	defer db.Close()
+
+	rows := []map[string]interface{}{}
+	switch {
+	case q != "":
+		rs, err := fetchRows(db, q, "")
+		if err != nil {
+			log.Fatalf("ReadSqlite: query error: %v", err)
+		}
+		rows = append(rows, rs...)
+	case tbl != "":
+		q = fmt.Sprintf(`SELECT * FROM %q`, tbl)
+		rs, err := fetchRows(db, q, "")
+		if err != nil {
+			log.Fatalf("ReadSqlite: table read error: %v", err)
+		}
+		rows = append(rows, rs...)
+	default:
+		// read all user tables
+		names := []string{}
+		r, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+		if err != nil {
+			log.Fatalf("ReadSqlite: list tables error: %v", err)
+		}
+		for r.Next() {
+			var name string
+			if err := r.Scan(&name); err == nil {
+				names = append(names, name)
+			}
+		}
+		_ = r.Close()
+		for _, name := range names {
+			rs, err := fetchRows(db, fmt.Sprintf(`SELECT * FROM %q`, name), name)
+			if err != nil {
+				log.Fatalf("ReadSqlite: read table %s error: %v", name, err)
+			}
+			rows = append(rows, rs...)
+		}
+	}
+
+	df := Dataframe(rows)
+	jsonBytes, err := json.Marshal(df)
+	if err != nil {
+		log.Fatalf("ReadSqlite: marshal error: %v", err)
+	}
+	return C.CString(string(jsonBytes))
+}
+
+//export GetSqliteTables
+func GetSqliteTables(dbPath *C.char) *C.char {
+    path := C.GoString(dbPath)
+
+    db, err := sql.Open("sqlite3", path)
+    if err != nil {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("open error: %v", err)))
+    }
+    defer db.Close()
+
+    rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+    if err != nil {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("query error: %v", err)))
+    }
+    defer rows.Close()
+
+    names := make([]string, 0, 16)
+    for rows.Next() {
+        var name string
+        if err := rows.Scan(&name); err != nil {
+            return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("scan error: %v", err)))
+        }
+        names = append(names, name)
+    }
+    if err := rows.Err(); err != nil {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("rows error: %v", err)))
+    }
+
+    payload, _ := json.Marshal(map[string]interface{}{"tables": names})
+    return C.CString(string(payload))
+}
+
+//export GetSqliteSchema
+func GetSqliteSchema(dbPath *C.char, table *C.char) *C.char {
+    path := C.GoString(dbPath)
+    tbl := C.GoString(table)
+    if tbl == "" {
+        return C.CString(`{"error":"table is required"}`)
+    }
+
+    db, err := sql.Open("sqlite3", path)
+    if err != nil {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("open error: %v", err)))
+    }
+    defer db.Close()
+
+    // ensure table exists
+    var cnt int
+    if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, tbl).Scan(&cnt); err != nil {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("exists check error: %v", err)))
+    }
+    if cnt == 0 {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("table %s not found", tbl)))
+    }
+
+    // columns
+    cols := []map[string]interface{}{}
+    qCols := `PRAGMA table_info(` + quoteIdent(tbl) + `)`
+    if rows, err := db.Query(qCols); err == nil {
+        defer rows.Close()
+        for rows.Next() {
+            var cid int
+            var name, ctype string
+            var notnull, pk int
+            var dflt sql.NullString
+            if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+                return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("table_info scan error: %v", err)))
+            }
+            var dfltVal interface{}
+            if dflt.Valid {
+                dfltVal = dflt.String
+            } else {
+                dfltVal = nil
+            }
+            cols = append(cols, map[string]interface{}{
+                "cid":        cid,
+                "name":       name,
+                "type":       ctype,
+                "notnull":    notnull,
+                "default":    dfltVal,
+                "primaryKey": pk,
+            })
+        }
+        if err := rows.Err(); err != nil {
+            return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("table_info rows error: %v", err)))
+        }
+    } else {
+        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("table_info error: %v", err)))
+    }
+
+    // foreign keys
+    fks := []map[string]interface{}{}
+    qFK := `PRAGMA foreign_key_list(` + quoteIdent(tbl) + `)`
+    if rows, err := db.Query(qFK); err == nil {
+        defer rows.Close()
+        for rows.Next() {
+            var id, seq int
+            var refTable, from, to, onUpdate, onDelete, match string
+            if err := rows.Scan(&id, &seq, &refTable, &from, &to, &onUpdate, &onDelete, &match); err != nil {
+                return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("fk scan error: %v", err)))
+            }
+            fks = append(fks, map[string]interface{}{
+                "id":        id,
+                "seq":       seq,
+                "table":     refTable,
+                "from":      from,
+                "to":        to,
+                "on_update": onUpdate,
+                "on_delete": onDelete,
+                "match":     match,
+            })
+        }
+        if err := rows.Err(); err != nil {
+            return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("fk rows error: %v", err)))
+        }
+    } // ignore fk pragma error (older builds may differ)
+
+    // indexes
+    indexes := []map[string]interface{}{}
+    qIdx := `PRAGMA index_list(` + quoteIdent(tbl) + `)`
+    if rows, err := db.Query(qIdx); err == nil {
+        defer rows.Close()
+        for rows.Next() {
+            // seq, name, unique, origin, partial (partial only on newer versions)
+            var seq, unique int
+            var name, origin string
+            var partial sql.NullInt64
+            // try scanning 5 cols; if that fails, scan 4 (older sqlite)
+            errScan := rows.Scan(&seq, &name, &unique, &origin, &partial)
+            if errScan != nil {
+                // fallback 4 cols
+                rows2, err2 := db.Query(qIdx)
+                if err2 != nil {
+                    return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("index_list requery error: %v", err2)))
+                }
+                defer rows2.Close()
+                indexes = []map[string]interface{}{}
+                for rows2.Next() {
+                    var seq2, unique2 int
+                    var name2, origin2 string
+                    if err := rows2.Scan(&seq2, &name2, &unique2, &origin2); err != nil {
+                        return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("index_list scan error: %v", err)))
+                    }
+                    colsForIdx := []string{}
+                    if r2, err := db.Query(`PRAGMA index_info(` + quoteIdent(name2) + `)`); err == nil {
+                        for r2.Next() {
+                            var seqno, cid int
+                            var colName string
+                            if err := r2.Scan(&seqno, &cid, &colName); err == nil {
+                                colsForIdx = append(colsForIdx, colName)
+                            }
+                        }
+                        _ = r2.Close()
+                    }
+                    indexes = append(indexes, map[string]interface{}{
+                        "name":    name2,
+                        "unique":  unique2,
+                        "origin":  origin2,
+                        "partial": false,
+                        "columns": colsForIdx,
+                    })
+                }
+                if err := rows2.Err(); err != nil {
+                    return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("index_list rows error: %v", err)))
+                }
+                // done (we rebuilt indexes list using fallback path)
+                goto payload
+            }
+            // happy path (5 cols)
+            colsForIdx := []string{}
+            if r2, err := db.Query(`PRAGMA index_info(` + quoteIdent(name) + `)`); err == nil {
+                for r2.Next() {
+                    var seqno, cid int
+                    var colName string
+                    if err := r2.Scan(&seqno, &cid, &colName); err == nil {
+                        colsForIdx = append(colsForIdx, colName)
+                    }
+                }
+                _ = r2.Close()
+            }
+            indexes = append(indexes, map[string]interface{}{
+                "name":    name,
+                "unique":  unique,
+                "origin":  origin,
+                "partial": partial.Valid && partial.Int64 != 0,
+                "columns": colsForIdx,
+            })
+        }
+        if err := rows.Err(); err != nil {
+            return C.CString(fmt.Sprintf(`{"error":%q}`, fmt.Sprintf("index_list rows error: %v", err)))
+        }
+    }
+payload:
+    out := map[string]interface{}{
+        "table":        tbl,
+        "columns":      cols,
+        "foreign_keys": fks,
+        "indexes":      indexes,
+    }
+    js, _ := json.Marshal(out)
+    return C.CString(string(js))
 }
 
 // convertMapKeysToString converts map keys to strings recursively
@@ -1314,6 +1620,7 @@ func (df *DataFrame) DisplayBrowser() error {
 		</head>
 		<body>
 			<div id="app" style="text-align: center;" class=" h-screen pt-12">
+		<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
 				<table class="table table-xs">
 	  				<thead>
 						<tr>
@@ -1357,7 +1664,43 @@ func (df *DataFrame) DisplayBrowser() error {
 					}
 				},
 				methods: {
-					sortColumnAsc(col) {
+       exportCSV() {
+         const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
+         if (!cols.length) return;
+         // Determine the maximum row count across all columns
+         let rowCount = 0;
+         for (const c of cols) {
+           const len = (this.data[c] || []).length;
+           if (len > rowCount) rowCount = len;
+         }
+         const esc = (v) => {
+           if (v === null || v === undefined) return '';
+           if (typeof v === 'object') v = JSON.stringify(v);
+           let s = String(v);
+           s = s.replace(/"/g, '""');
+           if (/[",\r\n]/.test(s)) s = '"' + s + '"';
+           return s;
+         };
+         const lines = [];
+         // Header row
+         lines.push(cols.map(esc).join(','));
+         // Data rows
+         for (let i = 0; i < rowCount; i++) {
+           const row = cols.map(c => esc((this.data[c] || [])[i]));
+           lines.push(row.join(','));
+         }
+         const csv = lines.join('\\r\\n');
+         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+         const url = URL.createObjectURL(blob);
+         const a = document.createElement('a');
+         a.href = url;
+         a.download = 'dataframe.csv';
+         document.body.appendChild(a);
+         a.click();
+         document.body.removeChild(a);
+         URL.revokeObjectURL(url);
+       },					
+	   sortColumnAsc(col) {
 						// Create an array of row indices
 						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
 
@@ -1485,9 +1828,10 @@ func (df *DataFrame) Display() map[string]interface{} {
 		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
 	</head>
 	<body>
-		<button class="btn btn-sm fixed top-2 right-2 z-50" @Click="openInNewTab()">Open in Browser</button>
+		<button class="btn btn-sm fixed top-2 left-2 z-50" onclick="openInNewTab()">Open in Browser</button>
 		<div id="table" style="text-align: center;" class=" h-screen pt-12 ">
-			<table class="table table-xs">
+		<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
+		<table class="table table-xs">
 				<thead>
 					<tr>
 						<th></th>
@@ -1516,6 +1860,15 @@ func (df *DataFrame) Display() map[string]interface{} {
 		</div>
 	</body>
 	<script>
+	  function openInNewTab() {
+    const htmlContent = document.documentElement.outerHTML;
+    const w = window.open('', '_blank');
+    if (!w) { alert('Popup blocked'); return; }
+    w.document.open();
+    w.document.write(htmlContent);
+    w.document.close();
+  }
+
 		const { createApp } = Vue
 		createApp({
 		delimiters :  ["[[", "]]"],
@@ -1526,12 +1879,42 @@ func (df *DataFrame) Display() map[string]interface{} {
 				}
 			},
 			methods: {
-				openInNewTab() {
-					const htmlContent = document.documentElement.outerHTML;
-					const blob = new Blob([htmlContent], { type: 'text/html' });
-					const url = URL.createObjectURL(blob);
-					window.open(url, '_blank');
-				},
+				exportCSV() {
+             const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
+             if (!cols.length) return;
+             // Determine the maximum row count across all columns
+             let rowCount = 0;
+             for (const c of cols) {
+               const len = (this.data[c] || []).length;
+               if (len > rowCount) rowCount = len;
+             }
+             const esc = (v) => {
+               if (v === null || v === undefined) return '';
+               if (typeof v === 'object') v = JSON.stringify(v);
+               let s = String(v);
+               s = s.replace(/"/g, '""');
+               if (/[",\r\n]/.test(s)) s = '"' + s + '"';
+               return s;
+             };
+             const lines = [];
+             // Header row
+             lines.push(cols.map(esc).join(','));
+             // Data rows
+             for (let i = 0; i < rowCount; i++) {
+               const row = cols.map(c => esc((this.data[c] || [])[i]));
+               lines.push(row.join(','));
+             }
+             const csv = lines.join('\r\n');
+             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+             const url = URL.createObjectURL(blob);
+             const a = document.createElement('a');
+             a.href = url;
+             a.download = 'dataframe.csv';
+             document.body.appendChild(a);
+             a.click();
+             document.body.removeChild(a);
+             URL.revokeObjectURL(url);
+           },
 					sortColumnAsc(col) {
 						// Create an array of row indices
 						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
@@ -5228,6 +5611,320 @@ func ToCSVFileWrapper(dfJson *C.char, filename *C.char) *C.char {
 	return C.CString("success")
 }
 
+// quote identifiers for SQLite
+func quoteIdent(s string) string {
+    return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
+func inferSQLiteTypes(df *DataFrame) map[string]string {
+    types := make(map[string]string, len(df.Cols))
+    for _, col := range df.Cols {
+        sqlType := "TEXT"
+        if values, ok := df.Data[col]; ok {
+            for _, v := range values {
+                if v == nil {
+                    continue
+                }
+                switch v.(type) {
+                case int, int32, int64, bool:
+                    sqlType = "INTEGER"
+                case float32, float64:
+                    sqlType = "REAL"
+                case []byte:
+                    sqlType = "BLOB"
+                default:
+                    sqlType = "TEXT"
+                }
+                break
+            }
+        }
+        types[col] = sqlType
+    }
+    return types
+}
+
+func tableExists(tx *sql.Tx, table string) (bool, error) {
+    var cnt int
+    row := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table)
+    if err := row.Scan(&cnt); err != nil {
+        return false, err
+    }
+    return cnt > 0, nil
+}
+
+func getExistingColumns(tx *sql.Tx, table string) (map[string]bool, error) {
+    rows, err := tx.Query(`PRAGMA table_info(` + quoteIdent(table) + `)`)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+    out := map[string]bool{}
+    for rows.Next() {
+        var cid int
+        var name, ctype string
+        var notnull, pk int
+        var dflt interface{}
+        _ = dflt
+        if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+            return nil, err
+        }
+        out[name] = true
+    }
+    return out, rows.Err()
+}
+
+func ensureTableAndColumns(tx *sql.Tx, table string, df *DataFrame) error {
+    colTypes := inferSQLiteTypes(df)
+    exists, err := tableExists(tx, table)
+    if err != nil {
+        return err
+    }
+    if !exists {
+        defs := make([]string, 0, len(df.Cols))
+        for _, c := range df.Cols {
+            defs = append(defs, fmt.Sprintf("%s %s", quoteIdent(c), colTypes[c]))
+        }
+        createSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (%s)`, quoteIdent(table), strings.Join(defs, ","))
+        if _, err := tx.Exec(createSQL); err != nil {
+            return err
+        }
+        return nil
+    }
+    // add any missing columns
+    current, err := getExistingColumns(tx, table)
+    if err != nil {
+        return err
+    }
+    for _, c := range df.Cols {
+        if !current[c] {
+            if _, err := tx.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, quoteIdent(table), quoteIdent(c), colTypes[c])); err != nil {
+                return err
+            }
+        }
+    }
+    return nil
+}
+
+// Upsert helper (will be used by WriteSqlite for mode=upsert)
+func upsertSqliteTx(tx *sql.Tx, table string, df *DataFrame, keys []string, createIndex bool) error {
+    if len(keys) == 0 {
+        return fmt.Errorf("UpsertSqlite: at least one key column is required")
+    }
+    if err := ensureTableAndColumns(tx, table, df); err != nil {
+        return err
+    }
+    if createIndex {
+        ixName := "ux_" + strings.ReplaceAll(strings.ReplaceAll(table, `"`, "_"), " ", "_") + "_" + strings.ReplaceAll(strings.Join(keys, "_"), `"`, "_")
+        qKeys := make([]string, 0, len(keys))
+        for _, k := range keys {
+            qKeys = append(qKeys, quoteIdent(k))
+        }
+        _, _ = tx.Exec(fmt.Sprintf(`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s)`, quoteIdent(ixName), quoteIdent(table), strings.Join(qKeys, ",")))
+    }
+
+    // Try modern ON CONFLICT DO UPDATE (SQLite >= 3.24.0)
+    colsQuoted := make([]string, 0, len(df.Cols))
+    valHolders := make([]string, 0, len(df.Cols))
+    setClauses := []string{}
+    keySet := map[string]struct{}{}
+    for _, k := range keys {
+        keySet[k] = struct{}{}
+    }
+    for _, c := range df.Cols {
+        colsQuoted = append(colsQuoted, quoteIdent(c))
+        valHolders = append(valHolders, ":"+c)
+        if _, isKey := keySet[c]; !isKey {
+            setClauses = append(setClauses, fmt.Sprintf("%s=excluded.%s", quoteIdent(c), quoteIdent(c)))
+        }
+    }
+    conflictCols := make([]string, 0, len(keys))
+    for _, k := range keys {
+        conflictCols = append(conflictCols, quoteIdent(k))
+    }
+    upsertSQL := fmt.Sprintf(
+        `INSERT INTO %s (%s) VALUES (%s) ON CONFLICT(%s) DO UPDATE SET %s`,
+        quoteIdent(table),
+        strings.Join(colsQuoted, ","),
+        strings.Join(valHolders, ","),
+        strings.Join(conflictCols, ","),
+        strings.Join(setClauses, ","),
+    )
+
+    if stmt, err := tx.Prepare(upsertSQL); err == nil {
+        defer stmt.Close()
+        for i := 0; i < df.Rows; i++ {
+            args := make([]interface{}, 0, len(df.Cols))
+            for _, c := range df.Cols {
+                args = append(args, sql.Named(c, df.Data[c][i]))
+            }
+            if _, err := stmt.Exec(args...); err != nil {
+                return fmt.Errorf("UpsertSqlite: exec upsert error at row %d: %w", i, err)
+            }
+        }
+        return nil
+    }
+
+    // Fallback: UPDATE then INSERT per row (older SQLite)
+    setQ := []string{}
+    for _, c := range df.Cols {
+        if _, isKey := keySet[c]; !isKey {
+            setQ = append(setQ, fmt.Sprintf("%s=?", quoteIdent(c)))
+        }
+    }
+    whereQ := []string{}
+    for _, k := range keys {
+        whereQ = append(whereQ, fmt.Sprintf("%s=?", quoteIdent(k)))
+    }
+    updateSQL := fmt.Sprintf(`UPDATE %s SET %s WHERE %s`, quoteIdent(table), strings.Join(setQ, ","), strings.Join(whereQ, " AND "))
+    upStmt, err := tx.Prepare(updateSQL)
+    if err != nil {
+        return fmt.Errorf("UpsertSqlite: prepare update error: %w", err)
+    }
+    defer upStmt.Close()
+
+    insCols := make([]string, 0, len(df.Cols))
+    insQ := make([]string, 0, len(df.Cols))
+    for _, c := range df.Cols {
+        insCols = append(insCols, quoteIdent(c))
+        insQ = append(insQ, "?")
+    }
+    insertSQL := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`, quoteIdent(table), strings.Join(insCols, ","), strings.Join(insQ, ","))
+    inStmt, err := tx.Prepare(insertSQL)
+    if err != nil {
+        return fmt.Errorf("UpsertSqlite: prepare insert error: %w", err)
+    }
+    defer inStmt.Close()
+
+    for i := 0; i < df.Rows; i++ {
+        upArgs := make([]interface{}, 0, len(setQ)+len(keys))
+        for _, c := range df.Cols {
+            if _, isKey := keySet[c]; !isKey {
+                upArgs = append(upArgs, df.Data[c][i])
+            }
+        }
+        for _, k := range keys {
+            upArgs = append(upArgs, df.Data[k][i])
+        }
+        res, err := upStmt.Exec(upArgs...)
+        if err != nil {
+            return fmt.Errorf("UpsertSqlite: update error at row %d: %w", i, err)
+        }
+        if aff, _ := res.RowsAffected(); aff == 0 {
+            insArgs := make([]interface{}, 0, len(df.Cols))
+            for _, c := range df.Cols {
+                insArgs = append(insArgs, df.Data[c][i])
+            }
+            if _, err := inStmt.Exec(insArgs...); err != nil {
+                return fmt.Errorf("UpsertSqlite: insert error at row %d: %w", i, err)
+            }
+        }
+    }
+    return nil
+}
+
+// WriteSqlite performs overwrite or upsert based on mode.
+func (df *DataFrame) WriteSqlite(dbPath string, table string, mode string, keys []string, createIndex bool) error {
+    if df == nil {
+        return fmt.Errorf("WriteSqlite: nil dataframe")
+    }
+    if table == "" {
+        return fmt.Errorf("WriteSqlite: table is required")
+    }
+    if df.Rows == 0 && strings.ToLower(mode) == "overwrite" {
+        // Still ensure table exists so the call is idempotent.
+        db, err := sql.Open("sqlite3", dbPath)
+        if err != nil { return err }
+        defer db.Close()
+        tx, err := db.Begin()
+        if err != nil { return err }
+        defer func(){ _ = tx.Rollback() }()
+        if err := ensureTableAndColumns(tx, table, df); err != nil { return err }
+        return tx.Commit()
+    }
+
+    db, err := sql.Open("sqlite3", dbPath)
+    if err != nil {
+        return fmt.Errorf("WriteSqlite: open error: %w", err)
+    }
+    defer db.Close()
+
+    tx, err := db.Begin()
+    if err != nil {
+        return fmt.Errorf("WriteSqlite: begin tx error: %w", err)
+    }
+    defer func() { _ = tx.Rollback() }()
+
+    switch strings.ToLower(mode) {
+    case "overwrite":
+        // Ensure table and columns exist (create or add columns)
+        if err := ensureTableAndColumns(tx, table, df); err != nil {
+            return err
+        }
+        // Clear table
+        if _, err := tx.Exec(`DELETE FROM ` + quoteIdent(table)); err != nil {
+            return fmt.Errorf("WriteSqlite: delete error: %w", err)
+        }
+        // Insert all rows
+        colsQuoted := make([]string, 0, len(df.Cols))
+        valQ := make([]string, 0, len(df.Cols))
+        for _, c := range df.Cols {
+            colsQuoted = append(colsQuoted, quoteIdent(c))
+            valQ = append(valQ, ":"+c)
+        }
+        insertSQL := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`, quoteIdent(table), strings.Join(colsQuoted, ","), strings.Join(valQ, ","))
+        stmt, err := tx.Prepare(insertSQL)
+        if err != nil {
+            return fmt.Errorf("WriteSqlite: prepare insert error: %w", err)
+        }
+        defer stmt.Close()
+        for i := 0; i < df.Rows; i++ {
+            args := make([]interface{}, 0, len(df.Cols))
+            for _, c := range df.Cols {
+                args = append(args, sql.Named(c, df.Data[c][i]))
+            }
+            if _, err := stmt.Exec(args...); err != nil {
+                return fmt.Errorf("WriteSqlite: insert error at row %d: %w", i, err)
+            }
+        }
+    case "upsert":
+        if len(keys) == 0 {
+            return fmt.Errorf("WriteSqlite: upsert mode requires keys")
+        }
+        if err := upsertSqliteTx(tx, table, df, keys, createIndex); err != nil {
+            return err
+        }
+    default:
+        return fmt.Errorf("WriteSqlite: unsupported mode %q (use 'overwrite' or 'upsert')", mode)
+    }
+
+    if err := tx.Commit(); err != nil {
+        return fmt.Errorf("WriteSqlite: commit error: %w", err)
+    }
+    return nil
+}
+
+//export WriteSqlite
+func WriteSqlite(dbPath *C.char, table *C.char, dfJson *C.char, mode *C.char, keyColsJson *C.char, createIdx C.int) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        return C.CString(fmt.Sprintf("WriteSqlite: dataframe unmarshal error: %v", err))
+    }
+    var keys []string
+    if err := json.Unmarshal([]byte(C.GoString(keyColsJson)), &keys); err != nil && len(C.GoString(keyColsJson)) > 0 {
+        return C.CString(fmt.Sprintf("WriteSqlite: key columns unmarshal error: %v", err))
+    }
+    err := df.WriteSqlite(
+        C.GoString(dbPath),
+        C.GoString(table),
+        C.GoString(mode),
+        keys,
+        createIdx != 0,
+    )
+    if err != nil {
+        return C.CString(err.Error())
+    }
+    return C.CString("success")
+}
 // END --------------------------------------------------
 
 func main() {}

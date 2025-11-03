@@ -68,6 +68,10 @@ gophers.ToCSVFileWrapper.restype = c_char_p
 gophers.FlattenWrapper.restype = c_char_p
 gophers.StringArrayConvertWrapper.restype = c_char_p
 gophers.KeysToColsWrapper.restype = c_char_p
+gophers.ReadSqlite.restype = c_char_p
+gophers.WriteSqlite.restype = c_char_p
+gophers.GetSqliteTables.restype = c_char_p
+gophers.GetSqliteSchema.restype = c_char_p
 
 class ColumnExpr:
     def __init__(self, expr):
@@ -311,12 +315,15 @@ def Help():
     DisplayChart(chart)
     DisplayHTML(html)
     GetAPIJSON(endpoint, headers, query_params)
+    GetSqliteSchema(db_path, table),
+    GetSqliteTables(db_path),
     If(condition, trueExpr, falseExpr)
     Lit(value)
     Or(left, right)
     ReadCSV(csv_data)
     ReadJSON(json_data)
     ReadNDJSON(json_data)
+    ReadSqlite(db_path, table, query)
     ReadYAML(yaml_data)
     SHA256(*cols)
     SHA512(*cols)
@@ -484,6 +491,47 @@ def GetAPIJSON(endpoint, headers, query_params):
     df_json = gophers.GetAPIJSON(endpoint.encode('utf-8'), headers.encode('utf-8'), query_params.encode('utf-8')).decode('utf-8')
     return DataFrame(df_json)
 
+def ReadSqlite(db_path, table=None, query=None):
+    """
+    Read from a SQLite database.
+    - If query is provided, it runs that SQL and returns a DataFrame.
+    - Else if table is provided, returns SELECT * FROM table.
+    - Else reads all user tables and merges rows (adds _table column).
+    """
+    t = "" if table is None else table
+    q = "" if query is None else query
+    df_json = gophers.ReadSqlite(db_path.encode('utf-8'), t.encode('utf-8'), q.encode('utf-8')).decode('utf-8')
+    return DataFrame(df_json)
+
+def GetSqliteTables(db_path: str):
+    """
+    Return a list of table names in the SQLite database.
+    Raises RuntimeError on error.
+    """
+    raw = gophers.GetSqliteTables(db_path.encode("utf-8")).decode("utf-8")
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        raise RuntimeError(raw)
+    if isinstance(obj, dict) and obj.get("error"):
+        raise RuntimeError(obj["error"])
+    return obj.get("tables", [])
+
+def GetSqliteSchema(db_path: str, table: str):
+    """
+    Return schema info for a table:
+      { table, columns:[{cid,name,type,notnull,default,primaryKey}], foreign_keys:[...], indexes:[...] }
+    Raises RuntimeError on error.
+    """
+    raw = gophers.GetSqliteSchema(db_path.encode("utf-8"), table.encode("utf-8")).decode("utf-8")
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        raise RuntimeError(raw)
+    if isinstance(obj, dict) and obj.get("error"):
+        raise RuntimeError(obj["error"])
+    return obj
+
 # Display functions
 def DisplayHTML(html):
     display(HTML(html))
@@ -540,7 +588,8 @@ class DataFrame:
     Tail(chars)
     ToCSVFile(filename)
     Union(df2)
-    Vertical(chars, record_count)""")  
+    Vertical(chars, record_count)
+    WriteSqlite(db_path, table_name, mode, key_cols)""")
         
     # Display functions
     def Show(self, chars, record_count=100):
@@ -809,9 +858,28 @@ class DataFrame:
         # add output giving file name/location
         return self
     
+    def WriteSqlite(self, db_path: str, table: str, mode: str = "upsert", key_cols=None, create_index: bool = True):
+        """
+        Standard write to SQLite for this DataFrame.
+        - mode: "overwrite" or "upsert"
+        - key_cols: required for upsert; list/tuple of column names
+        - create_index: create UNIQUE index on key_cols for upsert
+        """
+        keys_json = json.dumps(list(key_cols or []))
+        res = gophers.WriteSqlite(
+            db_path.encode("utf-8"),
+            table.encode("utf-8"),
+            self.df_json.encode("utf-8"),
+            mode.encode("utf-8"),
+            keys_json.encode("utf-8"),
+            c_int(1 if create_index else 0),
+        ).decode("utf-8")
+        if res != "success":
+            raise RuntimeError(res)
+        return self    
 # Example usage:
 def main():
-    json = '''
+    data = '''
 [
         {
             "name": "Julie Skels",
@@ -941,10 +1009,22 @@ def main():
     # report.AddHeading("Main Page", "This is the main page of the report", 1)
     # report.AddDataframe("Main Page", df)
     # report.Open()
-    df = GetAPIJSON("https://poetrydb.org/title/Ozymandias/lines.json","","")
-    df = df.Explode("lines")
-    df.DisplayBrowser()
+    # df = GetAPIJSON("https://poetrydb.org/title/Ozymandias/lines.json","","")
+    # df = df.Explode("lines")
+    print(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
+    df = ReadJSON(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
+    df = df.Select("columns")\
+        .Explode("columns")\
+        .Flatten("columns")
     df.Vertical(100, 10)
+    # df.DisplayBrowser()
+    report = CreateReport("SQLite Schema Report")
+    report.AddPage("Schema Page")
+    report.AddHeading("Schema Page", "Schema of SCOPS2_Child_App_email Table", 1)
+    report.AddDataframe("Schema Page", df)
+    report.Save("sqlite_schema_report.html").Open()
+    # df.DisplayBrowser()
+    # df.Vertical(100, 10)
     # pass
 
 if __name__ == '__main__':
