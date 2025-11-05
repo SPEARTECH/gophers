@@ -30,6 +30,8 @@ import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"time"
+	"sync"
+	"unsafe"
 )
 
 // DataFrame represents a very simple dataframe structure.
@@ -918,6 +920,47 @@ payload:
     return C.CString(string(js))
 }
 
+// Clone creates a deep copy of the DataFrame (new Cols slice and new per-column []interface{}).
+func (df *DataFrame) Clone() *DataFrame {
+    if df == nil {
+        return &DataFrame{Cols: nil, Data: make(map[string][]interface{}), Rows: 0}
+    }
+    newCols := make([]string, len(df.Cols))
+    copy(newCols, df.Cols)
+
+    newData := make(map[string][]interface{}, len(df.Data))
+    for _, c := range df.Cols {
+        src := df.Data[c]
+        dst := make([]interface{}, len(src))
+        copy(dst, src)
+        newData[c] = dst
+    }
+
+    return &DataFrame{
+        Cols: newCols,
+        Data: newData,
+        Rows: df.Rows,
+    }
+}
+
+//export CloneWrapper
+func CloneWrapper(dfJson *C.char) *C.char {
+    var df DataFrame
+    if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+        errStr := fmt.Sprintf("CloneWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    cloned := df.Clone()
+    js, err := json.Marshal(cloned)
+    if err != nil {
+        errStr := fmt.Sprintf("CloneWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(js))
+}
+
 // convertMapKeysToString converts map keys to strings recursively
 func convertMapKeysToString(data map[interface{}]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
@@ -997,44 +1040,323 @@ func FlattenWrapper(dfJson *C.char, flattenColsJson *C.char) *C.char {
 // For each row, if any specified column contains a nested map (or map[interface{}]interface{}),
 // it will flatten that nested structure using dot-notation
 // and add those flattened fields as new columns while removing the original column.
+// func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
+// 	newRows := []map[string]interface{}{}
+// 	// Iterate over each row.
+// 	for i := 0; i < df.Rows; i++ {
+// 		// Create a copy of the row.
+// 		row := make(map[string]interface{})
+// 		for _, col := range df.Cols {
+// 			row[col] = df.Data[col][i]
+// 		}
+// 		// Process each column that should be flattened.
+// 		for _, fcol := range flattenCols {
+// 			val, exists := row[fcol]
+// 			if !exists || val == nil {
+// 				continue
+// 			}
+// 			var nested map[string]interface{}
+// 			switch t := val.(type) {
+// 			case map[string]interface{}:
+// 				nested = t
+// 			case map[interface{}]interface{}:
+// 				nested = convertMapKeysToString(t)
+// 			default:
+// 				// Not a map; skip.
+// 				continue
+// 			}
+// 			// Flatten the map; use the column name as prefix.
+// 			flatMap := flattenNestedMap(nested, fcol)
+// 			// Remove the original nested column.
+// 			delete(row, fcol)
+// 			// Merge flattened key/value pairs into the row.
+// 			for k, v := range flatMap {
+// 				row[k] = v
+// 			}
+// 		}
+// 		newRows = append(newRows, row)
+// 	}
+// 	// Return a new DataFrame built from the new rows.
+// 	return Dataframe(newRows)
+// }
+
+// ---- Memory guard helpers ----
+var memBudgetBytes int64 = func() int64 {
+    // Set GOPHERS_MEM_BUDGET_BYTES to a number of bytes to enforce a soft cap.
+    // 0 disables the guard.
+    if v := os.Getenv("GOPHERS_MEM_BUDGET_BYTES"); v != "" {
+        if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+            return n
+        }
+    }
+    return 0 // disabled by default
+}()
+
+func ifaceSize() int64 {
+    var x interface{}
+    return int64(unsafe.Sizeof(x)) // typically 16 bytes on 64-bit
+}
+
+func humanBytes(n int64) string {
+    units := []string{"B","KiB","MiB","GiB","TiB"}
+    f := float64(n)
+    i := 0
+    for f >= 1024 && i < len(units)-1 {
+        f /= 1024
+        i++
+    }
+    return fmt.Sprintf("%.1f %s", f, units[i])
+}
+
+func estimateInterfacesExplode(df *DataFrame, totalRows int) int64 {
+    // New arrays of []interface{} for each column with len=totalRows.
+    return int64(totalRows) * int64(len(df.Cols))
+}
+
+func estimateInterfacesFlattenAdd(rows, addedCols int) int64 {
+    // New arrays for the added columns only.
+    return int64(rows) * int64(addedCols)
+}
+
+func estimatedBytesForInterfaces(nInterfaces int64) int64 {
+    // Factor in slice headers and small temps (~20% headroom).
+    return int64(float64(nInterfaces*ifaceSize()) * 1.2)
+}
+
+func checkMemBudget(needBytes int64, context string) error {
+    if memBudgetBytes <= 0 {
+        return nil // guard disabled
+    }
+    var ms runtime.MemStats
+    runtime.ReadMemStats(&ms)
+    used := int64(ms.Alloc)
+    // Simple check: current heap + estimated allocation vs budget
+    if used+needBytes > memBudgetBytes {
+        return fmt.Errorf("%s estimated to allocate ~%s; current heap ~%s; exceeds budget %s (set GOPHERS_MEM_BUDGET_BYTES to raise)",
+            context, humanBytes(needBytes), humanBytes(used), humanBytes(memBudgetBytes))
+    }
+    return nil
+}
+
+// Optional: public preflight helpers you can call from Python to warn users early.
+func (df *DataFrame) ExplodePreflight(column string) (totalRows int, estBytes int64) {
+    total := 0
+    for i := 0; i < df.Rows; i++ {
+        v := df.Data[column][i]
+        if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+            total += len(arr)
+        } else {
+            total++
+        }
+    }
+    if total == 0 {
+        total = df.Rows
+    }
+    needIface := estimateInterfacesExplode(df, total)
+    return total, estimatedBytesForInterfaces(needIface)
+}
+
+func (df *DataFrame) FlattenPreflight(nestedCol string) (addedCols int, estBytes int64) {
+    src, ok := df.Data[nestedCol]
+    if !ok {
+        return 0, 0
+    }
+    keySet := map[string]struct{}{}
+    for i := 0; i < df.Rows; i++ {
+        v := src[i]
+        switch t := v.(type) {
+        case map[string]interface{}:
+            for k := range t { keySet[k] = struct{}{} }
+        case map[interface{}]interface{}:
+            m := convertMapKeysToString(t)
+            for k := range m { keySet[k] = struct{}{} }
+        }
+    }
+    add := len(keySet)
+    needIface := estimateInterfacesFlattenAdd(df.Rows, add)
+    return add, estimatedBytesForInterfaces(needIface)
+}
+
+// Flatten (in-place, no []map intermediate)
 func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
-	newRows := []map[string]interface{}{}
-	// Iterate over each row.
-	for i := 0; i < df.Rows; i++ {
-		// Create a copy of the row.
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-		// Process each column that should be flattened.
-		for _, fcol := range flattenCols {
-			val, exists := row[fcol]
-			if !exists || val == nil {
-				continue
-			}
-			var nested map[string]interface{}
-			switch t := val.(type) {
-			case map[string]interface{}:
-				nested = t
-			case map[interface{}]interface{}:
-				nested = convertMapKeysToString(t)
-			default:
-				// Not a map; skip.
-				continue
-			}
-			// Flatten the map; use the column name as prefix.
-			flatMap := flattenNestedMap(nested, fcol)
-			// Remove the original nested column.
-			delete(row, fcol)
-			// Merge flattened key/value pairs into the row.
-			for k, v := range flatMap {
-				row[k] = v
-			}
-		}
-		newRows = append(newRows, row)
-	}
-	// Return a new DataFrame built from the new rows.
-	return Dataframe(newRows)
+    if df == nil || df.Rows == 0 || len(flattenCols) == 0 {
+        return df
+    }
+    // Build a set for quick column lookup
+    colSet := make(map[string]bool, len(df.Cols))
+    for _, c := range df.Cols { colSet[c] = true }
+
+    for _, fcol := range flattenCols {
+        // Collect all nested keys once
+        keySet := map[string]struct{}{}
+        srcCol, ok := df.Data[fcol]
+        if !ok { continue }
+        for i := 0; i < df.Rows; i++ {
+            val := srcCol[i]
+            if val == nil { continue }
+            switch t := val.(type) {
+            case map[string]interface{}:
+                for k := range t { keySet[k] = struct{}{} }
+            case map[interface{}]interface{}:
+                m := convertMapKeysToString(t)
+                for k := range m { keySet[k] = struct{}{} }
+            }
+        }
+        // Preflight memory guard for added columns.
+        if add := len(keySet); add > 0 {
+            need := estimatedBytesForInterfaces(estimateInterfacesFlattenAdd(df.Rows, add))
+            if err := checkMemBudget(need, fmt.Sprintf("Flatten(%s)", fcol)); err != nil {
+                log.Printf("WARN: %v. Aborting Flatten for column %q.", err, fcol)
+                return df
+            }
+        }		
+        // Create new columns with full length
+        newCols := make([]string, 0, len(keySet))
+        for k := range keySet {
+            name := fcol + "." + k
+            if !colSet[name] {
+                df.Cols = append(df.Cols, name)
+                colSet[name] = true
+            }
+            newCols = append(newCols, name)
+            if _, ok := df.Data[name]; !ok {
+                df.Data[name] = make([]interface{}, df.Rows)
+            }
+        }
+        // Parallel fill
+        w := runtime.GOMAXPROCS(0)
+        var wg sync.WaitGroup
+        chunk := (df.Rows + w - 1) / w
+        for g := 0; g < w; g++ {
+            start := g * chunk
+            end := start + chunk
+            if start >= df.Rows { break }
+            if end > df.Rows { end = df.Rows }
+            wg.Add(1)
+            go func(s, e int) {
+                defer wg.Done()
+                for i := s; i < e; i++ {
+                    val := srcCol[i]
+                    var nested map[string]interface{}
+                    switch t := val.(type) {
+                    case map[string]interface{}:
+                        nested = t
+                    case map[interface{}]interface{}:
+                        nested = convertMapKeysToString(t)
+                    default:
+                        nested = nil
+                    }
+                    for _, name := range newCols {
+                        key := name[len(fcol)+1:]
+                        if nested != nil {
+                            df.Data[name][i] = nested[key]
+                        } else {
+                            df.Data[name][i] = nil
+                        }
+                    }
+                }
+            }(start, end)
+        }
+        wg.Wait()
+        // Remove original nested column (single-threaded)
+        delete(df.Data, fcol)
+        kept := df.Cols[:0]
+        for _, c := range df.Cols {
+            if c != fcol { kept = append(kept, c) }
+        }
+        df.Cols = kept
+    }
+    return df
+}
+
+// explodePrealloc explodes a single column using preallocation
+func (df *DataFrame) explodePrealloc(column string) *DataFrame {
+    if df == nil || df.Rows == 0 { return df }
+
+    // Per-row output lengths
+    perLen := make([]int, df.Rows)
+    total := 0
+    for i := 0; i < df.Rows; i++ {
+        v := df.Data[column][i]
+        if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+            perLen[i] = len(arr)
+        } else {
+            perLen[i] = 1 // copy row as-is if not array or empty
+        }
+        total += perLen[i]
+    }
+    if total == 0 { total = df.Rows }
+
+    // Preflight memory guard for the expanded arrays.
+    need := estimatedBytesForInterfaces(estimateInterfacesExplode(df, total))
+    if err := checkMemBudget(need, fmt.Sprintf("Explode(%s)", column)); err != nil {
+        log.Printf("WARN: %v. Aborting Explode for column %q.", err, column)
+        return df
+    }
+
+    // Prefix sums -> starting offsets
+    offsets := make([]int, df.Rows+1)
+    for i := 0; i < df.Rows; i++ {
+        offsets[i+1] = offsets[i] + perLen[i]
+    }
+
+    // Allocate output
+    newCols := make([]string, len(df.Cols))
+    copy(newCols, df.Cols)
+    newData := make(map[string][]interface{}, len(newCols))
+    for _, c := range newCols {
+        newData[c] = make([]interface{}, total)
+    }
+
+    // Parallel fill by disjoint index ranges per row
+    w := runtime.GOMAXPROCS(0)
+    var wg sync.WaitGroup
+    chunk := (df.Rows + w - 1) / w
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
+        wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            for i := s; i < e; i++ {
+                base := offsets[i]
+                v := df.Data[column][i]
+                if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+                    for j, item := range arr {
+                        outIdx := base + j
+                        for _, c := range newCols {
+                            if c == column {
+                                newData[c][outIdx] = item
+                            } else {
+                                newData[c][outIdx] = df.Data[c][i]
+                            }
+                        }
+                    }
+                } else {
+                    outIdx := base
+                    for _, c := range newCols {
+                        newData[c][outIdx] = df.Data[c][i]
+                    }
+                }
+            }
+        }(start, end)
+    }
+    wg.Wait()
+
+    df.Cols = newCols
+    df.Data = newData
+    df.Rows = total
+    return df 
+}
+
+// Explode (variadic): explode multiple columns sequentially using preallocation
+func (df *DataFrame) Explode(columns ...string) *DataFrame {
+    for _, col := range columns {
+        df = df.explodePrealloc(col)
+    }
+    return df
 }
 
 // KeysToColsWrapper accepts a JSON string for the DataFrame and a column name (as a plain C string).
@@ -1068,45 +1390,140 @@ func flattenOnce(m map[string]interface{}, prefix string) map[string]interface{}
 	return result
 }
 
+// // KeysToCols turns the keys of a nested map in column nestedCol into separate columns.
+// // It flattens only one level by using flattenOnce.
+// func (df *DataFrame) KeysToCols(nestedCol string) *DataFrame {
+// 	newRows := []map[string]interface{}{}
+// 	// Iterate over each row.
+// 	for i := 0; i < df.Rows; i++ {
+// 		row := make(map[string]interface{})
+// 		for _, col := range df.Cols {
+// 			row[col] = df.Data[col][i]
+// 		}
+// 		// Process the specified nested column.
+// 		val, exists := row[nestedCol]
+// 		if !exists || val == nil {
+// 			newRows = append(newRows, row)
+// 			continue
+// 		}
+// 		var nested map[string]interface{}
+// 		switch t := val.(type) {
+// 		case map[string]interface{}:
+// 			nested = t
+// 		case map[interface{}]interface{}:
+// 			nested = convertMapKeysToString(t)
+// 		default:
+// 			newRows = append(newRows, row)
+// 			continue
+// 		}
+// 		// Flatten only one level from the nested map.
+// 		flatMap := flattenOnce(nested, nestedCol)
+// 		for k, v := range flatMap {
+// 			row[k] = v
+// 		}
+// 		// Remove the original nested column.
+// 		delete(row, nestedCol)
+// 		newRows = append(newRows, row)
+// 	}
+// 	// Construct a new DataFrame from the updated rows.
+// 	return Dataframe(newRows)
+// }
 // KeysToCols turns the keys of a nested map in column nestedCol into separate columns.
-// It flattens only one level by using flattenOnce.
+// It flattens only one level, in-place (no []map materialization).
 func (df *DataFrame) KeysToCols(nestedCol string) *DataFrame {
-	newRows := []map[string]interface{}{}
-	// Iterate over each row.
-	for i := 0; i < df.Rows; i++ {
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-		// Process the specified nested column.
-		val, exists := row[nestedCol]
-		if !exists || val == nil {
-			newRows = append(newRows, row)
-			continue
-		}
-		var nested map[string]interface{}
-		switch t := val.(type) {
-		case map[string]interface{}:
-			nested = t
-		case map[interface{}]interface{}:
-			nested = convertMapKeysToString(t)
-		default:
-			newRows = append(newRows, row)
-			continue
-		}
-		// Flatten only one level from the nested map.
-		flatMap := flattenOnce(nested, nestedCol)
-		for k, v := range flatMap {
-			row[k] = v
-		}
-		// Remove the original nested column.
-		delete(row, nestedCol)
-		newRows = append(newRows, row)
-	}
-	// Construct a new DataFrame from the updated rows.
-	return Dataframe(newRows)
-}
+    if df == nil || df.Rows == 0 {
+        return df
+    }
+    // Source column must exist
+    src, ok := df.Data[nestedCol]
+    if !ok {
+        return df
+    }
 
+    // Discover all keys we need to create (one pass).
+    keySet := make(map[string]struct{})
+    for i := 0; i < df.Rows; i++ {
+        v := src[i]
+        if v == nil {
+            continue
+        }
+        switch t := v.(type) {
+        case map[string]interface{}:
+            for k := range t {
+                keySet[k] = struct{}{}
+            }
+        case map[interface{}]interface{}:
+            m := convertMapKeysToString(t)
+            for k := range m {
+                keySet[k] = struct{}{}
+            }
+        }
+    }
+
+    // No nested keys found; just remove nestedCol and return.
+    if len(keySet) == 0 {
+        // drop the column if present
+        delete(df.Data, nestedCol)
+        kept := df.Cols[:0]
+        for _, c := range df.Cols {
+            if c != nestedCol {
+                kept = append(kept, c)
+            }
+        }
+        df.Cols = kept
+        return df
+    }
+
+    // Ensure new columns exist and are preallocated.
+    colSet := make(map[string]bool, len(df.Cols))
+    for _, c := range df.Cols {
+        colSet[c] = true
+    }
+    newCols := make([]string, 0, len(keySet))
+    for k := range keySet {
+        name := nestedCol + "." + k
+        newCols = append(newCols, name)
+        if !colSet[name] {
+            df.Cols = append(df.Cols, name)
+            colSet[name] = true
+        }
+        if _, exists := df.Data[name]; !exists {
+            df.Data[name] = make([]interface{}, df.Rows)
+        }
+    }
+
+    // Fill new columns (second pass).
+    for i := 0; i < df.Rows; i++ {
+        var m map[string]interface{}
+        switch t := src[i].(type) {
+        case map[string]interface{}:
+            m = t
+        case map[interface{}]interface{}:
+            m = convertMapKeysToString(t)
+        default:
+            m = nil
+        }
+        for _, name := range newCols {
+            key := name[len(nestedCol)+1:]
+            if m != nil {
+                df.Data[name][i] = m[key]
+            } else {
+                df.Data[name][i] = nil
+            }
+        }
+    }
+
+    // Remove the original nested column.
+    delete(df.Data, nestedCol)
+    kept := df.Cols[:0]
+    for _, c := range df.Cols {
+        if c != nestedCol {
+            kept = append(kept, c)
+        }
+    }
+    df.Cols = kept
+    return df
+}
 // StringArrayConvertWrapper accepts a JSON string for the DataFrame and a column name to convert.
 //
 //export StringArrayConvertWrapper
@@ -1606,6 +2023,7 @@ func mapToString(data map[string][]interface{}) string {
 func (df *DataFrame) DisplayBrowser() error {
 	// display an html table of the dataframe for analysis, filtering, sorting, etc
 	html := `
+
 	<!DOCTYPE html>
 	<html>
 		<head>
@@ -1620,19 +2038,51 @@ func (df *DataFrame) DisplayBrowser() error {
 		</head>
 		<body>
 			<div id="app" style="text-align: center;" class=" h-screen pt-12">
-		<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
-				<table class="table table-xs">
+				<button class="btn btn-sm fixed top-2 left-2 z-50" onclick="openInNewTab()">Open in Browser</button>
+				<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
+
+ <!-- center, fixed; container ignores pointer events -->
+ <div class="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+   <!-- only this inner group is clickable -->
+   <div class="join pointer-events-auto">
+      <div v-if="current_page > 1">
+       <button class="btn btn-ghost btn-sm join-item" @click="first_page"><span class="material-symbols-outlined">first_page</span></button>
+       <button class="btn btn-ghost btn-sm join-item" @click="prev_page"><span class="material-symbols-outlined">chevron_left</span></button>
+      </div>
+
+      <span v-if="pages <= 6" v-for="page in page_list" class="join">
+        <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
+        <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
+      </span>
+
+      <span class="join" v-else>
+       <span v-if="current_page > 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
+        <span v-for="page in page_list" class="join">
+          <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
+          <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
+        </span>
+       <span v-if="current_page <= pages - 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
+      </span>
+
+      <div v-if="current_page < pages">
+       <button class="btn btn-ghost btn-sm join-item" @click="next_page"><span class="material-symbols-outlined">chevron_right</span></button>
+       <button class="btn btn-ghost btn-sm join-item" @click="last_page"><span class="material-symbols-outlined">last_page</span></button>
+      </div>
+   </div>
+ </div>			<!-- spacer to account for fixed toolbar height (~3rem) -->
+			<!-- <div class="h-12"></div> -->
+				<table class="table table-xs table-pin-rows">
 	  				<thead>
 						<tr>
-							<th></th>
-						<th v-for="col in cols"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
+							<th class="sticky top-12 z-40 bg-base-100 p-2"></th>
+						<th v-for="col in cols"  class="sticky top-12 z-40 bg-base-100 p-2"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
 							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
 								<li>
 									<details closed>
-									<summary>Sort</summary>
+									<summary class="btn-sm">Sort</summary>
 									<ul>
-										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center">Ascending<span class="material-symbols-outlined">north</span></a></li>
-										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center">Descending<span class="material-symbols-outlined">south</span></a></li>
+										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center btn-sm">Ascending<span class="material-symbols-outlined">north</span></a></li>
+										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center btn-sm">Descending<span class="material-symbols-outlined">south</span></a></li>
 									</ul>
 									</details>
 								</li>
@@ -1641,9 +2091,9 @@ func (df *DataFrame) DisplayBrowser() error {
 						</tr>
 					</thead>
 					<tbody>
-					<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
+					<tr v-for="i in pageRowIndices" :key="i">
 							<th class="pl-5">[[ i + 1 ]]</th>
-							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col][i] ]]</td>
+							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col]?.[i] ]]</td>
 						</tr>
 					</tbody>
 				</table>
@@ -1658,12 +2108,38 @@ func (df *DataFrame) DisplayBrowser() error {
 						cols: ` + QuoteArray(df.Cols) + `,
 						data: ` + mapToString(df.Data) + `,
 						selected_col: {},
-						page: 1,
-						pages: [],
-						total_pages: 0
+						pages: 0,
+						page_list: [],
+						current_page: 1,
+						pageSize: 50
 					}
 				},
 				methods: {
+      recomputePagination() {
+        this.pages = Math.max(1, Math.ceil(this.rowCount / this.pageSize));
+        if (this.current_page > this.pages) this.current_page = this.pages;
+        if (this.current_page < 1) this.current_page = 1;
+        this.updatePageList();
+      },
+      updatePageList() {
+        const p = this.pages;
+        const cur = this.current_page;
+        if (p <= 6) {
+          this.page_list = Array.from({length: p}, (_, i) => i + 1);
+          return;
+        }
+        // sliding window of up to 6 pages
+        let start = Math.max(1, cur - 2);
+        let end = Math.min(p, start + 5);
+        start = Math.max(1, end - 5);
+        this.page_list = Array.from({length: end - start + 1}, (_, i) => start + i);
+      },
+      first_page(){ this.current_page = 1; },
+      prev_page(){ if (this.current_page > 1) this.current_page -= 1; },
+      pagefunc(page){ this.current_page = page; },
+      next_page(){ if (this.current_page < this.pages) this.current_page += 1; },
+      last_page(){ this.current_page = this.pages; },
+					
        exportCSV() {
          const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
          if (!cols.length) return;
@@ -1740,23 +2216,48 @@ func (df *DataFrame) DisplayBrowser() error {
 					}
 				},
 				watch: {
-
+					rowCount() {
+						this.recomputePagination();
+					},
+					pageSize() {
+						this.recomputePagination();
+					},
+					current_page() {
+						// keep page_list window centered
+						this.updatePageList();
+					}
 				},
 				created(){
-					this.total_pages = Math.ceil(Object.keys(this.data).length / 100)
+					this.recomputePagination();
+
 				},
 
 				mounted() {
 
 				},
 				computed:{
-
+					// Max row count across all columns
+					rowCount() {
+						let rc = 0;
+						for (const c of this.cols || []) {
+						const len = (this.data[c] || []).length;
+						if (len > rc) rc = len;
+						}
+						return rc;
+					},
+					// Indices for the current page
+					pageRowIndices() {
+						const start = (this.current_page - 1) * this.pageSize;
+						const end = Math.min(start + this.pageSize, this.rowCount);
+						const n = Math.max(end - start, 0);
+						return Array.from({ length: n }, (_, i) => start + i);
+					}				
 				}
 
 			}).mount('#app')
 		</script>
 	</html>
-	`
+		`
 	// Create a temporary file
 	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
 	if err != nil {
@@ -1815,107 +2316,160 @@ func DisplayWrapper(dfJson *C.char) *C.char {
 func (df *DataFrame) Display() map[string]interface{} {
 	// display an html table of the dataframe for analysis, filtering, sorting, etc
 	html := `
-<!DOCTYPE html>
-<html>
-	<head>
-		<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-		<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-		<script src="https://cdn.tailwindcss.com"></script>
-		<script src="https://code.highcharts.com/highcharts.js"></script>
-		<script src="https://code.highcharts.com/modules/boost.js"></script>
-		<script src="https://code.highcharts.com/modules/exporting.js"></script>
-		<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
-	</head>
-	<body>
-		<button class="btn btn-sm fixed top-2 left-2 z-50" onclick="openInNewTab()">Open in Browser</button>
-		<div id="table" style="text-align: center;" class=" h-screen pt-12 ">
-		<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
-		<table class="table table-xs">
-				<thead>
-					<tr>
-						<th></th>
-						<th v-for="col in cols"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
+
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script src="https://code.highcharts.com/highcharts.js"></script>
+			<script src="https://code.highcharts.com/modules/boost.js"></script>
+			<script src="https://code.highcharts.com/modules/exporting.js"></script>
+			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+		</head>
+		<body>
+			<div id="app" style="text-align: center;" class=" h-screen pt-12">
+				<button class="btn btn-sm fixed top-2 left-2 z-50" onclick="openInNewTab()">Open in Browser</button>
+				<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
+
+ <!-- center, fixed; container ignores pointer events -->
+ <div class="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+   <!-- only this inner group is clickable -->
+   <div class="join pointer-events-auto">
+      <div v-if="current_page > 1">
+       <button class="btn btn-ghost btn-sm join-item" @click="first_page"><span class="material-symbols-outlined">first_page</span></button>
+       <button class="btn btn-ghost btn-sm join-item" @click="prev_page"><span class="material-symbols-outlined">chevron_left</span></button>
+      </div>
+
+      <span v-if="pages <= 6" v-for="page in page_list" class="join">
+        <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
+        <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
+      </span>
+
+      <span class="join" v-else>
+       <span v-if="current_page > 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
+        <span v-for="page in page_list" class="join">
+          <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
+          <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
+        </span>
+       <span v-if="current_page <= pages - 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
+      </span>
+
+      <div v-if="current_page < pages">
+       <button class="btn btn-ghost btn-sm join-item" @click="next_page"><span class="material-symbols-outlined">chevron_right</span></button>
+       <button class="btn btn-ghost btn-sm join-item" @click="last_page"><span class="material-symbols-outlined">last_page</span></button>
+      </div>
+   </div>
+ </div>			<!-- spacer to account for fixed toolbar height (~3rem) -->
+			<!-- <div class="h-12"></div> -->
+				<table class="table table-xs table-pin-rows">
+	  				<thead>
+						<tr>
+							<th class="sticky top-12 z-40 bg-base-100 p-2"></th>
+						<th v-for="col in cols"  class="sticky top-12 z-40 bg-base-100 p-2"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
 							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
 								<li>
 									<details closed>
-									<summary>Sort</summary>
+									<summary class="btn-sm">Sort</summary>
 									<ul>
-										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center">Ascending<span class="material-symbols-outlined">north</span></a></li>
-										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center">Descending<span class="material-symbols-outlined">south</span></a></li>
+										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center btn-sm">Ascending<span class="material-symbols-outlined">north</span></a></li>
+										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center btn-sm">Descending<span class="material-symbols-outlined">south</span></a></li>
 									</ul>
 									</details>
 								</li>
 							</ul>
 						</div></th>
-					</tr>
-				</thead>
-				<tbody>
-				<tr v-for="i in Array.from({length:` + strconv.Itoa(df.Rows) + `}).keys()" :key="i">
-						<th>[[ i ]]</th>
-						<td v-for="col in cols">[[ data[col][i] ]]</td>
-					</tr>
-				</tbody>
-			</table>
-		</div>
-	</body>
-	<script>
-	  function openInNewTab() {
-    const htmlContent = document.documentElement.outerHTML;
-    const w = window.open('', '_blank');
-    if (!w) { alert('Popup blocked'); return; }
-    w.document.open();
-    w.document.write(htmlContent);
-    w.document.close();
-  }
-
-		const { createApp } = Vue
-		createApp({
-		delimiters :  ["[[", "]]"],
-			data(){
-				return {
-					cols: ` + QuoteArray(df.Cols) + `,
-					data: ` + mapToString(df.Data) + `,
-				}
-			},
-			methods: {
-				exportCSV() {
-             const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
-             if (!cols.length) return;
-             // Determine the maximum row count across all columns
-             let rowCount = 0;
-             for (const c of cols) {
-               const len = (this.data[c] || []).length;
-               if (len > rowCount) rowCount = len;
-             }
-             const esc = (v) => {
-               if (v === null || v === undefined) return '';
-               if (typeof v === 'object') v = JSON.stringify(v);
-               let s = String(v);
-               s = s.replace(/"/g, '""');
-               if (/[",\r\n]/.test(s)) s = '"' + s + '"';
-               return s;
-             };
-             const lines = [];
-             // Header row
-             lines.push(cols.map(esc).join(','));
-             // Data rows
-             for (let i = 0; i < rowCount; i++) {
-               const row = cols.map(c => esc((this.data[c] || [])[i]));
-               lines.push(row.join(','));
-             }
-             const csv = lines.join('\r\n');
-             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement('a');
-             a.href = url;
-             a.download = 'dataframe.csv';
-             document.body.appendChild(a);
-             a.click();
-             document.body.removeChild(a);
-             URL.revokeObjectURL(url);
-           },
-					sortColumnAsc(col) {
+						</tr>
+					</thead>
+					<tbody>
+					<tr v-for="i in pageRowIndices" :key="i">
+							<th class="pl-5">[[ i + 1 ]]</th>
+							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col]?.[i] ]]</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</body>
+		<script>
+			const { createApp } = Vue
+			createApp({
+			delimiters : ['[[', ']]'],
+				data(){
+					return {
+						cols: ` + QuoteArray(df.Cols) + `,
+						data: ` + mapToString(df.Data) + `,
+						selected_col: {},
+						pages: 0,
+						page_list: [],
+						current_page: 1,
+						pageSize: 50
+					}
+				},
+				methods: {
+      recomputePagination() {
+        this.pages = Math.max(1, Math.ceil(this.rowCount / this.pageSize));
+        if (this.current_page > this.pages) this.current_page = this.pages;
+        if (this.current_page < 1) this.current_page = 1;
+        this.updatePageList();
+      },
+      updatePageList() {
+        const p = this.pages;
+        const cur = this.current_page;
+        if (p <= 6) {
+          this.page_list = Array.from({length: p}, (_, i) => i + 1);
+          return;
+        }
+        // sliding window of up to 6 pages
+        let start = Math.max(1, cur - 2);
+        let end = Math.min(p, start + 5);
+        start = Math.max(1, end - 5);
+        this.page_list = Array.from({length: end - start + 1}, (_, i) => start + i);
+      },
+      first_page(){ this.current_page = 1; },
+      prev_page(){ if (this.current_page > 1) this.current_page -= 1; },
+      pagefunc(page){ this.current_page = page; },
+      next_page(){ if (this.current_page < this.pages) this.current_page += 1; },
+      last_page(){ this.current_page = this.pages; },
+					
+       exportCSV() {
+         const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
+         if (!cols.length) return;
+         // Determine the maximum row count across all columns
+         let rowCount = 0;
+         for (const c of cols) {
+           const len = (this.data[c] || []).length;
+           if (len > rowCount) rowCount = len;
+         }
+         const esc = (v) => {
+           if (v === null || v === undefined) return '';
+           if (typeof v === 'object') v = JSON.stringify(v);
+           let s = String(v);
+           s = s.replace(/"/g, '""');
+           if (/[",\r\n]/.test(s)) s = '"' + s + '"';
+           return s;
+         };
+         const lines = [];
+         // Header row
+         lines.push(cols.map(esc).join(','));
+         // Data rows
+         for (let i = 0; i < rowCount; i++) {
+           const row = cols.map(c => esc((this.data[c] || [])[i]));
+           lines.push(row.join(','));
+         }
+         const csv = lines.join('\\r\\n');
+         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+         const url = URL.createObjectURL(blob);
+         const a = document.createElement('a');
+         a.href = url;
+         a.download = 'dataframe.csv';
+         document.body.appendChild(a);
+         a.click();
+         document.body.removeChild(a);
+         URL.revokeObjectURL(url);
+       },					
+	   sortColumnAsc(col) {
 						// Create an array of row indices
 						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
 
@@ -1953,24 +2507,50 @@ func (df *DataFrame) Display() map[string]interface{} {
 						// Update the selected column
 						this.selected_col = col;
 					}
-			},
-			watch: {
+				},
+				watch: {
+					rowCount() {
+						this.recomputePagination();
+					},
+					pageSize() {
+						this.recomputePagination();
+					},
+					current_page() {
+						// keep page_list window centered
+						this.updatePageList();
+					}
+				},
+				created(){
+					this.recomputePagination();
 
-			},
-			created(){
+				},
 
-			},
+				mounted() {
 
-			mounted() {
+				},
+				computed:{
+					// Max row count across all columns
+					rowCount() {
+						let rc = 0;
+						for (const c of this.cols || []) {
+						const len = (this.data[c] || []).length;
+						if (len > rc) rc = len;
+						}
+						return rc;
+					},
+					// Indices for the current page
+					pageRowIndices() {
+						const start = (this.current_page - 1) * this.pageSize;
+						const end = Math.min(start + this.pageSize, this.rowCount);
+						const n = Math.max(end - start, 0);
+						return Array.from({ length: n }, (_, i) => start + i);
+					}				
+				}
 
-			},
-			computed:{
-
-			}
-
-		}).mount("#table")
-	</script>
-</html>	
+			}).mount('#app')
+		</script>
+	</html>
+	
 `
 	return map[string]interface{}{
 		"text/html": html,
@@ -2497,8 +3077,8 @@ func ColumnChartWrapper(dfJson *C.char, title *C.char, subtitle *C.char, groupco
 	//     return C.CString(errStr)
 	// }
 	chartJson, err := json.Marshal(chart)
-	fmt.Println("printing chartJson...")
-	fmt.Println(string(chartJson))
+	// fmt.Println("printing chartJson...")
+	// fmt.Println(string(chartJson))
 	if err != nil {
 		errStr := fmt.Sprintf("ColumnChartWrapper: marshal error: %v", err)
 		log.Fatal(errStr)
@@ -2808,8 +3388,8 @@ func (report *Report) Open() error {
 	html += report.Scriptmiddle
 	// iterate over pagesjs similarly
 	for _, jsMap := range report.Pagesjs {
-		fmt.Println("printing jsMap")
-		fmt.Println(jsMap)
+		// fmt.Println("printing jsMap")
+		// fmt.Println(jsMap)
 		for i := 0; i < len(jsMap); i++ {
 			html += jsMap[strconv.Itoa(i)]
 		}
@@ -2958,8 +3538,8 @@ func (report *Report) Save(filename string) error {
 	html += report.Scriptmiddle
 	// iterate over pagesjs similarly
 	for _, jsMap := range report.Pagesjs {
-		fmt.Println("printing jsMap")
-		fmt.Println(jsMap)
+		// fmt.Println("printing jsMap")
+		// fmt.Println(jsMap)
 		for i := 0; i < len(jsMap); i++ {
 			html += jsMap[strconv.Itoa(i)]
 		}
@@ -4299,12 +4879,12 @@ func ExplodeWrapper(dfJson *C.char, colsJson *C.char) *C.char {
 }
 
 // Explode creates a new DataFrame where each value in the specified columns' slices becomes a separate row.
-func (df *DataFrame) Explode(columns ...string) *DataFrame {
-	for _, column := range columns {
-		df = df.explodeSingleColumn(column)
-	}
-	return df
-}
+// func (df *DataFrame) Explode(columns ...string) *DataFrame {
+// 	for _, column := range columns {
+// 		df = df.explodeSingleColumn(column)
+// 	}
+// 	return df
+// }
 
 // explodeSingleColumn creates a new DataFrame where each value in the specified column's slice becomes a separate row.
 func (df *DataFrame) explodeSingleColumn(column string) *DataFrame {

@@ -84,6 +84,7 @@ extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
 extern __declspec(dllexport) char* ReadSqlite(char* dbPath, char* table, char* query);
 extern __declspec(dllexport) char* GetSqliteTables(char* dbPath);
 extern __declspec(dllexport) char* GetSqliteSchema(char* dbPath, char* table);
+extern __declspec(dllexport) char* CloneWrapper(char* dfJson);
 
 // FlattenWrapper accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
 //

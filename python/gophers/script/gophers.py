@@ -72,6 +72,7 @@ gophers.ReadSqlite.restype = c_char_p
 gophers.WriteSqlite.restype = c_char_p
 gophers.GetSqliteTables.restype = c_char_p
 gophers.GetSqliteSchema.restype = c_char_p
+gophers.CloneWrapper.restype = c_char_p
 
 class ColumnExpr:
     def __init__(self, expr):
@@ -216,7 +217,7 @@ class Report:
         
     def Open(self):
         # print("")
-        print("printing open report:"+self.report_json)
+        # print("printing open report:"+self.report_json)
 
         err = gophers.OpenReportWrapper(self.report_json.encode('utf-8')).decode('utf-8')
         if err != "success":
@@ -558,6 +559,7 @@ class DataFrame:
     def Help(self):
         print("""DataFrame Help:
     BarChart(title, subtitle, groupcol, aggs)
+    Clone()
     Column(col_name, col_spec)
     ColumnChart(title, subtitle, groupcol, aggs)
     Columns()
@@ -851,6 +853,10 @@ class DataFrame:
         ).decode('utf-8')
         return self
     
+    def Clone(self):
+        """Return a new DataFrame copied from this one (deep copy)."""
+        new_json = gophers.CloneWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        return DataFrame(new_json)
     
     # Sink Functions
     def ToCSVFile(self, filename):
@@ -1003,7 +1009,11 @@ def main():
         }
     ]
 '''
-    # df = ReadJSON(json)
+    df = ReadJSON(data)
+    df = df.Explode("inventory")
+    df = df.Flatten("inventory")
+    df = df.Flatten("stats")
+    # df.Vertical(100, 10)
     # report = CreateReport("Test Report")
     # report.AddPage("Main Page")
     # report.AddHeading("Main Page", "This is the main page of the report", 1)
@@ -1011,19 +1021,19 @@ def main():
     # report.Open()
     # df = GetAPIJSON("https://poetrydb.org/title/Ozymandias/lines.json","","")
     # df = df.Explode("lines")
-    print(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
-    df = ReadJSON(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
-    df = df.Select("columns")\
-        .Explode("columns")\
-        .Flatten("columns")
-    df.Vertical(100, 10)
-    # df.DisplayBrowser()
-    report = CreateReport("SQLite Schema Report")
-    report.AddPage("Schema Page")
-    report.AddHeading("Schema Page", "Schema of SCOPS2_Child_App_email Table", 1)
-    report.AddDataframe("Schema Page", df)
-    report.Save("sqlite_schema_report.html").Open()
-    # df.DisplayBrowser()
+    # print(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
+    # df = ReadJSON(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
+    # df = df.Select("columns")\
+    #     .Explode("columns")\
+    #     .Flatten("columns")
+    # df.Vertical(100, 10)
+    # # df.DisplayBrowser()
+    # report = CreateReport("SQLite Schema Report")
+    # report.AddPage("Schema Page")
+    # report.AddHeading("Schema Page", "Schema of SCOPS2_Child_App_email Table", 1)
+    # report.AddDataframe("Schema Page", df)
+    # report.Save("sqlite_schema_report.html").Open()
+    df.DisplayBrowser()
     # df.Vertical(100, 10)
     # pass
 
