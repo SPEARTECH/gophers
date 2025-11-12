@@ -8,7 +8,7 @@ export async function Gophers() {
   const go = new Go();
 
   // Construct an absolute URL for the WASM file relative to this module.
-  const wasmURL = new URL('./go_wasm/gophers.wasm', import.meta.url);
+  const wasmURL = new URL('./go_wasm/gophers_js.wasm', import.meta.url);
 
   // Use instantiateStreaming with a fallback to ArrayBuffer.
   let result;

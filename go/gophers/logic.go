@@ -1,9 +1,435 @@
 package gophers
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/json"
+	"fmt"
+	"html"
 	"reflect"
+	"regexp"
 	"strings"
 )
+
+func asFloat(v interface{}) (float64, bool) {
+	switch x := v.(type) {
+	case int:
+		return float64(x), true
+	case int32:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	case float32:
+		return float64(x), true
+	case float64:
+		return x, true
+	default:
+		return 0, false
+	}
+}
+
+func eqValues(a, b interface{}) bool {
+	// numeric path
+	if fa, okA := asFloat(a); okA {
+		if fb, okB := asFloat(b); okB {
+			return fa == fb
+		}
+	}
+	// fallback string compare
+	return fmt.Sprint(a) == fmt.Sprint(b)
+}
+
+func cmpNumbers(a, b interface{}, op string) bool {
+	fa, okA := asFloat(a)
+	fb, okB := asFloat(b)
+	if !okA || !okB {
+		return false
+	}
+	switch op {
+	case "gt":
+		return fa > fb
+	case "lt":
+		return fa < fb
+	case "ge":
+		return fa >= fb
+	case "le":
+		return fa <= fb
+	default:
+		return false
+	}
+}
+
+func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
+	switch expr.Type {
+	case "col":
+		return row[expr.Name]
+	case "lit":
+		return expr.Value
+	case "isnull":
+		// Check if the sub-expression is provided.
+		if len(expr.Expr) == 0 {
+			return true // or false depending on how you want to handle it
+		}
+		var subExpr ColumnExpr
+		json.Unmarshal(expr.Expr, &subExpr)
+		val := Evaluate(subExpr, row)
+		if val == nil {
+			return true
+		}
+		switch v := val.(type) {
+		case string:
+			return v == "" || strings.ToLower(v) == "null"
+		case *string:
+			return v == nil || *v == "" || strings.ToLower(*v) == "null"
+		default:
+			return false
+		}
+	case "isnotnull":
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var subExpr ColumnExpr
+		json.Unmarshal(expr.Expr, &subExpr)
+		val := Evaluate(subExpr, row)
+		if val == nil {
+			return true
+		}
+		switch v := val.(type) {
+		case string:
+			return !(v == "" || strings.ToLower(v) == "null")
+		case *string:
+			return !(v == nil || *v == "" || strings.ToLower(*v) == "null")
+		default:
+			return true
+		}
+		// case "gt":
+		// 	var leftExpr, rightExpr ColumnExpr
+		// 	json.Unmarshal(expr.Left, &leftExpr)
+		// 	json.Unmarshal(expr.Right, &rightExpr)
+		// 	return Evaluate(leftExpr, row).(float64) > Evaluate(rightExpr, row).(float64)
+		// case "lt":
+		// 	var leftExpr, rightExpr ColumnExpr
+		// 	json.Unmarshal(expr.Left, &leftExpr)
+		// 	json.Unmarshal(expr.Right, &rightExpr)
+		// 	return Evaluate(leftExpr, row).(float64) < Evaluate(rightExpr, row).(float64)
+		// case "le":
+		// 	var leftExpr, rightExpr ColumnExpr
+		// 	json.Unmarshal(expr.Left, &leftExpr)
+		// 	json.Unmarshal(expr.Right, &rightExpr)
+		// 	return Evaluate(leftExpr, row).(float64) <= Evaluate(rightExpr, row).(float64)
+		// case "ge":
+		// 	var leftExpr, rightExpr ColumnExpr
+		// 	json.Unmarshal(expr.Left, &leftExpr)
+		// 	json.Unmarshal(expr.Right, &rightExpr)
+		// 	return Evaluate(leftExpr, row).(float64) >= Evaluate(rightExpr, row).(float64)
+		// case "eq":
+		// 	var leftExpr, rightExpr ColumnExpr
+		// 	json.Unmarshal(expr.Left, &leftExpr)
+		// 	json.Unmarshal(expr.Right, &rightExpr)
+		// 	return Evaluate(leftExpr, row).(float64) == Evaluate(rightExpr, row).(float64)
+		// case "ne":
+		// 	var leftExpr, rightExpr ColumnExpr
+		// 	json.Unmarshal(expr.Left, &leftExpr)
+		// 	json.Unmarshal(expr.Right, &rightExpr)
+		// 	return Evaluate(leftExpr, row).(float64) != Evaluate(rightExpr, row).(float64)
+	case "gt", "lt", "le", "ge":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		left := Evaluate(leftExpr, row)
+		right := Evaluate(rightExpr, row)
+		return cmpNumbers(left, right, expr.Type)
+
+	case "eq":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		left := Evaluate(leftExpr, row)
+		right := Evaluate(rightExpr, row)
+		return eqValues(left, right)
+
+	case "ne":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		left := Evaluate(leftExpr, row)
+		right := Evaluate(rightExpr, row)
+		return !eqValues(left, right)
+	case "or":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(bool) || Evaluate(rightExpr, row).(bool)
+	case "and":
+		var leftExpr, rightExpr ColumnExpr
+		json.Unmarshal(expr.Left, &leftExpr)
+		json.Unmarshal(expr.Right, &rightExpr)
+		return Evaluate(leftExpr, row).(bool) && Evaluate(rightExpr, row).(bool)
+	case "if":
+		var condExpr, trueExpr, falseExpr ColumnExpr
+		json.Unmarshal(expr.Cond, &condExpr)
+		json.Unmarshal(expr.True, &trueExpr)
+		json.Unmarshal(expr.False, &falseExpr)
+		if Evaluate(condExpr, row).(bool) {
+			return Evaluate(trueExpr, row)
+		} else {
+			return Evaluate(falseExpr, row)
+		}
+	case "sha256":
+		var cols []ColumnExpr
+		json.Unmarshal(expr.Cols, &cols)
+		var values []string
+		for _, col := range cols {
+			values = append(values, fmt.Sprintf("%v", Evaluate(col, row)))
+		}
+		return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(values, ""))))
+	case "sha512":
+		var cols []ColumnExpr
+		json.Unmarshal(expr.Cols, &cols)
+		var values []string
+		for _, col := range cols {
+			values = append(values, fmt.Sprintf("%v", Evaluate(col, row)))
+		}
+		return fmt.Sprintf("%x", sha512.Sum512([]byte(strings.Join(values, ""))))
+	case "collectlist":
+		colName := expr.Col
+		return row[colName]
+	case "collectset":
+		colName := expr.Col
+		return row[colName]
+	case "split":
+		colName := expr.Col
+		delimiter := expr.Delimiter
+		val := row[colName].(string)
+		return strings.Split(val, delimiter)
+	case "concat":
+		// "concat_ws" expects a "Delimiter" field (string) and a "Cols" JSON array.
+		delim := expr.Delimiter
+		var cols []ColumnExpr
+		if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+			fmt.Printf("concat_ws unmarshal error: %v\n", err)
+			return ""
+		}
+		var parts []string
+		for _, col := range cols {
+			parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
+		}
+		return strings.Join(parts, delim)
+	case "cast":
+		// "cast" expects a "Col" field with a JSON object and a "Datatype" field.
+		var subExpr ColumnExpr
+		if err := json.Unmarshal([]byte(expr.Col), &subExpr); err != nil {
+			fmt.Printf("cast unmarshal error (sub expression): %v\n", err)
+			return nil
+		}
+		datatype := expr.Datatype
+		val := Evaluate(subExpr, row)
+		switch datatype {
+		case "int":
+			casted, err := toInt(val)
+			if err != nil {
+				fmt.Printf("cast to int error: %v\n", err)
+				return nil
+			}
+			return casted
+		case "float":
+			casted, err := toFloat64(val)
+			if err != nil {
+				fmt.Printf("cast to float error: %v\n", err)
+				return nil
+			}
+			return casted
+		case "string":
+			casted, err := toString(val)
+			if err != nil {
+				fmt.Printf("cast to string error: %v\n", err)
+				return nil
+			}
+			return casted
+		default:
+			fmt.Printf("unsupported cast type: %s\n", datatype)
+			return nil
+		}
+	case "arrays_zip":
+		// "arrays_zip" expects a "Cols" field with a JSON array of column names.
+		var cols []ColumnExpr
+		if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+			fmt.Printf("arrays_zip unmarshal error: %v\n", err)
+			return nil
+		}
+		var zipped []interface{}
+		for _, col := range cols {
+			zipped = append(zipped, Evaluate(col, row))
+		}
+		return zipped
+	case "keys":
+		colName := expr.Col
+		var keys []string
+		val := row[colName]
+		if val == nil {
+			return keys
+		}
+		switch t := val.(type) {
+		case map[string]interface{}:
+			for k := range t {
+				keys = append(keys, k)
+			}
+		case map[interface{}]interface{}:
+			nested := convertMapKeysToString(t)
+			for k := range nested {
+				keys = append(keys, k)
+			}
+		default:
+			return keys
+		}
+		return keys
+	case "lookup":
+		// Evaluate the key expression from the Left field.
+		var keyExpr ColumnExpr
+		if err := json.Unmarshal(expr.Left, &keyExpr); err != nil {
+			return nil
+		}
+		keyInterf := Evaluate(keyExpr, row)
+		keyStr, err := toString(keyInterf)
+		if err != nil {
+			return nil
+		}
+		// fmt.Printf("Lookup key: %s\n", keyStr)
+
+		// Evaluate the nested map expression from the Right field.
+		var nestedExpr ColumnExpr
+		if err := json.Unmarshal(expr.Right, &nestedExpr); err != nil {
+			return nil
+		}
+		nestedInterf := Evaluate(nestedExpr, row)
+		// fmt.Printf("Nested value: %#v\n", nestedInterf)
+		if nestedInterf == nil {
+			return nil
+		}
+
+		switch t := nestedInterf.(type) {
+		case map[string]interface{}:
+			return t[keyStr]
+		case map[interface{}]interface{}:
+			m := convertMapKeysToString(t)
+			return m[keyStr]
+		default:
+			return nil
+		}
+	case "lower":
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		val := Evaluate(sub, row)
+		return strings.ToLower(fmt.Sprint(val))
+	case "upper":
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		val := Evaluate(sub, row)
+		return strings.ToUpper(fmt.Sprint(val))
+	case "trim":
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		val := Evaluate(sub, row)
+		return strings.TrimSpace(fmt.Sprint(val))
+	case "ltrim":
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		val := Evaluate(sub, row)
+		return strings.TrimLeft(fmt.Sprint(val), " \t\r\n")
+	case "rtrim":
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		val := Evaluate(sub, row)
+		return strings.TrimRight(fmt.Sprint(val), " \t\r\n")
+	case "replace":
+		// expects fields: expr (sub expression), old, new
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		source := fmt.Sprint(Evaluate(sub, row))
+		return strings.ReplaceAll(source, fmt.Sprint(expr.Old), fmt.Sprint(expr.New))
+	case "contains":
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		return strings.Contains(fmt.Sprint(Evaluate(sub, row)), fmt.Sprint(expr.Substr))
+	case "notcontains":
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		return !strings.Contains(fmt.Sprint(Evaluate(sub, row)), fmt.Sprint(expr.Substr))
+	case "startswith":
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		return strings.HasPrefix(fmt.Sprint(Evaluate(sub, row)), fmt.Sprint(expr.Prefix))
+	case "endswith":
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		return strings.HasSuffix(fmt.Sprint(Evaluate(sub, row)), fmt.Sprint(expr.Suffix))
+	case "like":
+		// simple wildcard * -> contains, ? -> single char
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		text := fmt.Sprint(Evaluate(sub, row))
+		pat := fmt.Sprint(expr.Pattern)
+		pat = strings.ReplaceAll(pat, "?", ".")
+		pat = strings.ReplaceAll(pat, "*", ".*")
+		ok, _ := regexp.MatchString("^"+pat+"$", text)
+		return ok
+	case "notlike":
+		if len(expr.Expr) == 0 {
+			return false
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		text := fmt.Sprint(Evaluate(sub, row))
+		pat := fmt.Sprint(expr.Pattern)
+		pat = strings.ReplaceAll(pat, "?", ".")
+		pat = strings.ReplaceAll(pat, "*", ".*")
+		ok, _ := regexp.MatchString("^"+pat+"$", text)
+		return !ok
+	case "html_unescape":
+		if len(expr.Expr) == 0 {
+			return ""
+		}
+		var sub ColumnExpr
+		json.Unmarshal(expr.Expr, &sub)
+		val := Evaluate(sub, row)
+		return html.UnescapeString(fmt.Sprint(val))
+	default:
+		return nil
+	}
+}
 
 // If implements conditional logic similar to PySpark's when.
 // It returns fn1 if condition returns true for a row, else fn2.

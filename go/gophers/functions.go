@@ -19,17 +19,244 @@ import (
 // 	return df
 // }
 
-// ColumnFunc is a function type that takes a row and returns a value.
-// type Column func(row map[string]interface{}) interface{}
-// Column represents a column in the DataFrame.
-type Column struct {
-	Name string
-	Fn   func(row map[string]interface{}) interface{}
-}
+// func Evaluate(expr ColumnExpr, row map[string]interface{}) interface{} {
+// 	switch expr.Type {
+// 	case "col":
+// 		return row[expr.Name]
+// 	case "lit":
+// 		return expr.Value
+// 	case "isnull":
+// 		// Check if the sub-expression is provided.
+// 		if len(expr.Expr) == 0 {
+// 			return true // or false depending on how you want to handle it
+// 		}
+// 		var subExpr ColumnExpr
+// 		json.Unmarshal(expr.Expr, &subExpr)
+// 		val := Evaluate(subExpr, row)
+// 		if val == nil {
+// 			return true
+// 		}
+// 		switch v := val.(type) {
+// 		case string:
+// 			return v == "" || strings.ToLower(v) == "null"
+// 		case *string:
+// 			return v == nil || *v == "" || strings.ToLower(*v) == "null"
+// 		default:
+// 			return false
+// 		}
+// 	case "isnotnull":
+// 		if len(expr.Expr) == 0 {
+// 			return false
+// 		}
+// 		var subExpr ColumnExpr
+// 		json.Unmarshal(expr.Expr, &subExpr)
+// 		val := Evaluate(subExpr, row)
+// 		if val == nil {
+// 			return true
+// 		}
+// 		switch v := val.(type) {
+// 		case string:
+// 			return !(v == "" || strings.ToLower(v) == "null")
+// 		case *string:
+// 			return !(v == nil || *v == "" || strings.ToLower(*v) == "null")
+// 		default:
+// 			return true
+// 		}
+// 	case "gt":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(float64) > Evaluate(rightExpr, row).(float64)
+// 	case "lt":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(float64) < Evaluate(rightExpr, row).(float64)
+// 	case "le":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(float64) <= Evaluate(rightExpr, row).(float64)
+// 	case "ge":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(float64) >= Evaluate(rightExpr, row).(float64)
+// 	case "eq":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(float64) == Evaluate(rightExpr, row).(float64)
+// 	case "ne":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(float64) != Evaluate(rightExpr, row).(float64)
+// 	case "or":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(bool) || Evaluate(rightExpr, row).(bool)
+// 	case "and":
+// 		var leftExpr, rightExpr ColumnExpr
+// 		json.Unmarshal(expr.Left, &leftExpr)
+// 		json.Unmarshal(expr.Right, &rightExpr)
+// 		return Evaluate(leftExpr, row).(bool) && Evaluate(rightExpr, row).(bool)
+// 	case "if":
+// 		var condExpr, trueExpr, falseExpr ColumnExpr
+// 		json.Unmarshal(expr.Cond, &condExpr)
+// 		json.Unmarshal(expr.True, &trueExpr)
+// 		json.Unmarshal(expr.False, &falseExpr)
+// 		if Evaluate(condExpr, row).(bool) {
+// 			return Evaluate(trueExpr, row)
+// 		} else {
+// 			return Evaluate(falseExpr, row)
+// 		}
+// 	case "sha256":
+// 		var cols []ColumnExpr
+// 		json.Unmarshal(expr.Cols, &cols)
+// 		var values []string
+// 		for _, col := range cols {
+// 			values = append(values, fmt.Sprintf("%v", Evaluate(col, row)))
+// 		}
+// 		return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(values, ""))))
+// 	case "sha512":
+// 		var cols []ColumnExpr
+// 		json.Unmarshal(expr.Cols, &cols)
+// 		var values []string
+// 		for _, col := range cols {
+// 			values = append(values, fmt.Sprintf("%v", Evaluate(col, row)))
+// 		}
+// 		return fmt.Sprintf("%x", sha512.Sum512([]byte(strings.Join(values, ""))))
+// 	case "collectlist":
+// 		colName := expr.Col
+// 		return row[colName]
+// 	case "collectset":
+// 		colName := expr.Col
+// 		return row[colName]
+// 	case "split":
+// 		colName := expr.Col
+// 		delimiter := expr.Delimiter
+// 		val := row[colName].(string)
+// 		return strings.Split(val, delimiter)
+// 	case "concat":
+// 		// "concat_ws" expects a "Delimiter" field (string) and a "Cols" JSON array.
+// 		delim := expr.Delimiter
+// 		var cols []ColumnExpr
+// 		if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+// 			fmt.Printf("concat_ws unmarshal error: %v\n", err)
+// 			return ""
+// 		}
+// 		var parts []string
+// 		for _, col := range cols {
+// 			parts = append(parts, fmt.Sprintf("%v", Evaluate(col, row)))
+// 		}
+// 		return strings.Join(parts, delim)
+// 	case "cast":
+// 		// "cast" expects a "Col" field with a JSON object and a "Datatype" field.
+// 		var subExpr ColumnExpr
+// 		if err := json.Unmarshal([]byte(expr.Col), &subExpr); err != nil {
+// 			fmt.Printf("cast unmarshal error (sub expression): %v\n", err)
+// 			return nil
+// 		}
+// 		datatype := expr.Datatype
+// 		val := Evaluate(subExpr, row)
+// 		switch datatype {
+// 		case "int":
+// 			casted, err := toInt(val)
+// 			if err != nil {
+// 				fmt.Printf("cast to int error: %v\n", err)
+// 				return nil
+// 			}
+// 			return casted
+// 		case "float":
+// 			casted, err := toFloat64(val)
+// 			if err != nil {
+// 				fmt.Printf("cast to float error: %v\n", err)
+// 				return nil
+// 			}
+// 			return casted
+// 		case "string":
+// 			casted, err := toString(val)
+// 			if err != nil {
+// 				fmt.Printf("cast to string error: %v\n", err)
+// 				return nil
+// 			}
+// 			return casted
+// 		default:
+// 			fmt.Printf("unsupported cast type: %s\n", datatype)
+// 			return nil
+// 		}
+// 	case "arrays_zip":
+// 		// "arrays_zip" expects a "Cols" field with a JSON array of column names.
+// 		var cols []ColumnExpr
+// 		if err := json.Unmarshal(expr.Cols, &cols); err != nil {
+// 			fmt.Printf("arrays_zip unmarshal error: %v\n", err)
+// 			return nil
+// 		}
+// 		var zipped []interface{}
+// 		for _, col := range cols {
+// 			zipped = append(zipped, Evaluate(col, row))
+// 		}
+// 		return zipped
+// 	case "keys":
+// 		colName := expr.Col
+// 		var keys []string
+// 		val := row[colName]
+// 		if val == nil {
+// 			return keys
+// 		}
+// 		switch t := val.(type) {
+// 		case map[string]interface{}:
+// 			for k := range t {
+// 				keys = append(keys, k)
+// 			}
+// 		case map[interface{}]interface{}:
+// 			nested := convertMapKeysToString(t)
+// 			for k := range nested {
+// 				keys = append(keys, k)
+// 			}
+// 		default:
+// 			return keys
+// 		}
+// 		return keys
+// 	case "lookup":
+// 		// Evaluate the key expression from the Left field.
+// 		var keyExpr ColumnExpr
+// 		if err := json.Unmarshal(expr.Left, &keyExpr); err != nil {
+// 			return nil
+// 		}
+// 		keyInterf := Evaluate(keyExpr, row)
+// 		keyStr, err := toString(keyInterf)
+// 		if err != nil {
+// 			return nil
+// 		}
+// 		// fmt.Printf("Lookup key: %s\n", keyStr)
 
-// // Column represents a column in the DataFrame.
-// type Column struct {
-// 	cf ColumnFunc
+// 		// Evaluate the nested map expression from the Right field.
+// 		var nestedExpr ColumnExpr
+// 		if err := json.Unmarshal(expr.Right, &nestedExpr); err != nil {
+// 			return nil
+// 		}
+// 		nestedInterf := Evaluate(nestedExpr, row)
+// 		// fmt.Printf("Nested value: %#v\n", nestedInterf)
+// 		if nestedInterf == nil {
+// 			return nil
+// 		}
+
+// 		switch t := nestedInterf.(type) {
+// 		case map[string]interface{}:
+// 			return t[keyStr]
+// 		case map[interface{}]interface{}:
+// 			m := convertMapKeysToString(t)
+// 			return m[keyStr]
+// 		default:
+// 			return nil
+// 		}
+
+// 	default:
+// 		return nil
+// 	}
 // }
 
 // Col returns a Column for the specified column name.
@@ -150,60 +377,60 @@ func Split(name string, delimiter string) Column {
 // Keys returns a Column that extracts the keys from the nested map (top level only)
 // found in the specified column.
 func Keys(name string) Column {
-    return Column{
-        Name: fmt.Sprintf("Keys(%s)", name),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := row[name]
-            var keys []string
-            if val == nil {
-                return keys
-            }
-            switch t := val.(type) {
-            case map[string]interface{}:
-                for k := range t {
-                    keys = append(keys, k)
-                }
-            case map[interface{}]interface{}:
-                nested := convertMapKeysToString(t)
-                for k := range nested {
-                    keys = append(keys, k)
-                }
-            default:
-                // If the column isn't a map, return an empty slice.
-                return keys
-            }
-            return keys
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("Keys(%s)", name),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := row[name]
+			var keys []string
+			if val == nil {
+				return keys
+			}
+			switch t := val.(type) {
+			case map[string]interface{}:
+				for k := range t {
+					keys = append(keys, k)
+				}
+			case map[interface{}]interface{}:
+				nested := convertMapKeysToString(t)
+				for k := range nested {
+					keys = append(keys, k)
+				}
+			default:
+				// If the column isn't a map, return an empty slice.
+				return keys
+			}
+			return keys
+		},
+	}
 }
 
 // Lookup returns a Column that extracts the value from a nested map in the column nestCol
 // using the string value produced by keyExpr (which can be either a column reference or a literal).
 func Lookup(keyExpr Column, nestCol string) Column {
-    return Column{
-        Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyExpr.Name),
-        Fn: func(row map[string]interface{}) interface{} {
-            // Evaluate the key expression.
-            keyVal, err := toString(keyExpr.Fn(row))
-            if err != nil {
-                return nil
-            }
-            // Get the nested map from nestCol.
-            nestedVal := row[nestCol]
-            if nestedVal == nil {
-                return nil
-            }
-            switch n := nestedVal.(type) {
-            case map[string]interface{}:
-                return n[keyVal]
-            case map[interface{}]interface{}:
-                m := convertMapKeysToString(n)
-                return m[keyVal]
-            default:
-                return nil
-            }
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyExpr.Name),
+		Fn: func(row map[string]interface{}) interface{} {
+			// Evaluate the key expression.
+			keyVal, err := toString(keyExpr.Fn(row))
+			if err != nil {
+				return nil
+			}
+			// Get the nested map from nestCol.
+			nestedVal := row[nestCol]
+			if nestedVal == nil {
+				return nil
+			}
+			switch n := nestedVal.(type) {
+			case map[string]interface{}:
+				return n[keyVal]
+			case map[interface{}]interface{}:
+				m := convertMapKeysToString(n)
+				return m[keyVal]
+			default:
+				return nil
+			}
+		},
+	}
 }
 
 // pivot (row to column) *

@@ -1,6 +1,8 @@
 package gophers
 
 import (
+	"bytes"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -9,17 +11,18 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/net/html"
+	"gopkg.in/yaml.v2"
+
 	// "github.com/xitongsys/parquet-go/ParquetFile"
 	// "github.com/xitongsys/parquet-go/Writer"
+	_ "github.com/mattn/go-sqlite3"
 )
-
-// DataFrame represents a very simple dataframe structure.
-type DataFrame struct {
-	Cols []string
-	Data map[string][]interface{}
-	Rows int
-}
 
 // Create dataframe function
 func Dataframe(rows []map[string]interface{}) *DataFrame {
@@ -40,261 +43,803 @@ func Dataframe(rows []map[string]interface{}) *DataFrame {
 		df.Cols = append(df.Cols, col)
 	}
 
-	// Initialize each column with a slice sized to the number of rows.
+	// // Initialize each column with a slice sized to the number of rows.
+	// for _, col := range df.Cols {
+	// 	df.Data[col] = make([]interface{}, df.Rows)
+	// }
+
+	// // Fill the DataFrame with data.
+	// for i, row := range rows {
+	// 	for _, col := range df.Cols {
+	// 		val, ok := row[col]
+
+	// 		if ok {
+	// 			// Example conversion:
+	// 			// JSON unmarshals numbers as float64 by default.
+	// 			// If the float64 value is a whole number, convert it to int.
+	// 			if f, isFloat := val.(float64); isFloat {
+	// 				if f == float64(int(f)) {
+	// 					val = int(f)
+	// 				}
+	// 			}
+	// 			df.Data[col][i] = val
+	// 		} else {
+	// 			// If a column is missing in a row, set it to nil.
+	// 			df.Data[col][i] = nil
+	// 		}
+	// 	}
+	// }
+
+	// Initialize each column slice
 	for _, col := range df.Cols {
 		df.Data[col] = make([]interface{}, df.Rows)
 	}
-
-	// Fill the DataFrame with data.
-	for i, row := range rows {
-		for _, col := range df.Cols {
-			val, ok := row[col]
-
-			if ok {
-				// Example conversion:
-				// JSON unmarshals numbers as float64 by default.
-				// If the float64 value is a whole number, convert it to int.
-				if f, isFloat := val.(float64); isFloat {
-					if f == float64(int(f)) {
+	// Parallel per-column population
+	var wg sync.WaitGroup
+	for _, col := range df.Cols {
+		c := col
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i, row := range rows {
+				if val, ok := row[c]; ok {
+					if f, isFloat := val.(float64); isFloat && f == float64(int(f)) {
 						val = int(f)
 					}
+					df.Data[c][i] = val
+				} else {
+					df.Data[c][i] = nil
 				}
-				// if s, isString := val.(string); isString {
-				// 	val = fmt.Sprintf("%q", s)
-				// }
-				// fmt.Println(val)
-				// if val == "" {
-				// 	val = "-"
-				// }
-				df.Data[col][i] = val
-			} else {
-				// If a column is missing in a row, set it to nil.
-				df.Data[col][i] = nil
 			}
-		}
+		}()
 	}
+	wg.Wait()
+
 	return df
 }
-
 func fileExists(filename string) bool {
+	if filename == "" {
+		return false
+	}
+	// If the input starts with "{" or "[", assume it is JSON and not a file path.
+	if strings.HasPrefix(filename, "{") || strings.HasPrefix(filename, "[") || strings.HasPrefix(filename, "<") {
+		return false
+	}
 	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if err != nil {
 		return false
 	}
 	return !info.IsDir()
 }
 
 // Functions for intaking data and returning dataframe
-// Read csv and output dataframe
-func ReadCSV(csvFile string) *DataFrame {
-	if fileExists(csvFile) {
-		bytes, err := os.ReadFile(csvFile)
+// ReadCSV parses CSV from a file path or raw CSV text and returns a DataFrame (pure Go).
+func ReadCSV(input string) *DataFrame {
+	// If input is a file path, read it; otherwise treat as raw CSV text.
+	csvContent := input
+	if fi, err := os.Stat(input); err == nil && !fi.IsDir() {
+		b, err := os.ReadFile(input)
 		if err != nil {
-			fmt.Println(err)
+			log.Fatalf("ReadCSV: read file: %v", err)
 		}
-		csvFile = string(bytes)
+		csvContent = string(b)
 	}
 
-	file, err := os.Open(csvFile)
+	r := csv.NewReader(strings.NewReader(csvContent))
+	headers, err := r.Read()
 	if err != nil {
-		log.Fatalf("Error opening CSV file: %v", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	headers, err := reader.Read()
-	if err != nil {
-		log.Fatalf("Error reading CSV headers: %v", err)
+		log.Fatalf("ReadCSV: read headers: %v", err)
 	}
 
-	var rows []map[string]interface{}
+	rows := make([]map[string]interface{}, 0, 1024)
 	for {
-		record, err := reader.Read()
-		if err != nil {
+		record, err := r.Read()
+		if err == io.EOF {
 			break
 		}
-
-		row := make(map[string]interface{})
-		for i, header := range headers {
-			row[header] = record[i]
+		if err != nil {
+			log.Fatalf("ReadCSV: read record: %v", err)
+		}
+		row := make(map[string]interface{}, len(headers))
+		for i, h := range headers {
+			if i < len(record) {
+				row[h] = record[i]
+			} else {
+				row[h] = ""
+			}
 		}
 		rows = append(rows, row)
 	}
-
 	return Dataframe(rows)
 }
 
-// Read json and output dataframe
-func ReadJSON(jsonStr string) *DataFrame {
-	var rows []map[string]interface{}
-	var jsonContent string
-
-	// Check if the input is a file path.
-	if fileExists(jsonStr) {
-		bytes, err := os.ReadFile(jsonStr)
+// Pure Go: parse path-or-JSON into a DataFrame, no cgo types.
+func ReadJSON(input string) *DataFrame {
+	// Allow file path or raw JSON
+	jsonContent := input
+	if fileExists(input) {
+		bytes, err := os.ReadFile(input)
 		if err != nil {
-			log.Fatalf("Error reading file: %v", err)
+			log.Fatalf("ReadJSONCore: read file: %v", err)
 		}
 		jsonContent = string(bytes)
-	} else {
-		jsonContent = jsonStr
 	}
-	// Trim whitespace and check if jsonContent starts with "{".
+
 	trimmed := strings.TrimSpace(jsonContent)
-	if len(trimmed) > 0 && trimmed[0] == '{' {
-		// Wrap single JSON object into an array.
-		jsonContent = "[" + jsonContent + "]"
+	if len(trimmed) == 0 {
+		return &DataFrame{Cols: []string{}, Data: map[string][]interface{}{}, Rows: 0}
 	}
-	// fmt.Println(jsonStr)
-	// Unmarshal the JSON into a slice of maps.
+
+	// Single object -> wrap in array
+	if trimmed[0] == '{' {
+		jsonContent = "[" + trimmed + "]"
+		trimmed = jsonContent
+	}
+
+	// Fast path: array of objects with concurrent unmarshal
+	if trimmed[0] == '[' {
+		dec := json.NewDecoder(strings.NewReader(jsonContent))
+		tok, err := dec.Token()
+		if err != nil || tok != json.Delim('[') {
+			log.Fatalf("ReadJSONCore: decode start: %v", err)
+		}
+
+		raws := make([]json.RawMessage, 0, 1024)
+		for dec.More() {
+			var rm json.RawMessage
+			if err := dec.Decode(&rm); err != nil {
+				log.Fatalf("ReadJSONCore: decode element: %v", err)
+			}
+			raws = append(raws, rm)
+		}
+		if _, err := dec.Token(); err != nil {
+			log.Fatalf("ReadJSONCore: decode end: %v", err)
+		}
+
+		rows := make([]map[string]interface{}, len(raws))
+		if len(raws) > 0 {
+			w := runtime.GOMAXPROCS(0)
+			chunk := (len(raws) + w - 1) / w
+			var wg sync.WaitGroup
+			for g := 0; g < w; g++ {
+				start := g * chunk
+				end := start + chunk
+				if start >= len(raws) {
+					break
+				}
+				if end > len(raws) {
+					end = len(raws)
+				}
+				wg.Add(1)
+				go func(s, e int) {
+					defer wg.Done()
+					var tmp map[string]interface{}
+					for i := s; i < e; i++ {
+						if err := json.Unmarshal(raws[i], &tmp); err == nil {
+							m := make(map[string]interface{}, len(tmp))
+							for k, v := range tmp {
+								m[k] = v
+							}
+							rows[i] = m
+						}
+					}
+				}(start, end)
+			}
+			wg.Wait()
+		}
+		return Dataframe(rows)
+	}
+
+	// Fallback
 	var rows []map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &rows); err != nil {
-		log.Fatal("Error unmarshalling JSON:", err)
+	if err := json.Unmarshal([]byte(jsonContent), &rows); err != nil {
+		log.Fatalf("ReadJSONCore: unmarshal: %v", err)
+	}
+	return Dataframe(rows)
+}
+
+// Pure Go NDJSON reader: path-or-string -> *DataFrame
+func ReadNDJSON(input string) *DataFrame {
+	// If input is a file path, load file contents.
+	if fileExists(input) {
+		b, err := os.ReadFile(input)
+		if err != nil {
+			log.Fatalf("ReadNDJSONCore: read file: %v", err)
+		}
+		input = string(b)
+	}
+	lines := strings.Split(input, "\n")
+
+	// Map original line index -> compact row index (-1 = skip)
+	idx := make([]int, len(lines))
+	rowCount := 0
+	for i, ln := range lines {
+		if strings.TrimSpace(ln) == "" {
+			idx[i] = -1
+			continue
+		}
+		idx[i] = rowCount
+		rowCount++
+	}
+	rows := make([]map[string]interface{}, rowCount)
+
+	if rowCount > 0 {
+		w := runtime.GOMAXPROCS(0)
+		chunk := (len(lines) + w - 1) / w
+		var wg sync.WaitGroup
+		for g := 0; g < w; g++ {
+			start := g * chunk
+			end := start + chunk
+			if start >= len(lines) {
+				break
+			}
+			if end > len(lines) {
+				end = len(lines)
+			}
+			wg.Add(1)
+			go func(s, e int) {
+				defer wg.Done()
+				var tmp map[string]interface{}
+				for i := s; i < e; i++ {
+					j := idx[i]
+					if j < 0 {
+						continue
+					}
+					raw := strings.TrimSpace(lines[i])
+					if raw == "" {
+						continue
+					}
+					if err := json.Unmarshal([]byte(raw), &tmp); err == nil {
+						// Copy map to avoid concurrent reuse of tmp.
+						m := make(map[string]interface{}, len(tmp))
+						for k, v := range tmp {
+							m[k] = v
+						}
+						rows[j] = m
+					}
+				}
+			}(start, end)
+		}
+		wg.Wait()
 	}
 
 	return Dataframe(rows)
 }
 
-// Read newline deliniated json and output dataframe
-func ReadNDJSON(jsonStr string) *DataFrame {
-	if fileExists(jsonStr) {
-		bytes, err := os.ReadFile(jsonStr)
+// Pure Go: YAML path-or-string -> *DataFrame
+func ReadYAML(input string) *DataFrame {
+	// Treat input as a file path if it exists, else as raw YAML text.
+	yamlContent := input
+	if fileExists(input) {
+		b, err := os.ReadFile(input)
 		if err != nil {
-			fmt.Println(err)
+			log.Fatalf("ReadYAMLCore: read file: %v", err)
 		}
-		jsonStr = string(bytes)
-	}
-	var rows []map[string]interface{}
-
-	// Split the string by newline.
-	lines := strings.Split(jsonStr, "\n")
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			// Skip empty lines.
-			continue
-		}
-
-		var row map[string]interface{}
-		if err := json.Unmarshal([]byte(trimmed), &row); err != nil {
-			log.Fatalf("Error unmarshalling JSON on line %d: %v", i+1, err)
-		}
-		rows = append(rows, row)
+		yamlContent = string(b)
 	}
 
-	return Dataframe(rows)
+	// Unmarshal into generic interface to support map or list roots.
+	var any interface{}
+	if err := yaml.Unmarshal([]byte(yamlContent), &any); err != nil {
+		log.Fatalf("ReadYAMLCore: unmarshal: %v", err)
+	}
+
+	switch v := any.(type) {
+	case map[interface{}]interface{}:
+		// Single object -> one-row DataFrame
+		rows := mapToRows(convertMapKeysToString(v))
+		return Dataframe(rows)
+	case []interface{}:
+		// List of objects -> multi-row DataFrame
+		rows := make([]map[string]interface{}, 0, len(v))
+		for _, elem := range v {
+			switch m := elem.(type) {
+			case map[interface{}]interface{}:
+				rows = append(rows, convertMapKeysToString(m))
+			case map[string]interface{}:
+				rows = append(rows, m)
+			default:
+				// Non-map element: put under a generic column
+				rows = append(rows, map[string]interface{}{"value": m})
+			}
+		}
+		return Dataframe(rows)
+	default:
+		// Scalar -> single-row DataFrame with generic column
+		return Dataframe([]map[string]interface{}{{"value": v}})
+	}
 }
 
-// Read parquet and output dataframe
-func ReadParquet(jsonStr string) *DataFrame {
-	if fileExists(jsonStr) {
-		bytes, err := os.ReadFile(jsonStr)
+// ReadParquet reads a parquet file or newline-delimited JSON content (fallback) and builds a DataFrame.
+// Concurrency is used to parse each line in parallel while preserving order.
+func ReadParquet(input string) *DataFrame {
+	// If input is a file path, load its contents.
+	if fileExists(input) {
+		bytes, err := os.ReadFile(input)
 		if err != nil {
-			fmt.Println(err)
+			log.Fatalf("ReadParquet: read file error: %v", err)
 		}
-		jsonStr = string(bytes)
+		input = string(bytes)
 	}
 
-	var rows []map[string]interface{}
+	linesRaw := strings.Split(input, "\n")
+	type job struct {
+		idx int
+		raw string
+	}
+	type result struct {
+		idx int
+		row map[string]interface{}
+		err error
+	}
 
-	// Split the string by newline.
-	lines := strings.Split(jsonStr, "\n")
-	for i, line := range lines {
+	// Pre-filter non-empty lines to keep indices stable for ordering.
+	jobs := make([]job, 0, len(linesRaw))
+	for i, line := range linesRaw {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
-			// Skip empty lines.
 			continue
 		}
-
-		var row map[string]interface{}
-		if err := json.Unmarshal([]byte(trimmed), &row); err != nil {
-			log.Fatalf("Error unmarshalling JSON on line %d: %v", i+1, err)
-		}
-		rows = append(rows, row)
+		jobs = append(jobs, job{idx: i, raw: trimmed})
 	}
 
-	return Dataframe(rows)
+	if len(jobs) == 0 {
+		return Dataframe([]map[string]interface{}{})
+	}
 
+	workers := runtime.GOMAXPROCS(0)
+	inCh := make(chan job)
+	outCh := make(chan result, len(jobs))
+	var wg sync.WaitGroup
+
+	// Workers
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range inCh {
+				var row map[string]interface{}
+				err := json.Unmarshal([]byte(j.raw), &row)
+				outCh <- result{idx: j.idx, row: row, err: err}
+			}
+		}()
+	}
+
+	go func() {
+		for _, j := range jobs {
+			inCh <- j
+		}
+		close(inCh)
+		wg.Wait()
+		close(outCh)
+	}()
+
+	// Collect results in a map keyed by original index to preserve order.
+	resMap := make(map[int]map[string]interface{}, len(jobs))
+	for r := range outCh {
+		if r.err != nil {
+			log.Fatalf("ReadParquet: unmarshal error at line %d: %v", r.idx+1, r.err)
+		}
+		resMap[r.idx] = r.row
+	}
+
+	// Rebuild ordered slice.
+	ordered := make([]map[string]interface{}, 0, len(resMap))
+	for _, j := range jobs {
+		if row, ok := resMap[j.idx]; ok {
+			ordered = append(ordered, row)
+		}
+	}
+
+	return Dataframe(ordered)
+}
+func fetchRows(db *sql.DB, query string, tableLabel string) ([]map[string]interface{}, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]map[string]interface{}, 0, 128)
+	for rows.Next() {
+		vals := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		row := make(map[string]interface{}, len(cols)+1)
+		for i, c := range cols {
+			v := vals[i]
+			switch t := v.(type) {
+			case []byte:
+				row[c] = string(t)
+			case time.Time:
+				row[c] = t.Format(time.RFC3339Nano)
+			default:
+				row[c] = v
+			}
+		}
+		if tableLabel != "" {
+			row["_table"] = tableLabel
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// ReadSqlite is pure Go. It returns a DataFrame from a sqlite DB given either a table or a query.
+// If both table and query are empty, it reads all user tables and concatenates them (adds _table column).
+func ReadSqlite(path, table, query string) (*DataFrame, error) {
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return nil, fmt.Errorf("ReadSqliteDF: open error: %w", err)
+	}
+	defer db.Close()
+
+	var rows []map[string]interface{}
+	switch {
+	case strings.TrimSpace(query) != "":
+		rs, err := fetchRows(db, query, "")
+		if err != nil {
+			return nil, fmt.Errorf("ReadSqliteDF: query error: %w", err)
+		}
+		rows = append(rows, rs...)
+	case strings.TrimSpace(table) != "":
+		q := fmt.Sprintf(`SELECT * FROM %q`, table)
+		rs, err := fetchRows(db, q, "")
+		if err != nil {
+			return nil, fmt.Errorf("ReadSqliteDF: table read error: %w", err)
+		}
+		rows = append(rows, rs...)
+	default:
+		// read all user tables concurrently
+		names := []string{}
+		r, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+		if err != nil {
+			return nil, fmt.Errorf("ReadSqliteDF: list tables error: %w", err)
+		}
+		for r.Next() {
+			var name string
+			if err := r.Scan(&name); err == nil {
+				names = append(names, name)
+			}
+		}
+		_ = r.Close()
+
+		var wg sync.WaitGroup
+		mu := sync.Mutex{}
+		for _, name := range names {
+			tbl := name
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				rs, err := fetchRows(db, fmt.Sprintf(`SELECT * FROM %q`, tbl), tbl)
+				if err != nil {
+					// non-fatal; log and continue
+					log.Printf("ReadSqliteDF: read table %s error: %v", tbl, err)
+					return
+				}
+				mu.Lock()
+				rows = append(rows, rs...)
+				mu.Unlock()
+			}()
+		}
+		wg.Wait()
+	}
+
+	return Dataframe(rows), nil
+}
+
+// Clone creates a deep copy of the DataFrame (new Cols slice and new per-column []interface{}).
+func (df *DataFrame) Clone() *DataFrame {
+	if df == nil {
+		return &DataFrame{Cols: nil, Data: make(map[string][]interface{}), Rows: 0}
+	}
+	newCols := make([]string, len(df.Cols))
+	copy(newCols, df.Cols)
+	newData := make(map[string][]interface{}, len(df.Data))
+	var wg sync.WaitGroup
+	for _, c := range df.Cols {
+		cLocal := c
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			src := df.Data[cLocal]
+			dst := make([]interface{}, len(src))
+			copy(dst, src)
+			newData[cLocal] = dst
+		}()
+	}
+	wg.Wait()
+	return &DataFrame{Cols: newCols, Data: newData, Rows: df.Rows}
+}
+
+func CloneJSON(in string) string {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(in), &df); err != nil {
+		b, _ := json.Marshal(map[string]string{"error": "clone unmarshal: " + err.Error()})
+		return string(b)
+	}
+	out, err := json.Marshal(df.Clone())
+	if err != nil {
+		b, _ := json.Marshal(map[string]string{"error": "clone marshal: " + err.Error()})
+		return string(b)
+	}
+	return string(out)
 }
 
 // read delta table?
 
 // read iceberg table?
 
-// GetAPIJSON performs a GET request to the specified API endpoint.
-// 'endpoint' is the URL string for the request.
-// 'headers' is a map of header keys and values (e.g., authentication tokens).
-// 'queryParams' is a map of query parameter keys and values.
-// endpoint := "https://api.example.com/data"
-
-// headers := map[string]string{
-// 	"Authorization": "Bearer your_access_token",
-// 	"Accept":        "application/json",
-// }
-
-//	queryParams := map[string]string{
-//		"limit":  "10",
-//		"offset": "0",
-//	}
-
-// df := GetAPIJSON(endpoint, headers, queryParams)
-func GetAPIJSON(endpoint string, headers map[string]string, queryParams map[string]string) (*DataFrame, error) {
+// GetAPI performs a GET request to the specified API endpoint.
+// headers is a map of header keys and values, and queryParams are appended to the URL.
+// The JSON response is converted to a DataFrame via ReadJSON.
+// Example: df, err := GetAPI("https://api.example.com/data", map[string]string{"Authorization":"Bearer X"}, map[string]string{"limit":"10"})
+func GetAPI(endpoint string, headers map[string]string, queryParams map[string]string) (*DataFrame, error) {
 	// Parse the endpoint URL.
-	parsedURL, err := url.Parse(endpoint)
+	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse endpoint url: %v", err)
+		return nil, fmt.Errorf("GetAPI: parse endpoint: %w", err)
 	}
 
 	// Add query parameters.
-	q := parsedURL.Query()
-	for key, value := range queryParams {
-		q.Add(key, value)
+	q := u.Query()
+	for k, v := range queryParams {
+		if k == "" || v == "" {
+			continue
+		}
+		q.Set(k, v)
 	}
-	parsedURL.RawQuery = q.Encode()
+	u.RawQuery = q.Encode()
 
-	// Create a new GET request.
-	req, err := http.NewRequest("GET", parsedURL.String(), nil)
+	// Create request and add headers.
+	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
+		return nil, fmt.Errorf("GetAPI: create request: %w", err)
+	}
+	for k, v := range headers {
+		if k == "" || v == "" {
+			continue
+		}
+		req.Header.Set(k, v)
+	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/json")
 	}
 
-	// Add headers.
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
-
-	// Execute the request.
-	client := &http.Client{}
+	// Execute request.
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %v", err)
+		return nil, fmt.Errorf("GetAPI: do request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check for non-200 status codes.
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bad status: %s", resp.Status)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GetAPI: bad status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 
-	// Read and return the response body.
-	jsonBytes, err := io.ReadAll(resp.Body)
+	// Read body and convert JSON -> DataFrame using existing ReadJSON.
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %v", err)
+		return nil, fmt.Errorf("GetAPI: read body: %w", err)
 	}
-	// Unmarshal JSON into an interface{}.
-	var result interface{}
-	if err := json.Unmarshal(jsonBytes, &result); err != nil {
-		return nil, fmt.Errorf("Error unmarshalling JSON: %v\n", err)
-	}
-
-	// Re-marshal the result into a JSON string.
-	jsonStr, err := json.Marshal(result)
-	if err != nil {
-		return nil, fmt.Errorf("Error re-marshalling JSON: %v", err)
-	}
-
-	df := ReadJSON(string(jsonStr))
+	df := ReadJSON(string(body))
 	return df, nil
+}
+
+// ReadHTML scrapes a URL / file / raw HTML and returns a DataFrame of element metadata.
+// All HTML fragments are stored as escaped strings (safe for plain text display).
+func ReadHTML(input string) *DataFrame {
+	raw := input
+	var baseURL *url.URL
+	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+		resp, err := http.Get(input)
+		if err != nil {
+			log.Fatalf("ReadHTML: GET error: %v", err)
+		}
+		defer resp.Body.Close()
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalf("ReadHTML: read body: %v", err)
+		}
+		raw = string(b)
+		baseURL, _ = url.Parse(input)
+	} else if fileExists(input) {
+		b, err := os.ReadFile(input)
+		if err != nil {
+			log.Fatalf("ReadHTML: read file: %v", err)
+		}
+		raw = string(b)
+	}
+
+	doc, err := html.Parse(strings.NewReader(raw))
+	if err != nil {
+		log.Fatalf("ReadHTML: parse: %v", err)
+	}
+
+	nodes := make([]*nodeInfo, 0, 1024)
+	var stack []struct {
+		n         *html.Node
+		parentIdx int
+		depth     int
+	}
+	stack = append(stack, struct {
+		n         *html.Node
+		parentIdx int
+		depth     int
+	}{doc, -1, 0})
+
+	for len(stack) > 0 {
+		top := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		cur := top.n
+
+		if cur.Type == html.ElementNode {
+			// Skip script/iframe entirely
+			if cur.Data == "script" || cur.Data == "iframe" {
+				continue
+			}
+			idx := len(nodes)
+			// Direct text
+			var tb strings.Builder
+			for c := cur.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == html.TextNode {
+					t := strings.TrimSpace(c.Data)
+					if t != "" {
+						if tb.Len() > 0 {
+							tb.WriteByte(' ')
+						}
+						tb.WriteString(t)
+					}
+				}
+			}
+			var href, src string
+			for _, a := range cur.Attr {
+				switch a.Key {
+				case "href":
+					href = a.Val
+				case "src":
+					src = a.Val
+				}
+			}
+			nodes = append(nodes, &nodeInfo{
+				n:           cur,
+				index:       idx,
+				parentIndex: top.parentIdx,
+				depth:       top.depth,
+				tag:         cur.Data,
+				textDirect:  tb.String(),
+				href:        href,
+				src:         src,
+			})
+			parent := idx
+
+			// Push children (reverse for natural order)
+			var rev []*html.Node
+			for c := cur.FirstChild; c != nil; c = c.NextSibling {
+				rev = append(rev, c)
+			}
+			for i := len(rev) - 1; i >= 0; i-- {
+				stack = append(stack, struct {
+					n         *html.Node
+					parentIdx int
+					depth     int
+				}{rev[i], parent, top.depth + 1})
+			}
+		} else {
+			// Traverse non-elements
+			var rev []*html.Node
+			for c := cur.FirstChild; c != nil; c = c.NextSibling {
+				rev = append(rev, c)
+			}
+			for i := len(rev) - 1; i >= 0; i-- {
+				stack = append(stack, struct {
+					n         *html.Node
+					parentIdx int
+					depth     int
+				}{rev[i], top.parentIdx, top.depth + 1})
+			}
+		}
+	}
+
+	if len(nodes) == 0 {
+		return Dataframe([]map[string]interface{}{})
+	}
+
+	// Helpers
+	renderNode := func(n *html.Node) string {
+		var buf bytes.Buffer
+		html.Render(&buf, n)
+		return buf.String()
+	}
+	renderInner := func(n *html.Node) string {
+		var buf bytes.Buffer
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode && (c.Data == "script" || c.Data == "iframe") {
+				continue
+			}
+			html.Render(&buf, c)
+		}
+		return buf.String()
+	}
+	resolve := func(raw string) string {
+		if raw == "" || baseURL == nil {
+			return raw
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		if u.Scheme == "" && u.Host == "" {
+			return baseURL.ResolveReference(u).String()
+		}
+		return raw
+	}
+
+	// Concurrency for rendering
+	w := runtime.GOMAXPROCS(0)
+	if w < 1 {
+		w = 1
+	}
+	chunk := (len(nodes) + w - 1) / w
+
+	out := make([]rendered, len(nodes))
+	var wg sync.WaitGroup
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= len(nodes) {
+			break
+		}
+		if end > len(nodes) {
+			end = len(nodes)
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			for i := s; i < e; i++ {
+				n := nodes[i]
+				rawOuter := renderNode(n.n)
+				rawInner := renderInner(n.n)
+				out[i] = rendered{
+					outer: html.EscapeString(rawOuter),
+					inner: html.EscapeString(rawInner),
+					habs:  resolve(n.href),
+					sabs:  resolve(n.src),
+				}
+			}
+		}(start, end)
+	}
+	wg.Wait()
+
+	rows := make([]map[string]interface{}, len(nodes))
+	for i, n := range nodes {
+		rows[i] = map[string]interface{}{
+			"index":          n.index,
+			"parent_index":   n.parentIndex,
+			"depth":          n.depth,
+			"tag":            n.tag,
+			"text":           n.textDirect,
+			"href":           n.href,
+			"href_abs":       out[i].habs,
+			"src":            n.src,
+			"src_abs":        out[i].sabs,
+			"outer_html_str": out[i].outer,
+			"inner_html_str": out[i].inner,
+		}
+	}
+	return Dataframe(rows)
 }
 
 // javascript request source? (django/flask?)

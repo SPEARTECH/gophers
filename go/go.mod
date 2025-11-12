@@ -2,4 +2,13 @@ module gophers
 
 go 1.24.0
 
-require github.com/xitongsys/parquet-go v1.6.2 // indirect
+require (
+	github.com/mattn/go-sqlite3 v1.14.32
+	golang.org/x/net v0.47.0
+	gopkg.in/yaml.v2 v2.2.2
+)
+
+require (
+	github.com/kr/pretty v0.1.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+)
