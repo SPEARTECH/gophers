@@ -703,7 +703,7 @@ class DataFrame:
     
     def Display(self):
         html = _cstr(gophers.DisplayWrapper(self.df_json.encode('utf-8')))
-        print(html)
+        # print(html)
         display(HTML(html))
         # return self
     
@@ -922,7 +922,7 @@ class DataFrame:
     
     def Clone(self):
         """Return a new DataFrame copied from this one (deep copy)."""
-        new_json = _cstr(gophers.CloneWrapper(self.df_json.encode('utf-8')))
+        new_json = _cstr(gophers.Clone(self.df_json.encode('utf-8')))
         return DataFrame(new_json)
     
     # Sink Functions

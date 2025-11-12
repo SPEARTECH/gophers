@@ -415,7 +415,7 @@ func (report *Report) AddHTML(page string, text string) {
 		report.Pageshtml[page] = make(map[string]string)
 	}
 	escapedtext := html.EscapeString(text)
-	println(escapedtext)
+	// println(escapedtext)
 	texthtml := `<iframe v-if="page == '` + page + `' " class="p-8 flex justify-self-center w-full h-screen" sandbox="allow-scripts allow-popups allow-downloads allow-top-navigation-by-user-activation" srcdoc='` + escapedtext + `'></iframe>`
 	// texthtml := `<div v-if="page == '` + page + `' " class="p-8 flex justify-self-center w-full h-screen" >` + escapedtext + `</div>`
 
