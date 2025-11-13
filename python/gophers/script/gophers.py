@@ -74,6 +74,7 @@ gophers.AddTextWrapper.restype = c_void_p
 gophers.AddSubTextWrapper.restype = c_void_p
 gophers.AddBulletsWrapper.restype = c_void_p
 gophers.ToCSVFile.restype = c_void_p
+gophers.ToJSON.restype = c_void_p
 gophers.Flatten.restype = c_void_p
 gophers.StringArrayConvert.restype = c_void_p
 gophers.KeysToCols.restype = c_void_p
@@ -930,6 +931,13 @@ class DataFrame:
         gophers.ToCSVFile(self.df_json.encode('utf-8'), filename.encode('utf-8'))
         # add output giving file name/location
         return self
+    
+    def ToJSON(self):
+        """
+        format: JSON array of row objects
+        """
+        s = _cstr(gophers.ToJSON(self.df_json.encode('utf-8')))
+        return s
     
     def WriteSqlite(self, db_path: str, table: str, mode: str = "upsert", key_cols=None, create_index: bool = True):
         """

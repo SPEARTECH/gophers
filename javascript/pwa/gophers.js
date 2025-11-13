@@ -26,10 +26,21 @@ export async function Gophers() {
   // In our case, the Go code never exits (because of select{}), but that’s fine.
   go.run(result.instance);
 
-  // At this point, the Go code has registered its functions on the global object.
-  // Return an object with references to the exported functions.
+  // Wait until Go sets globalThis.gophers
+  await new Promise((resolve) => {
+    const check = () => {
+      if (globalThis.gophers) return resolve();
+      setTimeout(check, 0);
+    };
+    check();
+  });
+
+  // Expose the WASM API and keep the namespace if you want direct access.
   return {
-    add: globalThis.add
-    // Add other exported functions here if needed.
+    namespace: globalThis.gophers,
+    ReadJSON: (...args) => globalThis.gophers.ReadJSON(...args), // returns JS DataFrame object with toJSON/toJSONFile/toCSVFile/free
+    ReadCSV:  (...args) => globalThis.gophers.ReadCSV(...args),
+    GetAPI:   (...args) => globalThis.gophers.GetAPI(...args),
+    Free:     (...args) => globalThis.gophers.Free(...args),
   };
 }

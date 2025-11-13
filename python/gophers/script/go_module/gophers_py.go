@@ -1729,6 +1729,16 @@ func ToCSVFile(dfJson *C.char, filename *C.char) *C.char {
 	return C.CString("success")
 }
 
+//export ToJSON
+func ToJSON(dfJson *C.char) *C.char {
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		return C.CString(fmt.Sprintf("ToJSON: unmarshal error: %v", err))
+	}
+	// rows-array JSON
+	return C.CString(df.ToJSON())
+}
+
 //export WriteSqlite
 func WriteSqlite(dbPath *C.char, table *C.char, dfJson *C.char, mode *C.char, keyColsJson *C.char, createIdx C.int) *C.char {
 	var df DataFrame

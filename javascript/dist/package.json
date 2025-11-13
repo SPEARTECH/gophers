@@ -1,6 +1,6 @@
 {
   "name": "gophers",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Go dataframe library available for Go, Python, and Javascript.",
   "main": "gophers.js",
   "scripts": {
@@ -19,7 +19,7 @@
   "files": [
     "gophers.js",
     "go_wasm/wasm_exec.js",
-    "go_wasm/gophers.wasm"
+    "go_wasm/gophers_js.wasm"
   ],
   "type": "module"
 }
