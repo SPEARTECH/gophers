@@ -47,7 +47,7 @@
 <!-- <script src="https://unpkg.com/gophers@0.0.1/gophers.js"></script> -->
  <script type="module">
     const { createApp } = Vue
-     import { Gophers } from './gophers.js'//'https://unpkg.com/gophers@0.0.2/gophers.js';
+     import { Gophers } from 'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
     createApp({
       delimiters : ['[[', ']]'],
         data(){
@@ -79,12 +79,7 @@
             ];
             var df = ReadJSON(this.obj);
             this.jsobj = df.ToJSON();
-            // console.log(df.ToJSON());
-            // df = df.Column('name', Col('age'));
-            // console.log(df.ToJSON());
             df = df.Column('age', Cast('age', 'int'));
-            // console.log(df.ToJSON());
-            // console.log(df.ToJSON());
             df.BarChart('Ages','total ages','name',Sum('age')).ElementID('datatable');
             this.jsobj = df.ToJSON();
           } catch (error) {

@@ -21,5 +21,8 @@
     "static/go_wasm/wasm_exec.js",
     "static/go_wasm/gophers.wasm"
   ],
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "gophers": "^0.0.3"
+  }
 }
