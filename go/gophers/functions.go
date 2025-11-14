@@ -6,7 +6,30 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"strconv"
 )
+
+// fastToString avoids fmt.Sprint for common types.
+func fastToString(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case int:
+		return strconv.Itoa(t)
+	case int64:
+		return strconv.FormatInt(t, 10)
+	case float64:
+		return strconv.FormatFloat(t, 'g', -1, 64)
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
+	default:
+		s, _ := toString(v) // fallback to your helper
+		return s
+	}
+}
 
 // // functions for manipulating dataframes, take in and return dataframe
 // // .iloc = select column of the dataframe by name
@@ -284,11 +307,10 @@ func CollectList(name string) Column {
 	return Column{
 		Name: name,
 		Fn: func(row map[string]interface{}) interface{} {
-			values := []interface{}{}
-			for _, val := range row[name].([]interface{}) {
-				values = append(values, val)
-			}
-			return values
+			src := row[name].([]interface{})
+			out := make([]interface{}, len(src))
+			copy(out, src)
+			return out		
 		},
 	}
 }
@@ -298,15 +320,17 @@ func CollectSet(name string) Column {
 	return Column{
 		Name: fmt.Sprintf("CollectSet(%s)", name),
 		Fn: func(row map[string]interface{}) interface{} {
-			valueSet := make(map[interface{}]bool)
-			for _, val := range row[name].([]interface{}) {
-				valueSet[val] = true
+			src := row[name].([]interface{})
+			seen := make(map[interface{}]struct{}, len(src))
+			out := make([]interface{}, 0, len(src))
+			for _, v := range src {
+				if _, ok := seen[v]; ok {
+					continue
+				}
+				seen[v] = struct{}{}
+				out = append(out, v) // preserves first-seen order
 			}
-			values := []interface{}{}
-			for val := range valueSet {
-				values = append(values, val)
-			}
-			return values
+			return out
 		},
 	}
 }
@@ -321,16 +345,13 @@ func SHA256(cols ...Column) Column {
 	return Column{
 		Name: "SHA256",
 		Fn: func(row map[string]interface{}) interface{} {
-			var concatenated string
+			var b strings.Builder
+			// heuristic reserve
+			b.Grow(16 * len(cols))
 			for _, col := range cols {
-				val := col.Fn(row)
-				str, err := toString(val)
-				if err != nil {
-					str = ""
-				}
-				concatenated += str
+				b.WriteString(fastToString(col.Fn(row)))
 			}
-			hash := sha256.Sum256([]byte(concatenated))
+			hash := sha256.Sum256([]byte(b.String()))			
 			return hex.EncodeToString(hash[:])
 		},
 	}
@@ -342,16 +363,12 @@ func SHA512(cols ...Column) Column {
 	return Column{
 		Name: "SHA512",
 		Fn: func(row map[string]interface{}) interface{} {
-			var concatenated string
+			var b strings.Builder
+			b.Grow(16 * len(cols))
 			for _, col := range cols {
-				val := col.Fn(row)
-				str, err := toString(val)
-				if err != nil {
-					str = ""
-				}
-				concatenated += str
+				b.WriteString(fastToString(col.Fn(row)))
 			}
-			hash := sha512.Sum512([]byte(concatenated))
+			hash := sha512.Sum512([]byte(b.String()))
 			return hex.EncodeToString(hash[:])
 		},
 	}
@@ -359,19 +376,54 @@ func SHA512(cols ...Column) Column {
 
 // from_json ? *
 
-// Split returns a Column that splits the string value of the specified column by the given delimiter.
-func Split(name string, delimiter string) Column {
-	return Column{
-		Name: fmt.Sprintf("Split(%s, %s)", name, delimiter),
-		Fn: func(row map[string]interface{}) interface{} {
-			val := row[name]
-			str, err := toString(val)
-			if err != nil {
-				return []string{}
-			}
-			return strings.Split(str, delimiter)
-		},
-	}
+// // Split returns a Column that splits the string value of the specified column by the given delimiter.
+// func Split(name string, delimiter string) Column {
+// 	return Column{
+// 		Name: fmt.Sprintf("Split(%s, %s)", name, delimiter),
+// 		Fn: func(row map[string]interface{}) interface{} {
+// 			switch v := row[name].(type) {
+// 			case string:
+// 				return strings.Split(v, delimiter)
+// 			default:
+// 				s := fastToString(v)
+// 				if s == "" {
+// 					return []string{}
+// 				}
+// 				return strings.Split(s, delimiter)
+// 			}
+// 		},
+// 	}
+// }
+
+// Split splits a column or expression result by delimiter.
+// Accepts either a column name (string) or a Column expression.
+func Split(col interface{}, delimiter string) Column {
+    var eval func(row map[string]interface{}) interface{}
+    var label string
+
+    switch v := col.(type) {
+    case string:
+        label = v
+        eval = func(row map[string]interface{}) interface{} { return row[v] }
+    case Column:
+        label = v.Name
+        eval = v.Fn
+    default:
+        label = fmt.Sprintf("%v", v)
+        eval = func(row map[string]interface{}) interface{} { return row[label] }
+    }
+
+    return Column{
+        Name: fmt.Sprintf("Split(%s, %s)", label, delimiter),
+        Fn: func(row map[string]interface{}) interface{} {
+            val := eval(row)
+            s, err := toString(val)
+            if err != nil {
+                return []string{}
+            }
+            return strings.Split(s, delimiter)
+        },
+    }
 }
 
 // Keys returns a Column that extracts the keys from the nested map (top level only)
@@ -381,25 +433,23 @@ func Keys(name string) Column {
 		Name: fmt.Sprintf("Keys(%s)", name),
 		Fn: func(row map[string]interface{}) interface{} {
 			val := row[name]
-			var keys []string
 			if val == nil {
-				return keys
+				return []string{}
 			}
 			switch t := val.(type) {
 			case map[string]interface{}:
-				for k := range t {
-					keys = append(keys, k)
-				}
+				keys := make([]string, 0, len(t))
+				for k := range t { keys = append(keys, k) }
+				return keys
 			case map[interface{}]interface{}:
 				nested := convertMapKeysToString(t)
-				for k := range nested {
-					keys = append(keys, k)
-				}
-			default:
-				// If the column isn't a map, return an empty slice.
+				keys := make([]string, 0, len(nested))
+				for k := range nested { keys = append(keys, k) }
 				return keys
+			default:
+				return []string{}
 			}
-			return keys
+
 		},
 	}
 }
@@ -411,10 +461,7 @@ func Lookup(keyExpr Column, nestCol string) Column {
 		Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyExpr.Name),
 		Fn: func(row map[string]interface{}) interface{} {
 			// Evaluate the key expression.
-			keyVal, err := toString(keyExpr.Fn(row))
-			if err != nil {
-				return nil
-			}
+			keyVal := fastToString(keyExpr.Fn(row))
 			// Get the nested map from nestCol.
 			nestedVal := row[nestCol]
 			if nestedVal == nil {
@@ -459,8 +506,6 @@ func Lookup(keyExpr Column, nestCol string) Column {
 
 // query()
 
-// dropna()
-
 // rolling()
 
 // isin()
@@ -480,3 +525,138 @@ func Lookup(keyExpr Column, nestCol string) Column {
 // FromEpoch()
 
 // sql?
+
+// Concat returns a Column that, when applied to a row,
+// concatenates the string representations of the provided Columns using the specified delimiter.
+// It converts each value to a string using toString. If conversion fails for a value, it uses an empty string.
+func Concat(delim string, cols ...Column) Column {
+	return Column{
+		Name: "concat_ws",
+		Fn: func(row map[string]interface{}) interface{} {
+			var parts []string
+			for _, col := range cols {
+				val := col.Fn(row)
+				str, err := toString(val)
+				if err != nil {
+					str = ""
+				}
+				parts = append(parts, str)
+			}
+			return strings.Join(parts, delim)
+		},
+	}
+}
+
+// Cast takes in an existing Column and a desired datatype ("int", "float", "string"),
+// and returns a new Column that casts the value returned by the original Column to that datatype.
+func Cast(col Column, datatype string) Column {
+    return Column{
+        Name: col.Name + "_cast",
+        Fn: func(row map[string]interface{}) interface{} {
+            val := col.Fn(row)
+            switch datatype {
+            case "int":
+                // silent on nil
+                if val == nil {
+                    return 0
+                }
+                casted, err := toInt(val)
+                if err != nil {
+                    fmt.Printf("cast to int error: %v\n", err)
+                    return nil
+                }
+                return casted
+            case "float":
+                // silent on nil
+                if val == nil {
+                    return 0.0
+                }
+                casted, err := toFloat64(val)
+                if err != nil {
+                    fmt.Printf("cast to float error: %v\n", err)
+                    return nil
+                }
+                return casted
+            case "string":
+                // silent on nil
+                if val == nil {
+                    return ""
+                }
+                casted, err := toString(val)
+                if err != nil {
+                    fmt.Printf("cast to string error: %v\n", err)
+                    return nil
+                }
+                return casted
+            default:
+                fmt.Printf("unsupported cast type: %s\n", datatype)
+                return nil
+            }
+        },
+    }
+}
+// toFloat64 attempts to convert an interface{} to a float64.
+func toFloat64(val interface{}) (float64, error) {
+	switch v := val.(type) {
+	case int:
+		return float64(v), nil
+	case int32:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case float32:
+		return float64(v), nil
+	case float64:
+		return v, nil
+	default:
+		return 0, fmt.Errorf("unsupported numeric type: %T", val)
+	}
+}
+
+// toInt tries to convert the provided value to an int.
+// It supports int, int32, int64, float32, float64, and string.
+func toInt(val interface{}) (int, error) {
+	switch v := val.(type) {
+	case int:
+		return v, nil
+	case int32:
+		return int(v), nil
+	case int64:
+		return int(v), nil
+	case float32:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("cannot convert string %q to int: %v", v, err)
+		}
+		return i, nil
+	default:
+		return 0, fmt.Errorf("unsupported type %T", v)
+	}
+}
+
+
+// toString attempts to convert an interface{} to a string.
+// It supports string, int, int32, int64, float32, and float64.
+func toString(val interface{}) (string, error) {
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case int:
+		return strconv.Itoa(v), nil
+	case int32:
+		return strconv.Itoa(int(v)), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	default:
+		return "", fmt.Errorf("unsupported type %T", val)
+	}
+}
+

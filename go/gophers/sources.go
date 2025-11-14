@@ -240,72 +240,105 @@ func ReadJSON(input string) *DataFrame {
 
 // Pure Go NDJSON reader: path-or-string -> *DataFrame
 func ReadNDJSON(input string) *DataFrame {
-	// If input is a file path, load file contents.
-	if fileExists(input) {
-		b, err := os.ReadFile(input)
-		if err != nil {
-			log.Fatalf("ReadNDJSONCore: read file: %v", err)
-		}
-		input = string(b)
-	}
-	lines := strings.Split(input, "\n")
+    // If input is a file path, load file contents.
+    if fileExists(input) {
+        b, err := os.ReadFile(input)
+        if err != nil {
+            log.Fatalf("ReadNDJSONCore: read file: %v", err)
+        }
+        input = string(b)
+    }
+    lines := strings.Split(input, "\n")
+    n := len(lines)
+    if n == 0 {
+        return Dataframe([]map[string]interface{}{})
+    }
 
-	// Map original line index -> compact row index (-1 = skip)
-	idx := make([]int, len(lines))
-	rowCount := 0
-	for i, ln := range lines {
-		if strings.TrimSpace(ln) == "" {
-			idx[i] = -1
-			continue
-		}
-		idx[i] = rowCount
-		rowCount++
-	}
-	rows := make([]map[string]interface{}, rowCount)
+    // Pass 1: build per-shard masks and counts (non-empty lines)
+    w := runtime.GOMAXPROCS(0)
+    if w < 1 {
+        w = 1
+    }
+    chunk := (n + w - 1) / w
 
-	if rowCount > 0 {
-		w := runtime.GOMAXPROCS(0)
-		chunk := (len(lines) + w - 1) / w
-		var wg sync.WaitGroup
-		for g := 0; g < w; g++ {
-			start := g * chunk
-			end := start + chunk
-			if start >= len(lines) {
-				break
-			}
-			if end > len(lines) {
-				end = len(lines)
-			}
-			wg.Add(1)
-			go func(s, e int) {
-				defer wg.Done()
-				var tmp map[string]interface{}
-				for i := s; i < e; i++ {
-					j := idx[i]
-					if j < 0 {
-						continue
-					}
-					raw := strings.TrimSpace(lines[i])
-					if raw == "" {
-						continue
-					}
-					if err := json.Unmarshal([]byte(raw), &tmp); err == nil {
-						// Copy map to avoid concurrent reuse of tmp.
-						m := make(map[string]interface{}, len(tmp))
-						for k, v := range tmp {
-							m[k] = v
-						}
-						rows[j] = m
-					}
-				}
-			}(start, end)
-		}
-		wg.Wait()
-	}
+    masks := make([][]bool, w)
+    counts := make([]int, w)
 
-	return Dataframe(rows)
+    var wg sync.WaitGroup
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= n {
+            break
+        }
+        if end > n {
+            end = n
+        }
+        wg.Add(1)
+        go func(idx, s, e int) {
+            defer wg.Done()
+            mask := make([]bool, e-s)
+            cnt := 0
+            for i := s; i < e; i++ {
+                if strings.TrimSpace(lines[i]) != "" {
+                    mask[i-s] = true
+                    cnt++
+                }
+            }
+            masks[idx] = mask
+            counts[idx] = cnt
+        }(g, start, end)
+    }
+    wg.Wait()
+
+    // Prefix-sum to compute output offsets
+    total := 0
+    offsets := make([]int, w)
+    for i := 0; i < w; i++ {
+        offsets[i] = total
+        total += counts[i]
+    }
+    rows := make([]map[string]interface{}, total)
+
+    // Pass 2: scatter decoded rows in order
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= n {
+            break
+        }
+        if end > n {
+            end = n
+        }
+        base := offsets[g]
+        mask := masks[g]
+        wg.Add(1)
+        go func(s, e, outStart int, mask []bool) {
+            defer wg.Done()
+            out := outStart
+            var tmp map[string]interface{}
+            for i := s; i < e; i++ {
+                if !mask[i-s] {
+                    continue
+                }
+                raw := strings.TrimSpace(lines[i])
+                // Decode; on error leave nil row (safe for Dataframe)
+                if err := json.Unmarshal([]byte(raw), &tmp); err == nil {
+                    // copy map to avoid races on tmp reuse
+                    m := make(map[string]interface{}, len(tmp))
+                    for k, v := range tmp {
+                        m[k] = v
+                    }
+                    rows[out] = m
+                }
+                out++
+            }
+        }(start, end, base, mask)
+    }
+    wg.Wait()
+
+    return Dataframe(rows)
 }
-
 // Pure Go: YAML path-or-string -> *DataFrame
 func ReadYAML(input string) *DataFrame {
 	// Treat input as a file path if it exists, else as raw YAML text.
@@ -353,85 +386,103 @@ func ReadYAML(input string) *DataFrame {
 // ReadParquet reads a parquet file or newline-delimited JSON content (fallback) and builds a DataFrame.
 // Concurrency is used to parse each line in parallel while preserving order.
 func ReadParquet(input string) *DataFrame {
-	// If input is a file path, load its contents.
-	if fileExists(input) {
-		bytes, err := os.ReadFile(input)
-		if err != nil {
-			log.Fatalf("ReadParquet: read file error: %v", err)
-		}
-		input = string(bytes)
-	}
+    // If input is a file path, load its contents.
+    if fileExists(input) {
+        bytes, err := os.ReadFile(input)
+        if err != nil {
+            log.Fatalf("ReadParquet: read file error: %v", err)
+        }
+        input = string(bytes)
+    }
 
-	linesRaw := strings.Split(input, "\n")
-	type job struct {
-		idx int
-		raw string
-	}
-	type result struct {
-		idx int
-		row map[string]interface{}
-		err error
-	}
+    lines := strings.Split(input, "\n")
+    n := len(lines)
+    if n == 0 {
+        return Dataframe([]map[string]interface{}{})
+    }
 
-	// Pre-filter non-empty lines to keep indices stable for ordering.
-	jobs := make([]job, 0, len(linesRaw))
-	for i, line := range linesRaw {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		jobs = append(jobs, job{idx: i, raw: trimmed})
-	}
+    // Pass 1: mask + counts (non-empty trimmed lines)
+    w := runtime.GOMAXPROCS(0)
+    if w < 1 {
+        w = 1
+    }
+    chunk := (n + w - 1) / w
 
-	if len(jobs) == 0 {
-		return Dataframe([]map[string]interface{}{})
-	}
+    masks := make([][]bool, w)
+    counts := make([]int, w)
 
-	workers := runtime.GOMAXPROCS(0)
-	inCh := make(chan job)
-	outCh := make(chan result, len(jobs))
-	var wg sync.WaitGroup
+    var wg sync.WaitGroup
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= n {
+            break
+        }
+        if end > n {
+            end = n
+        }
+        wg.Add(1)
+        go func(idx, s, e int) {
+            defer wg.Done()
+            mask := make([]bool, e-s)
+            cnt := 0
+            for i := s; i < e; i++ {
+                if strings.TrimSpace(lines[i]) != "" {
+                    mask[i-s] = true
+                    cnt++
+                }
+            }
+            masks[idx] = mask
+            counts[idx] = cnt
+        }(g, start, end)
+    }
+    wg.Wait()
 
-	// Workers
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range inCh {
-				var row map[string]interface{}
-				err := json.Unmarshal([]byte(j.raw), &row)
-				outCh <- result{idx: j.idx, row: row, err: err}
-			}
-		}()
-	}
+    // Prefix-sum to compute output offsets
+    total := 0
+    offsets := make([]int, w)
+    for i := 0; i < w; i++ {
+        offsets[i] = total
+        total += counts[i]
+    }
+    rows := make([]map[string]interface{}, total)
 
-	go func() {
-		for _, j := range jobs {
-			inCh <- j
-		}
-		close(inCh)
-		wg.Wait()
-		close(outCh)
-	}()
+    // Pass 2: scatter decoded rows in order
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= n {
+            break
+        }
+        if end > n {
+            end = n
+        }
+        base := offsets[g]
+        mask := masks[g]
+        wg.Add(1)
+        go func(s, e, outStart int, mask []bool) {
+            defer wg.Done()
+            out := outStart
+            var tmp map[string]interface{}
+            for i := s; i < e; i++ {
+                if !mask[i-s] {
+                    continue
+                }
+                raw := strings.TrimSpace(lines[i])
+                if err := json.Unmarshal([]byte(raw), &tmp); err == nil {
+                    m := make(map[string]interface{}, len(tmp))
+                    for k, v := range tmp {
+                        m[k] = v
+                    }
+                    rows[out] = m
+                }
+                out++
+            }
+        }(start, end, base, mask)
+    }
+    wg.Wait()
 
-	// Collect results in a map keyed by original index to preserve order.
-	resMap := make(map[int]map[string]interface{}, len(jobs))
-	for r := range outCh {
-		if r.err != nil {
-			log.Fatalf("ReadParquet: unmarshal error at line %d: %v", r.idx+1, r.err)
-		}
-		resMap[r.idx] = r.row
-	}
-
-	// Rebuild ordered slice.
-	ordered := make([]map[string]interface{}, 0, len(resMap))
-	for _, j := range jobs {
-		if row, ok := resMap[j.idx]; ok {
-			ordered = append(ordered, row)
-		}
-	}
-
-	return Dataframe(ordered)
+    return Dataframe(rows)
 }
 func fetchRows(db *sql.DB, query string, tableLabel string) ([]map[string]interface{}, error) {
 	rows, err := db.Query(query)
