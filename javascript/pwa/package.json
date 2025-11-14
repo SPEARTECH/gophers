@@ -1,6 +1,6 @@
 {
   "name": "gophers",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Go dataframe library available for Go, Python, and Javascript.",
   "main": "gophers.js",
   "scripts": {
@@ -18,8 +18,11 @@
   "homepage": "https://github.com/speartech/gophers#readme",
   "files": [
     "gophers.js",
-    "go_wasm/wasm_exec.js",
-    "go_wasm/gophers.wasm"
+    "static/go_wasm/wasm_exec.js",
+    "static/go_wasm/gophers.wasm"
   ],
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "gophers": "^0.0.3"
+  }
 }

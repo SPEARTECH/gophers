@@ -2,13 +2,13 @@
 // This function initializes the Go WASM module and returns an object with exported functions.
 export async function Gophers() {
   // Dynamically import wasm_exec.js. (Make sure it’s included in your package.)
-  await import('./go_wasm/wasm_exec.js');
+  await import('./static/go_wasm/wasm_exec.js');
 
   // Create a new Go instance.
   const go = new Go();
 
   // Construct an absolute URL for the WASM file relative to this module.
-  const wasmURL = new URL('./go_wasm/gophers.wasm', import.meta.url);
+  const wasmURL = new URL('./static/go_wasm/gophers_js.wasm', import.meta.url);
 
   // Use instantiateStreaming with a fallback to ArrayBuffer.
   let result;
@@ -26,10 +26,22 @@ export async function Gophers() {
   // In our case, the Go code never exits (because of select{}), but that’s fine.
   go.run(result.instance);
 
-  // At this point, the Go code has registered its functions on the global object.
-  // Return an object with references to the exported functions.
-  return {
-    add: globalThis.add
-    // Add other exported functions here if needed.
-  };
+  // Wait until Go sets globalThis.gophers
+  await new Promise((resolve) => {
+    const check = () => {
+      if (globalThis.gophers) return resolve();
+      setTimeout(check, 0);
+    };
+    check();
+  });
+
+  // Expose the WASM API and keep the namespace if you want direct access.
+  // return {
+  //   namespace: globalThis.gophers,
+  //   ReadJSON: (...args) => globalThis.gophers.ReadJSON(...args), // returns JS DataFrame object with toJSON/toJSONFile/toCSVFile/free
+  //   ReadCSV:  (...args) => globalThis.gophers.ReadCSV(...args),
+  //   GetAPI:   (...args) => globalThis.gophers.GetAPI(...args),
+  //   Free:     (...args) => globalThis.gophers.Free(...args),
+  // };
+  return globalThis.gophers;
 }

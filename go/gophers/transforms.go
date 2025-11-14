@@ -3,208 +3,740 @@ package gophers
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+    "bytes"
+    "hash/fnv"
 )
 
-// Column adds or modifies a column in the DataFrame using a Column.
-// This version accepts a Column (whose underlying function is applied to each row).
-func (df *DataFrame) Column(column string, col Column) *DataFrame {
-	values := make([]interface{}, df.Rows)
-	for i := 0; i < df.Rows; i++ {
-		row := make(map[string]interface{})
-		for _, c := range df.Cols {
-			row[c] = df.Data[c][i]
-		}
-		// Use the underlying Column function.
-		values[i] = col.Fn(row)
+// // referencedCols returns the set of column names used by a ColumnExpr.
+// func referencedCols(e ColumnExpr, acc map[string]struct{}) map[string]struct{} {
+//     if acc == nil { acc = make(map[string]struct{}) }
+//     switch strings.ToLower(e.Type) {
+//     case "col":
+//         if e.Name != "" { acc[e.Name] = struct{}{} }
+//         if e.Col != "" { acc[e.Col] = struct{}{} }
+//     default:
+//         var x ColumnExpr
+//         if len(e.Expr) > 0 { _ = json.Unmarshal(e.Expr, &x); referencedCols(x, acc) }
+//         if len(e.Left) > 0 { _ = json.Unmarshal(e.Left, &x); referencedCols(x, acc) }
+//         if len(e.Right) > 0 { _ = json.Unmarshal(e.Right, &x); referencedCols(x, acc) }
+//         if len(e.Cond) > 0 { _ = json.Unmarshal(e.Cond, &x); referencedCols(x, acc) }
+//         if len(e.True) > 0 { _ = json.Unmarshal(e.True, &x); referencedCols(x, acc) }
+//         if len(e.False) > 0 { _ = json.Unmarshal(e.False, &x); referencedCols(x, acc) }
+//         if len(e.Cols) > 0 {
+//             var xs []ColumnExpr; _ = json.Unmarshal(e.Cols, &xs)
+//             for _, y := range xs { referencedCols(y, acc) }
+//         }
+//         if e.Col != "" { acc[e.Col] = struct{}{} }
+//     }
+//     return acc
+// }
+func referencedCols(e ColumnExpr, acc map[string]struct{}) map[string]struct{} {
+    if acc == nil { acc = make(map[string]struct{}) }
+    switch strings.ToLower(e.Type) {
+    case "col":
+        if e.Name != "" { acc[e.Name] = struct{}{} }
+        if e.Col != "" { acc[e.Col] = struct{}{} }
+    case "cast":
+        // e.Col should be JSON of a sub expression; if not valid JSON, treat as plain column name.
+        if e.Col != "" {
+            if json.Valid([]byte(e.Col)) {
+                var sub ColumnExpr
+                if err := json.Unmarshal([]byte(e.Col), &sub); err == nil {
+                    referencedCols(sub, acc)
+                }
+            } else {
+                acc[e.Col] = struct{}{}
+            }
+        }
+    default:
+        var x ColumnExpr
+        if len(e.Expr) > 0 { _ = json.Unmarshal(e.Expr, &x); referencedCols(x, acc) }
+        if len(e.Left) > 0 { _ = json.Unmarshal(e.Left, &x); referencedCols(x, acc) }
+        if len(e.Right) > 0 { _ = json.Unmarshal(e.Right, &x); referencedCols(x, acc) }
+        if len(e.Cond) > 0 { _ = json.Unmarshal(e.Cond, &x); referencedCols(x, acc) }
+        if len(e.True) > 0 { _ = json.Unmarshal(e.True, &x); referencedCols(x, acc) }
+        if len(e.False) > 0 { _ = json.Unmarshal(e.False, &x); referencedCols(x, acc) }
+        if len(e.Cols) > 0 {
+            var xs []ColumnExpr
+            _ = json.Unmarshal(e.Cols, &xs)
+            for _, y := range xs { referencedCols(y, acc) }
+        }
+        // Fallback plain Col (non-cast types that carry a direct column name)
+        if e.Col != "" && !json.Valid([]byte(e.Col)) {
+            acc[e.Col] = struct{}{}
+        }
+    }
+    return acc
+}
+
+// add: "hash/fnv"; "bytes"
+func rowKeyFast(cols []string, data map[string][]interface{}, i int) string {
+    h := fnv.New64a()
+    var b bytes.Buffer
+    for _, c := range cols {
+        b.Reset()
+        b.WriteString(c); b.WriteByte('=')
+        v := data[c][i]
+        switch t := v.(type) {
+        case nil: b.WriteString("∅")
+        case string: b.WriteString(t); b.WriteByte('|')
+        case int: b.WriteString(strconv.Itoa(t)); b.WriteByte('|')
+        case int64: b.WriteString(strconv.FormatInt(t,10)); b.WriteByte('|')
+        case float64: b.WriteString(strconv.FormatFloat(t,'g',-1,64)); b.WriteByte('|')
+        case bool: if t { b.WriteByte('1') } else { b.WriteByte('0') }
+        default: fmt.Fprintf(&b, "%v|", t)
+        }
+        h.Write(b.Bytes())
+    }
+    return strconv.FormatUint(h.Sum64(), 36)
+}
+
+// // Column adds or modifies a column in the DataFrame using a ColumnExpr.
+// // Compiles the expr once, then evaluates its closure per row.
+// func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
+//     values := make([]interface{}, df.Rows)
+//     if df.Rows == 0 {
+//         df.Data[column] = values
+//         exists := false
+//         for _, c := range df.Cols {
+//             if c == column {
+//                 exists = true
+//                 break
+//             }
+//         }
+//         if !exists {
+//             df.Cols = append(df.Cols, column)
+//         }
+//         return df
+//     }
+
+//     // Compile once (fast path vs per-row Evaluate)
+//     compiled := Compile(colSpec)
+
+//     // Only materialize referenced columns per row
+//     refSet := referencedCols(colSpec, nil)
+//     refCols := make([]string, 0, len(refSet))
+//     for c := range refSet { refCols = append(refCols, c) }
+//     refSlices := make(map[string][]interface{}, len(refCols))
+//     for _, c := range refCols { refSlices[c] = df.Data[c] }
+
+//     w := runtime.GOMAXPROCS(0)
+//     var wg sync.WaitGroup
+//     chunk := (df.Rows + w - 1) / w
+//     for g := 0; g < w; g++ {
+//         // ...existing code...
+//         go func(s, e int) {
+//             defer wg.Done()
+//             row := make(map[string]interface{}, len(refCols))
+//             for i := s; i < e; i++ {
+//                 for _, c := range refCols {
+//                     row[c] = refSlices[c][i]
+//                 }
+//                 values[i] = compiled.Fn(row)
+//             }
+//         }(start, end)
+//     }    
+//     wg.Wait()
+
+//     df.Data[column] = values
+//     exists := false
+//     for _, c := range df.Cols {
+//         if c == column {
+//             exists = true
+//             break
+//         }
+//     }
+//     if !exists {
+//         df.Cols = append(df.Cols, column)
+//     }
+//     return df
+// }
+
+func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
+    if df == nil {
+        return df
+    }
+    if df.Data == nil {
+        df.Data = make(map[string][]interface{})
+    }
+    values := make([]interface{}, df.Rows)
+    if df.Rows == 0 {
+        df.Data[column] = values
+        found := false
+        for _, c := range df.Cols {
+            if c == column { found = true; break }
+        }
+        if !found { df.Cols = append(df.Cols, column) }
+        return df
+    }
+
+    compiled := Compile(colSpec)
+
+    // Collect referenced columns.
+    refSet := referencedCols(colSpec, nil)
+    refCols := make([]string, 0, len(refSet))
+    for c := range refSet {
+        refCols = append(refCols, c)
+    }
+
+    // Ensure slices exist and have df.Rows length (pad with nil).
+    for _, c := range refCols {
+        s := df.Data[c]
+        if s == nil {
+            s = make([]interface{}, df.Rows)
+            df.Data[c] = s
+        } else if len(s) < df.Rows {
+            // pad
+            padded := make([]interface{}, df.Rows)
+            copy(padded, s)
+            df.Data[c] = padded
+        }
+    }
+
+    w := runtime.GOMAXPROCS(0)
+    if w < 1 {
+        w = 1
+    }
+    chunk := (df.Rows + w - 1) / w
+    var wg sync.WaitGroup
+
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= df.Rows {
+            break
+        }
+        if end > df.Rows {
+            end = df.Rows
+        }
+        wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            // Reuse row map per goroutine
+            row := make(map[string]interface{}, len(refCols))
+            for i := s; i < e; i++ {
+                for _, c := range refCols {
+                    row[c] = df.Data[c][i]
+                }
+                values[i] = compiled.Fn(row)
+            }
+        }(start, end)
+    }
+    wg.Wait()
+
+    df.Data[column] = values
+    found := false
+    for _, c := range df.Cols {
+        if c == column { found = true; break }
+    }
+    if !found {
+        df.Cols = append(df.Cols, column)
+    }
+    return df
+}
+// Flatten (in-place, no []map intermediate)
+func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
+	if df == nil || df.Rows == 0 || len(flattenCols) == 0 {
+		return df
+	}
+	// Build a set for quick column lookup
+	colSet := make(map[string]bool, len(df.Cols))
+	for _, c := range df.Cols {
+		colSet[c] = true
 	}
 
-	// Add or modify the column.
-	df.Data[column] = values
+	for _, fcol := range flattenCols {
+		// Collect all nested keys once
+		keySet := map[string]struct{}{}
+		srcCol, ok := df.Data[fcol]
+		if !ok {
+			continue
+		}
+		for i := 0; i < df.Rows; i++ {
+			val := srcCol[i]
+			if val == nil {
+				continue
+			}
+			switch t := val.(type) {
+			case map[string]interface{}:
+				for k := range t {
+					keySet[k] = struct{}{}
+				}
+			case map[interface{}]interface{}:
+				m := convertMapKeysToString(t)
+				for k := range m {
+					keySet[k] = struct{}{}
+				}
+			}
+		}
+		// Create new columns with full length
+		newCols := make([]string, 0, len(keySet))
+		for k := range keySet {
+			name := fcol + "." + k
+			if !colSet[name] {
+				df.Cols = append(df.Cols, name)
+				colSet[name] = true
+			}
+			newCols = append(newCols, name)
+			if _, ok := df.Data[name]; !ok {
+				df.Data[name] = make([]interface{}, df.Rows)
+			}
+		}
+		// Parallel fill
+		w := runtime.GOMAXPROCS(0)
+		var wg sync.WaitGroup
+		chunk := (df.Rows + w - 1) / w
+		for g := 0; g < w; g++ {
+			start := g * chunk
+			end := start + chunk
+			if start >= df.Rows {
+				break
+			}
+			if end > df.Rows {
+				end = df.Rows
+			}
+			wg.Add(1)
+			go func(s, e int) {
+				defer wg.Done()
+				for i := s; i < e; i++ {
+					val := srcCol[i]
+					var nested map[string]interface{}
+					switch t := val.(type) {
+					case map[string]interface{}:
+						nested = t
+					case map[interface{}]interface{}:
+						nested = convertMapKeysToString(t)
+					default:
+						nested = nil
+					}
+					for _, name := range newCols {
+						key := name[len(fcol)+1:]
+						if nested != nil {
+							df.Data[name][i] = nested[key]
+						} else {
+							df.Data[name][i] = nil
+						}
+					}
+				}
+			}(start, end)
+		}
+		wg.Wait()
+		// Remove original nested column (single-threaded)
+		delete(df.Data, fcol)
+		kept := df.Cols[:0]
+		for _, c := range df.Cols {
+			if c != fcol {
+				kept = append(kept, c)
+			}
+		}
+		df.Cols = kept
+	}
+	return df
+}
 
-	// Add the column to the list of columns if it doesn't already exist.
-	exists := false
-	for _, c := range df.Cols {
-		if c == column {
-			exists = true
+// Parallel StringArrayConvert (single column)
+func (df *DataFrame) StringArrayConvert(column string) *DataFrame {
+	if df == nil {
+		return df
+	}
+	slice, ok := df.Data[column]
+	if !ok {
+		return df
+	}
+	w := runtime.GOMAXPROCS(0)
+	chunk := (df.Rows + w - 1) / w
+	var wg sync.WaitGroup
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= df.Rows {
 			break
 		}
+		if end > df.Rows {
+			end = df.Rows
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			for i := s; i < e; i++ {
+				str, ok := slice[i].(string)
+				if !ok || len(str) < 2 || str[0] != '[' || str[len(str)-1] != ']' {
+					continue
+				}
+				var arr []interface{}
+				if err := json.Unmarshal([]byte(str), &arr); err == nil {
+					slice[i] = arr
+				}
+			}
+		}(start, end)
 	}
-	if !exists {
-		df.Cols = append(df.Cols, column)
-	}
-
+	wg.Wait()
 	return df
 }
 
-// Concat returns a Column that, when applied to a row,
-// concatenates the string representations of the provided Columns.
-// It converts each value to a string using toString.
-// If conversion fails, it uses an empty string.
-func Concat(cols ...Column) Column {
-	return Column{
-		Name: "concat",
-		Fn: func(row map[string]interface{}) interface{} {
-			var parts []string
-			for _, col := range cols {
-				val := col.Fn(row)
-				str, err := toString(val)
-				if err != nil {
-					str = ""
-				}
-				parts = append(parts, str)
-			}
-			// Customize the delimiter as needed.
-			return strings.Join(parts, "")
-		},
-	}
+func (df *DataFrame) Check() string {
+    for _, c := range df.Cols {
+        if len(df.Data[c]) != df.Rows {
+            panic("invariant violated: column length mismatch: " + c)
+			return fmt.Sprintf("column %s has length %d but expected %d", c, len(df.Data[c]), df.Rows)
+        }
+    }
+    return "ok"
 }
 
-// Concat_WS returns a Column that, when applied to a row,
-// concatenates the string representations of the provided Columns using the specified delimiter.
-// It converts each value to a string using toString. If conversion fails for a value, it uses an empty string.
-func Concat_WS(delim string, cols ...Column) Column {
-	return Column{
-		Name: "concat_ws",
-		Fn: func(row map[string]interface{}) interface{} {
-			var parts []string
-			for _, col := range cols {
-				val := col.Fn(row)
-				str, err := toString(val)
-				if err != nil {
-					str = ""
-				}
-				parts = append(parts, str)
-			}
-			return strings.Join(parts, delim)
-		},
-	}
+func (df *DataFrame) Filter(cond ColumnExpr) *DataFrame {
+    if df == nil || df.Rows == 0 { return &DataFrame{Cols: df.Cols, Data: make(map[string][]interface{}), Rows: 0} }
+    pred := Compile(cond)
+
+    refSet := referencedCols(cond, nil)
+    refCols := make([]string, 0, len(refSet))
+    for c := range refSet { refCols = append(refCols, c) }
+
+    // Ensure slices exist & have df.Rows length
+    refSlices := make(map[string][]interface{}, len(refCols))
+    for _, c := range refCols {
+        s := df.Data[c]
+        if s == nil {
+            s = make([]interface{}, df.Rows)
+            df.Data[c] = s
+        } else if len(s) < df.Rows {
+            padded := make([]interface{}, df.Rows)
+            copy(padded, s)
+            df.Data[c] = padded
+            s = padded
+        }
+        refSlices[c] = s
+    }
+    w := runtime.GOMAXPROCS(0)
+    chunk := (df.Rows + w - 1) / w
+
+    // Pass 1: masks + counts
+    masks := make([][]bool, w)
+    counts := make([]int, w)
+    var wg sync.WaitGroup
+    for g := 0; g < w; g++ {
+        start := g * chunk; end := start + chunk
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
+        wg.Add(1)
+        go func(idx, s, e int) {
+            defer wg.Done()
+            mask := make([]bool, e-s)
+            row := make(map[string]interface{}, len(refCols))
+            cnt := 0
+            for i := s; i < e; i++ {
+                for _, c := range refCols { row[c] = refSlices[c][i] }
+                if ok, _ := pred.Fn(row).(bool); ok {
+                    mask[i-s] = true; cnt++
+                }
+            }
+            masks[idx] = mask; counts[idx] = cnt
+        }(g, start, end)
+    }
+    wg.Wait()
+
+    // scan
+    total := 0
+    offsets := make([]int, w)
+    for i := 0; i < w; i++ { offsets[i] = total; total += counts[i] }
+
+    out := &DataFrame{Cols: df.Cols, Data: make(map[string][]interface{}, len(df.Cols)), Rows: total}
+    for _, c := range df.Cols { out.Data[c] = make([]interface{}, total) }
+
+    // Pass 2: scatter
+    for g := 0; g < w; g++ {
+        start := g * chunk; end := start + chunk
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
+        off := offsets[g]; mask := masks[g]
+        wg.Add(1)
+        go func(s, e, base int, mask []bool) {
+            defer wg.Done()
+            widx := base
+            for i := s; i < e; i++ {
+                if mask[i-s] {
+                    for _, c := range df.Cols { out.Data[c][widx] = df.Data[c][i] }
+                    widx++
+                }
+            }
+        }(start, end, off, mask)
+    }
+    wg.Wait()
+    return out
 }
+// Sort sorts the DataFrame's columns in alphabetical order.
+func (df *DataFrame) Sort() *DataFrame {
+	// Make a copy of the columns and sort it.
+	sortedCols := make([]string, len(df.Cols))
+	copy(sortedCols, df.Cols)
+	sort.Strings(sortedCols)
 
-// Filter returns a new DataFrame containing only the rows for which
-// the condition (a Column that evaluates to a bool) is true.
-func (df *DataFrame) Filter(condition Column) *DataFrame {
-	// Create new DataFrame with the same columns.
-	newDF := &DataFrame{
-		Cols: df.Cols,
-		Data: make(map[string][]interface{}),
-	}
-	for _, col := range df.Cols {
-		newDF.Data[col] = []interface{}{}
-	}
-
-	// Iterate over each row.
-	for i := 0; i < df.Rows; i++ {
-		// Build a row (as a map) for evaluation.
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-		// Evaluate the condition.
-		cond := condition.Fn(row)
-		if b, ok := cond.(bool); ok && b {
-			// If true, append data from this row to newDF.
-			for _, col := range df.Cols {
-				newDF.Data[col] = append(newDF.Data[col], row[col])
-			}
-		}
-	}
-
-	// Set new row count.
-	if len(df.Cols) > 0 {
-		newDF.Rows = len(newDF.Data[df.Cols[0]])
-	}
-
-	return newDF
-}
-
-// Explode creates a new DataFrame where each value in the specified columns' slices becomes a separate row.
-func (df *DataFrame) Explode(columns ...string) *DataFrame {
-	for _, column := range columns {
-		df = df.explodeSingleColumn(column)
-	}
-	return df
-}
-
-// explodeSingleColumn creates a new DataFrame where each value in the specified column's slice becomes a separate row.
-func (df *DataFrame) explodeSingleColumn(column string) *DataFrame {
-	newCols := df.Cols
+	// Build a new data map using the sorted column order.
 	newData := make(map[string][]interface{})
-
-	// Initialize newData with empty slices for each column.
-	for _, col := range newCols {
-		newData[col] = []interface{}{}
+	for _, col := range sortedCols {
+		if data, exists := df.Data[col]; exists {
+			newData[col] = data
+		} else {
+			newData[col] = make([]interface{}, df.Rows)
+		}
 	}
 
-	// Iterate over each row in the DataFrame.
-	for i := 0; i < df.Rows; i++ {
-		// Get the value of the specified column.
-		val := df.Data[column][i]
+	df.Cols = sortedCols
+	df.Data = newData
+	return df
+}
 
-		// Check if the value is a slice.
-		if slice, ok := val.([]interface{}); ok {
-			// Create a new row for each value in the slice.
-			for _, item := range slice {
-				for _, col := range newCols {
-					if col == column {
-						newData[col] = append(newData[col], item)
-					} else {
-						newData[col] = append(newData[col], df.Data[col][i])
+// explodePrealloc explodes a single column using preallocation
+func (df *DataFrame) explodePrealloc(column string) *DataFrame {
+	if df == nil || df.Rows == 0 {
+		return df
+	}
+
+	// Per-row output lengths
+	perLen := make([]int, df.Rows)
+	total := 0
+	for i := 0; i < df.Rows; i++ {
+		v := df.Data[column][i]
+		if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+			perLen[i] = len(arr)
+		} else {
+			perLen[i] = 1 // copy row as-is if not array or empty
+		}
+		total += perLen[i]
+	}
+	if total == 0 {
+		total = df.Rows
+	}
+
+	// Prefix sums -> starting offsets
+	offsets := make([]int, df.Rows+1)
+	for i := 0; i < df.Rows; i++ {
+		offsets[i+1] = offsets[i] + perLen[i]
+	}
+
+	// Allocate output
+	newCols := make([]string, len(df.Cols))
+	copy(newCols, df.Cols)
+	newData := make(map[string][]interface{}, len(newCols))
+	for _, c := range newCols {
+		newData[c] = make([]interface{}, total)
+	}
+
+	// Parallel fill by disjoint index ranges per row
+	w := runtime.GOMAXPROCS(0)
+	var wg sync.WaitGroup
+	chunk := (df.Rows + w - 1) / w
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= df.Rows {
+			break
+		}
+		if end > df.Rows {
+			end = df.Rows
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			for i := s; i < e; i++ {
+				base := offsets[i]
+				v := df.Data[column][i]
+				if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+					for j, item := range arr {
+						outIdx := base + j
+						for _, c := range newCols {
+							if c == column {
+								newData[c][outIdx] = item
+							} else {
+								newData[c][outIdx] = df.Data[c][i]
+							}
+						}
+					}
+				} else {
+					outIdx := base
+					for _, c := range newCols {
+						newData[c][outIdx] = df.Data[c][i]
 					}
 				}
 			}
-		} else {
-			// If the value is not a slice, just copy the row as is.
-			for _, col := range newCols {
-				newData[col] = append(newData[col], df.Data[col][i])
+		}(start, end)
+	}
+	wg.Wait()
+
+	df.Cols = newCols
+	df.Data = newData
+	df.Rows = total
+	return df
+}
+
+// Explode (variadic): explode multiple columns sequentially using preallocation
+func (df *DataFrame) Explode(columns ...string) *DataFrame {
+	for _, col := range columns {
+		df = df.explodePrealloc(col)
+	}
+	return df
+}
+
+
+// ConvertMapKeysToString converts map keys to strings recursively
+func convertMapKeysToString(data map[interface{}]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range data {
+		strKey := fmt.Sprintf("%v", k)
+		switch v := v.(type) {
+		case map[interface{}]interface{}:
+			result[strKey] = convertMapKeysToString(v)
+		default:
+			result[strKey] = v
+		}
+	}
+	return result
+}
+
+// mapToRows converts a nested map to a slice of maps
+func mapToRows(data map[string]interface{}) []map[string]interface{} {
+	rows := []map[string]interface{}{data}
+	// flattenMap(data, "", &rows)
+	return rows
+}
+
+// flattenNestedMap recursively flattens a nested map.
+// It prefixes keys with the given prefix and a dot.
+func flattenNestedMap(m map[string]interface{}, prefix string) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		flatKey := prefix + "." + k
+		switch child := v.(type) {
+		case map[string]interface{}:
+			nested := flattenNestedMap(child, flatKey)
+			for nk, nv := range nested {
+				result[nk] = nv
+			}
+		default:
+			result[flatKey] = v
+		}
+	}
+	return result
+}
+
+// flattenOnce flattens only one level of the nested map,
+// prefixing each key with the given prefix and a dot.
+func flattenOnce(m map[string]interface{}, prefix string) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		result[prefix+"."+k] = v
+	}
+	return result
+}
+
+func (df *DataFrame) KeysToCols(nestedCol string) *DataFrame {
+	if df == nil || df.Rows == 0 {
+		return df
+	}
+	src, ok := df.Data[nestedCol]
+	if !ok {
+		return df
+	}
+
+	// discover keys
+	keySet := make(map[string]struct{})
+	for i := 0; i < df.Rows; i++ {
+		v := src[i]
+		switch t := v.(type) {
+		case map[string]interface{}:
+			for k := range t {
+				keySet[k] = struct{}{}
+			}
+		case map[interface{}]interface{}:
+			m := convertMapKeysToString(t)
+			for k := range m {
+				keySet[k] = struct{}{}
 			}
 		}
 	}
-
-	return &DataFrame{
-		Cols: newCols,
-		Data: newData,
-		Rows: len(newData[newCols[0]]),
-	}
-}
-
-// Cast takes in an existing Column and a desired datatype ("int", "float", "string"),
-// and returns a new Column that casts the value returned by the original Column to that datatype.
-func Cast(col Column, datatype string) Column {
-	return Column{
-		Name: col.Name + "_cast",
-		Fn: func(row map[string]interface{}) interface{} {
-			val := col.Fn(row)
-			switch datatype {
-			case "int":
-				casted, err := toInt(val)
-				if err != nil {
-					fmt.Printf("cast to int error: %v\n", err)
-					return nil
-				}
-				return casted
-			case "float":
-				casted, err := toFloat64(val)
-				if err != nil {
-					fmt.Printf("cast to float error: %v\n", err)
-					return nil
-				}
-				return casted
-			case "string":
-				casted, err := toString(val)
-				if err != nil {
-					fmt.Printf("cast to string error: %v\n", err)
-					return nil
-				}
-				return casted
-			default:
-				fmt.Printf("unsupported cast type: %s\n", datatype)
-				return nil
+	if len(keySet) == 0 {
+		delete(df.Data, nestedCol)
+		kept := df.Cols[:0]
+		for _, c := range df.Cols {
+			if c != nestedCol {
+				kept = append(kept, c)
 			}
-		},
+		}
+		df.Cols = kept
+		return df
 	}
+
+	colSet := make(map[string]bool, len(df.Cols))
+	for _, c := range df.Cols {
+		colSet[c] = true
+	}
+	newCols := make([]string, 0, len(keySet))
+	for k := range keySet {
+		name := nestedCol + "." + k
+		newCols = append(newCols, name)
+		if !colSet[name] {
+			df.Cols = append(df.Cols, name)
+			colSet[name] = true
+		}
+		if _, exists := df.Data[name]; !exists {
+			df.Data[name] = make([]interface{}, df.Rows)
+		}
+	}
+
+	// Parallel second-pass fill
+	w := runtime.GOMAXPROCS(0)
+	var wg sync.WaitGroup
+	chunk := (df.Rows + w - 1) / w
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= df.Rows {
+			break
+		}
+		if end > df.Rows {
+			end = df.Rows
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			for i := s; i < e; i++ {
+				var m map[string]interface{}
+				switch t := src[i].(type) {
+				case map[string]interface{}:
+					m = t
+				case map[interface{}]interface{}:
+					m = convertMapKeysToString(t)
+				default:
+					m = nil
+				}
+				for _, name := range newCols {
+					key := name[len(nestedCol)+1:]
+					if m != nil {
+						df.Data[name][i] = m[key]
+					} else {
+						df.Data[name][i] = nil
+					}
+				}
+			}
+		}(start, end)
+	}
+	wg.Wait()
+
+	// drop original
+	delete(df.Data, nestedCol)
+	kept := df.Cols[:0]
+	for _, c := range df.Cols {
+		if c != nestedCol {
+			kept = append(kept, c)
+		}
+	}
+	df.Cols = kept
+	return df
 }
 
 // withColumnRenamed
@@ -242,141 +774,174 @@ func (df *DataFrame) Rename(column string, newcol string) *DataFrame {
 // 	return
 // }
 
-// fillna
-func (df *DataFrame) FillNA(replacement string) *DataFrame {
-	quotedReplacement := fmt.Sprintf("%q", replacement)
-	for col, values := range df.Data {
-		for i, value := range values {
-			if value == nil {
-				df.Data[col][i] = quotedReplacement
-			} else {
-				switch v := value.(type) {
+// Parallel FillNA
+func (df *DataFrame) FillNA(repl string) *DataFrame {
+	if df == nil || df.Rows == 0 {
+		return df
+	}
+	var wg sync.WaitGroup
+	for _, c := range df.Cols {
+		col := c
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s := df.Data[col]
+			for i, v := range s {
+				switch t := v.(type) {
+				case nil:
+					s[i] = repl
 				case string:
-					if v == "" || strings.ToLower(v) == "null" {
-						df.Data[col][i] = quotedReplacement
+					if t == "" || strings.ToLower(t) == "null" {
+						s[i] = repl
 					}
 				}
 			}
-		}
+		}()
 	}
+	wg.Wait()
 	return df
 }
 
-// toFloat64 attempts to convert an interface{} to a float64.
-func toFloat64(val interface{}) (float64, error) {
-	switch v := val.(type) {
-	case int:
-		return float64(v), nil
-	case int32:
-		return float64(v), nil
-	case int64:
-		return float64(v), nil
-	case float32:
-		return float64(v), nil
-	case float64:
-		return v, nil
-	default:
-		return 0, fmt.Errorf("unsupported numeric type: %T", val)
-	}
-}
 
-// toInt tries to convert the provided value to an int.
-// It supports int, int32, int64, float32, float64, and string.
-func toInt(val interface{}) (int, error) {
-	switch v := val.(type) {
-	case int:
-		return v, nil
-	case int32:
-		return int(v), nil
-	case int64:
-		return int(v), nil
-	case float32:
-		return int(v), nil
-	case float64:
-		return int(v), nil
-	case string:
-		i, err := strconv.Atoi(v)
-		if err != nil {
-			return 0, fmt.Errorf("cannot convert string %q to int: %v", v, err)
-		}
-		return i, nil
-	default:
-		return 0, fmt.Errorf("unsupported type %T", v)
-	}
-}
+// Parallel DropNA (mask + prefix-sum + scatter)
+func (df *DataFrame) DropNA() *DataFrame {
+    if df == nil || df.Rows == 0 {
+        return df
+    }
+    w := runtime.GOMAXPROCS(0)
+    chunk := (df.Rows + w - 1) / w
 
-// toString attempts to convert an interface{} to a string.
-// It supports string, int, int32, int64, float32, and float64.
-func toString(val interface{}) (string, error) {
-	switch v := val.(type) {
-	case string:
-		return v, nil
-	case int:
-		return strconv.Itoa(v), nil
-	case int32:
-		return strconv.Itoa(int(v)), nil
-	case int64:
-		return strconv.FormatInt(v, 10), nil
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32), nil
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64), nil
-	default:
-		return "", fmt.Errorf("unsupported type %T", val)
-	}
-}
+    // Pass 1: build per-shard mask + counts
+    masks := make([][]bool, w)
+    counts := make([]int, w)
+    var wg sync.WaitGroup
 
-// DropDuplicates removes duplicate rows from the DataFrame.
-// If one or more columns are provided, only those columns are used to determine uniqueness.
-// If no columns are provided, the entire row (all columns) is used.
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
+        wg.Add(1)
+        go func(idx, s, e int) {
+            defer wg.Done()
+            mask := make([]bool, e-s)
+            cnt := 0
+            for i := s; i < e; i++ {
+                keep := true
+                for _, c := range df.Cols {
+                    v := df.Data[c][i]
+                    if v == nil { keep = false; break }
+                    if str, ok := v.(string); ok && (str == "" || strings.ToLower(str) == "null") {
+                        keep = false; break
+                    }
+                }
+                if keep { mask[i-s] = true; cnt++ }
+            }
+            masks[idx] = mask
+            counts[idx] = cnt
+        }(g, start, end)
+    }
+    wg.Wait()
+
+    // Prefix-sum counts to offsets
+    total := 0
+    offsets := make([]int, w)
+    for i := 0; i < w; i++ { offsets[i] = total; total += counts[i] }
+
+    // Allocate output once
+    for _, c := range df.Cols {
+        df.Data[c] = make([]interface{}, total)
+    }
+    df.Rows = total
+
+    // Pass 2: scatter
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= df.Rows+counts[g] { break } // defensive
+        if end > df.Rows+counts[g] { end = df.Rows+counts[g] }
+        base := offsets[g]
+        mask := masks[g]
+        wg.Add(1)
+        go func(s, e, outStart int, mask []bool) {
+            defer wg.Done()
+            outIdx := outStart
+            for i := s; i < e; i++ {
+                if mask[i-s] {
+                    for _, c := range df.Cols {
+                        df.Data[c][outIdx] = df.Data[c][i]
+                    }
+                    outIdx++
+                }
+            }
+        }(start, end, base, mask)
+    }
+    wg.Wait()
+    return df
+}
+// Parallel DropDuplicates (shard hash -> merge)
 func (df *DataFrame) DropDuplicates(columns ...string) *DataFrame {
-	// If no columns are specified, use all columns.
-	uniqueCols := columns
-	if len(uniqueCols) == 0 {
-		uniqueCols = df.Cols
-	}
+    if df == nil || df.Rows == 0 {
+        return df
+    }
+    uniqueCols := columns
+    if len(uniqueCols) == 0 { uniqueCols = df.Cols }
 
-	seen := make(map[string]bool)
-	newData := make(map[string][]interface{})
-	for _, col := range df.Cols {
-		newData[col] = []interface{}{}
-	}
+    // Pass 0: compute per-row hash keys in parallel
+    w := runtime.GOMAXPROCS(0)
+    chunk := (df.Rows + w - 1) / w
+    keys := make([]string, df.Rows)
+    var wg sync.WaitGroup
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
+        wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            for i := s; i < e; i++ {
+                keys[i] = rowKeyFast(uniqueCols, df.Data, i)
+            }
+        }(start, end)
+    }
+    wg.Wait()
 
-	for i := 0; i < df.Rows; i++ {
-		// Build a subset row only with the uniqueCols.
-		rowSubset := make(map[string]interface{})
-		for _, col := range uniqueCols {
-			rowSubset[col] = df.Data[col][i]
-		}
+    // Pass 1: build keep mask (first occurrence wins)
+    seen := make(map[string]struct{}, df.Rows)
+    keep := make([]bool, df.Rows)
+    kept := 0
+    for i := 0; i < df.Rows; i++ {
+        k := keys[i]
+        if _, ok := seen[k]; ok {
+            continue
+        }
+        seen[k] = struct{}{}
+        keep[i] = true
+        kept++
+    }
 
-		// Convert the subset row to a JSON string to use as a key.
-		rowBytes, err := json.Marshal(rowSubset)
-		if err != nil {
-			// If marshalling fails, skip this row.
-			continue
-		}
-		rowStr := string(rowBytes)
+    // Pass 2: prefix-sum positions
+    pos := make([]int, df.Rows+1)
+    for i := 0; i < df.Rows; i++ {
+        pos[i+1] = pos[i]
+        if keep[i] { pos[i+1]++ }
+    }
 
-		if !seen[rowStr] {
-			seen[rowStr] = true
-			// Append the full row (all columns) to the new data.
-			for _, col := range df.Cols {
-				newData[col] = append(newData[col], df.Data[col][i])
-			}
-		}
-	}
-
-	// Update the DataFrame with the new data.
-	df.Data = newData
-	if len(df.Cols) > 0 {
-		df.Rows = len(newData[df.Cols[0]])
-	} else {
-		df.Rows = 0
-	}
-
-	return df
+    // Allocate and scatter
+    for _, c := range df.Cols {
+        src := df.Data[c]
+        dst := make([]interface{}, kept)
+        for i := 0; i < df.Rows; i++ {
+            if keep[i] {
+                dst[pos[i]] = src[i]
+            }
+        }
+        df.Data[c] = dst
+    }
+    df.Rows = kept
+    return df
 }
-
 // Select returns a new DataFrame containing only the specified columns.
 func (df *DataFrame) Select(columns ...string) *DataFrame {
 	newDF := &DataFrame{
@@ -396,56 +961,149 @@ func (df *DataFrame) Select(columns ...string) *DataFrame {
 	return newDF
 }
 
-// GroupBy groups the DataFrame rows by the value produced by groupCol.
-// For each group, it applies each provided Aggregation on the values
-// from the corresponding column.
-// The new DataFrame has a "group" column for the grouping key and one column per Aggregation.
+// GroupBy groups the DataFrame rows by the value produced by groupcol.
+// For each group, it applies each provided Aggregation on the values from the corresponding column.
+// Parallel sharded build + merge; then aggregate.
 func (df *DataFrame) GroupBy(groupcol string, aggs ...Aggregation) *DataFrame {
-	// Build groups. The key is the groupCol result, and the value is a map: column → slice of values.
-	groups := make(map[interface{}]map[string][]interface{})
+	if df == nil || df.Rows == 0 {
+		return &DataFrame{Cols: []string{groupcol}, Data: map[string][]interface{}{groupcol: {}}, Rows: 0}
+	}
+	// shard in parallel: key -> (col -> []interface{})
+	w := runtime.GOMAXPROCS(0)
+	chunk := (df.Rows + w - 1) / w
+	type groupMap = map[interface{}]map[string][]interface{}
+	shards := make([]groupMap, w)
 
-	// Iterate over each row and group them.
-	for i := 0; i < df.Rows; i++ {
-		// Build the row as a map.
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
+	var wg sync.WaitGroup
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= df.Rows {
+			break
 		}
-		key := row[groupcol]
-		if _, ok := groups[key]; !ok {
-			groups[key] = make(map[string][]interface{})
-			// Initialize slices for each aggregation target.
-			for _, agg := range aggs {
-				groups[key][agg.ColumnName] = []interface{}{}
+		if end > df.Rows {
+			end = df.Rows
+		}
+		wg.Add(1)
+		go func(idx, s, e int) {
+			defer wg.Done()
+			local := make(groupMap)
+			row := make(map[string]interface{}, len(df.Cols))
+			for i := s; i < e; i++ {
+				for _, c := range df.Cols {
+					row[c] = df.Data[c][i]
+				}
+				key := row[groupcol]
+				dst, ok := local[key]
+				if !ok {
+					dst = make(map[string][]interface{}, len(aggs))
+					for _, agg := range aggs {
+						dst[agg.ColumnName] = make([]interface{}, 0, 8)
+					}
+					local[key] = dst
+				}
+				for _, agg := range aggs {
+					if v, ok := row[agg.ColumnName]; ok {
+						dst[agg.ColumnName] = append(dst[agg.ColumnName], v)
+					}
+				}
 			}
-		}
-		// Append each aggregation target value.
-		for _, agg := range aggs {
-			val, ok := row[agg.ColumnName]
-			if ok {
-				groups[key][agg.ColumnName] = append(groups[key][agg.ColumnName], val)
+			shards[idx] = local
+		}(g, start, end)
+	}
+	wg.Wait()
+
+	// merge shards
+	master := make(groupMap)
+	for _, sh := range shards {
+		for key, cols := range sh {
+			dst, ok := master[key]
+			if !ok {
+				dst = make(map[string][]interface{}, len(cols))
+				for name := range cols {
+					dst[name] = make([]interface{}, 0, len(cols[name]))
+				}
+				master[key] = dst
+			}
+			for name, vals := range cols {
+				master[key][name] = append(master[key][name], vals...)
 			}
 		}
 	}
 
-	// Prepare the new DataFrame.
+	// // Build output columns: group key + one per agg target (same names as input cols)
+	// newCols := []string{groupcol}
+	// for _, agg := range aggs {
+	//     newCols = append(newCols, agg.ColumnName)
+	// }
+	// newData := make(map[string][]interface{}, len(newCols))
+	// for _, c := range newCols {
+	//     newData[c] = []interface{}{}
+	// }
+
+	// // Emit one row per group (order is map iteration order; sort keys if you need determinism)
+	// for key, colVals := range master {
+	//     newData[groupcol] = append(newData[groupcol], key)
+	//     for _, agg := range aggs {
+	//         newData[agg.ColumnName] = append(newData[agg.ColumnName], agg.Fn(colVals[agg.ColumnName]))
+	//     }
+	// }
+
 	newCols := []string{groupcol}
-	// Use the target column names for aggregated data.
 	for _, agg := range aggs {
 		newCols = append(newCols, agg.ColumnName)
 	}
-
-	newData := make(map[string][]interface{})
-	for _, col := range newCols {
-		newData[col] = []interface{}{}
+	newData := make(map[string][]interface{}, len(newCols))
+	for _, c := range newCols {
+		newData[c] = make([]interface{}, 0, len(master))
 	}
 
-	// Generate one aggregated row per group.
-	for key, groupValues := range groups {
-		newData[groupcol] = append(newData[groupcol], key)
-		for _, agg := range aggs {
-			aggregatedValue := agg.Fn(groupValues[agg.ColumnName])
-			newData[agg.ColumnName] = append(newData[agg.ColumnName], aggregatedValue)
+	// Extract keys (for deterministic order you could sort later)
+	keys := make([]interface{}, 0, len(master))
+	for k := range master {
+		keys = append(keys, k)
+	}
+
+	// Parallel aggregate per key
+	w2 := runtime.GOMAXPROCS(0)
+	chunk2 := (len(keys) + w2 - 1) / w2
+	type rowAgg struct {
+		key  interface{}
+		vals []interface{} // len = 1 + len(aggs)
+	}
+	rowsAgg := make([]rowAgg, len(keys))
+	var wg2 sync.WaitGroup
+	for g := 0; g < w2; g++ {
+		s := g * chunk2
+		e := s + chunk2
+		if s >= len(keys) {
+			break
+		}
+		if e > len(keys) {
+			e = len(keys)
+		}
+		wg2.Add(1)
+		go func(s, e int) {
+			defer wg2.Done()
+			for i := s; i < e; i++ {
+				k := keys[i]
+				cols := master[k]
+				ra := rowAgg{key: k, vals: make([]interface{}, 1+len(aggs))}
+				ra.vals[0] = k
+				for j, agg := range aggs {
+					ra.vals[1+j] = agg.Fn(cols[agg.ColumnName])
+				}
+				rowsAgg[i] = ra
+			}
+		}(s, e)
+	}
+	wg2.Wait()
+
+	// Assemble
+	for _, r := range rowsAgg {
+		newData[groupcol] = append(newData[groupcol], r.vals[0])
+		for j, agg := range aggs {
+			newData[agg.ColumnName] = append(newData[agg.ColumnName], r.vals[1+j])
 		}
 	}
 
@@ -459,189 +1117,203 @@ func (df *DataFrame) GroupBy(groupcol string, aggs ...Aggregation) *DataFrame {
 // Join performs a join between the receiver (left DataFrame) and the provided right DataFrame.
 // leftOn is the join key column in the left DataFrame and rightOn is the join key column in the right DataFrame.
 // joinType can be "inner", "left", "right", or "outer". It returns a new joined DataFrame.
+// Parallel Join (index build + row assembly)
 func (left *DataFrame) Join(right *DataFrame, leftOn, rightOn, joinType string) *DataFrame {
-	// Build new column names: left columns plus right columns (skipping duplicate join key from right).
-	newCols := make([]string, 0)
-	newCols = append(newCols, left.Cols...)
-	for _, col := range right.Cols {
-		if col == rightOn {
-			continue
-		}
-		newCols = append(newCols, col)
+	if left == nil || right == nil {
+		return nil
 	}
-
-	// Initialize new data structure.
-	newData := make(map[string][]interface{})
-	for _, col := range newCols {
-		newData[col] = []interface{}{}
-	}
-
-	// Build index maps:
-	// leftIndex: maps join key -> slice of row indices in left.
-	leftIndex := make(map[interface{}][]int)
-	for i := 0; i < left.Rows; i++ {
-		key := left.Data[leftOn][i]
-		leftIndex[key] = append(leftIndex[key], i)
-	}
-	// rightIndex: maps join key -> slice of row indices in right.
-	rightIndex := make(map[interface{}][]int)
-	for j := 0; j < right.Rows; j++ {
-		key := right.Data[rightOn][j]
-		rightIndex[key] = append(rightIndex[key], j)
-	}
-
-	// A helper to add a combined row.
-	// If lIdx or rIdx is nil, the respective values are set to nil.
-	addRow := func(lIdx *int, rIdx *int) {
-		// Append values from left.
-		for _, col := range left.Cols {
-			var val interface{}
-			if lIdx != nil {
-				val = left.Data[col][*lIdx]
-			} else {
-				val = nil
-			}
-			newData[col] = append(newData[col], val)
-		}
-		// Append values from right (skip join key since already added from left).
-		for _, col := range right.Cols {
-			if col == rightOn {
-				continue
-			}
-			var val interface{}
-			if rIdx != nil {
-				val = right.Data[col][*rIdx]
-			} else {
-				val = nil
-			}
-			newData[col] = append(newData[col], val)
+	newCols := append([]string{}, left.Cols...)
+	for _, c := range right.Cols {
+		if c != rightOn {
+			newCols = append(newCols, c)
 		}
 	}
+	leftIndex := make(map[interface{}][]int, left.Rows)
+	rightIndex := make(map[interface{}][]int, right.Rows)
+	// Build indices in parallel
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < left.Rows; i++ {
+			k := left.Data[leftOn][i]
+			leftIndex[k] = append(leftIndex[k], i)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < right.Rows; i++ {
+			k := right.Data[rightOn][i]
+			rightIndex[k] = append(rightIndex[k], i)
+		}
+	}()
+	wg.Wait()
 
-	// Perform join based on joinType.
+	type pair struct{ l, r *int }
+	pairs := []pair{}
 	switch joinType {
 	case "inner", "left", "outer":
-		// Process all keys from left.
-		for key, leftRows := range leftIndex {
-			rightRows, exists := rightIndex[key]
-			if exists {
-				// For matching keys, add all combinations.
-				for _, li := range leftRows {
-					for _, ri := range rightRows {
-						addRow(&li, &ri)
+		for k, lRows := range leftIndex {
+			rRows, ok := rightIndex[k]
+			if ok {
+				for _, li := range lRows {
+					for _, ri := range rRows {
+						liCopy, riCopy := li, ri
+						pairs = append(pairs, pair{&liCopy, &riCopy})
 					}
 				}
-			} else {
-				// No matching right rows.
-				if joinType == "left" || joinType == "outer" {
-					for _, li := range leftRows {
-						addRow(&li, nil)
-					}
+			} else if joinType == "left" || joinType == "outer" {
+				for _, li := range lRows {
+					liCopy := li
+					pairs = append(pairs, pair{&liCopy, nil})
 				}
 			}
 		}
-		// For "outer" join, add rows from right that weren't matched by left.
 		if joinType == "outer" {
-			for key, rightRows := range rightIndex {
-				if _, exists := leftIndex[key]; !exists {
-					for _, ri := range rightRows {
-						addRow(nil, &ri)
+			for k, rRows := range rightIndex {
+				if _, ok := leftIndex[k]; !ok {
+					for _, ri := range rRows {
+						riCopy := ri
+						pairs = append(pairs, pair{nil, &riCopy})
 					}
 				}
 			}
 		}
 	case "right":
-		// Process all keys from right.
-		for key, rightRows := range rightIndex {
-			leftRows, exists := leftIndex[key]
-			if exists {
-				for _, li := range leftRows {
-					for _, ri := range rightRows {
-						addRow(&li, &ri)
+		for k, rRows := range rightIndex {
+			lRows, ok := leftIndex[k]
+			if ok {
+				for _, li := range lRows {
+					for _, ri := range rRows {
+						liCopy, riCopy := li, ri
+						pairs = append(pairs, pair{&liCopy, &riCopy})
 					}
 				}
 			} else {
-				for _, ri := range rightRows {
-					addRow(nil, &ri)
+				for _, ri := range rRows {
+					riCopy := ri
+					pairs = append(pairs, pair{nil, &riCopy})
 				}
 			}
 		}
 	default:
-		fmt.Printf("Unsupported join type: %s\n", joinType)
+		fmt.Printf("Unsupported join type %s\n", joinType)
 		return nil
 	}
 
-	// Determine joined row count.
-	nRows := 0
-	if len(newCols) > 0 {
-		nRows = len(newData[newCols[0]])
+	out := make(map[string][]interface{}, len(newCols))
+	for _, c := range newCols {
+		out[c] = make([]interface{}, len(pairs))
 	}
 
-	return &DataFrame{
-		Cols: newCols,
-		Data: newData,
-		Rows: nRows,
+	// Parallel materialize pairs
+	w := runtime.GOMAXPROCS(0)
+	chunk := (len(pairs) + w - 1) / w
+	wg = sync.WaitGroup{}
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= len(pairs) {
+			break
+		}
+		if end > len(pairs) {
+			end = len(pairs)
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			for idx := s; idx < e; idx++ {
+				p := pairs[idx]
+				// left columns
+				for _, c := range left.Cols {
+					if p.l != nil {
+						out[c][idx] = left.Data[c][*p.l]
+					} else {
+						out[c][idx] = nil
+					}
+				}
+				// right columns (skip rightOn)
+				for _, c := range right.Cols {
+					if c == rightOn {
+						continue
+					}
+					if p.r != nil {
+						out[c][idx] = right.Data[c][*p.r]
+					} else {
+						out[c][idx] = nil
+					}
+				}
+			}
+		}(start, end)
 	}
+	wg.Wait()
+
+	return &DataFrame{Cols: newCols, Data: out, Rows: len(pairs)}
 }
 
 // Union appends the rows of the other DataFrame to the receiver.
 // It returns a new DataFrame that contains the union (vertical concatenation)
 // of rows. Columns missing in one DataFrame are filled with nil.
+// Parallel Union (two-phase copy)
 func (df *DataFrame) Union(other *DataFrame) *DataFrame {
-	// Build the union of columns.
-	colSet := make(map[string]bool)
+	if df == nil {
+		return other
+	}
+	if other == nil {
+		return df
+	}
+	colSet := make(map[string]struct{})
 	newCols := []string{}
-	// Add columns from the receiver.
-	for _, col := range df.Cols {
-		if !colSet[col] {
-			newCols = append(newCols, col)
-			colSet[col] = true
+	for _, c := range df.Cols {
+		if _, ok := colSet[c]; !ok {
+			colSet[c] = struct{}{}
+			newCols = append(newCols, c)
 		}
 	}
-	// Add columns from the other DataFrame.
-	for _, col := range other.Cols {
-		if !colSet[col] {
-			newCols = append(newCols, col)
-			colSet[col] = true
+	for _, c := range other.Cols {
+		if _, ok := colSet[c]; !ok {
+			colSet[c] = struct{}{}
+			newCols = append(newCols, c)
 		}
 	}
-
-	// Initialize new data map.
-	newData := make(map[string][]interface{})
-	for _, col := range newCols {
-		newData[col] = []interface{}{}
+	total := df.Rows + other.Rows
+	newData := make(map[string][]interface{}, len(newCols))
+	for _, c := range newCols {
+		newData[c] = make([]interface{}, total)
 	}
 
-	// Helper to append a row from a given DataFrame.
-	appendRow := func(source *DataFrame, rowIndex int) {
-		for _, col := range newCols {
-			// If the source DataFrame has this column, use its value.
-			if sourceVal, ok := source.Data[col]; ok {
-				newData[col] = append(newData[col], sourceVal[rowIndex])
+	// Limit parallelism to GOMAXPROCS
+	workers := runtime.GOMAXPROCS(0)
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for _, c := range newCols {
+		cLocal := c
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			dst := newData[cLocal]
+			// copy first df
+			if colData, ok := df.Data[cLocal]; ok {
+				copy(dst[0:df.Rows], colData)
 			} else {
-				// Otherwise, fill with nil.
-				newData[col] = append(newData[col], nil)
+				for i := 0; i < df.Rows; i++ {
+					dst[i] = nil
+				}
 			}
-		}
+			// copy second df
+			if colData, ok := other.Data[cLocal]; ok {
+				copy(dst[df.Rows:total], colData)
+			} else {
+				for i := df.Rows; i < total; i++ {
+					dst[i] = nil
+				}
+			}
+		}()
 	}
-
-	// Append rows from the receiver.
-	for i := 0; i < df.Rows; i++ {
-		appendRow(df, i)
-	}
-	// Append rows from the other DataFrame.
-	for j := 0; j < other.Rows; j++ {
-		appendRow(other, j)
-	}
-
-	// Total rows is the sum of both dataframes' row counts.
-	nRows := df.Rows + other.Rows
-
-	return &DataFrame{
-		Cols: newCols,
-		Data: newData,
-		Rows: nRows,
-	}
+	wg.Wait()
+	return &DataFrame{Cols: newCols, Data: newData, Rows: total}
 }
 
 // Drop removes the specified columns from the DataFrame.
@@ -672,67 +1344,68 @@ func (df *DataFrame) Drop(columns ...string) *DataFrame {
 // OrderBy sorts the DataFrame by the specified column.
 // If asc is true, the sort is in ascending order; otherwise, descending.
 // It returns a pointer to the modified DataFrame.
+// OrderBy sorts the DataFrame by the specified column.
+// Parallelize the column rebuild after computing sorted indices.
 func (df *DataFrame) OrderBy(column string, asc bool) *DataFrame {
-	// Check that the column exists.
-	colData, ok := df.Data[column]
-	if !ok {
-		fmt.Printf("column %q does not exist\n", column)
-		return df
-	}
+    colData, ok := df.Data[column]
+    if !ok {
+        fmt.Printf("column %q does not exist\n", column)
+        return df
+    }
+    indices := make([]int, df.Rows)
+    for i := 0; i < df.Rows; i++ { indices[i] = i }
 
-	// Build a slice of row indices.
-	indices := make([]int, df.Rows)
-	for i := 0; i < df.Rows; i++ {
-		indices[i] = i
-	}
+    // Precompute keys once, then sort indices using them.
+    isString := true
+    for i := 0; i < df.Rows; i++ {
+        if v := colData[i]; v != nil {
+            if _, ok := v.(string); !ok { isString = false; break }
+        }
+    }
 
-	// Sort the indices based on the values in the target column.
-	sort.Slice(indices, func(i, j int) bool {
-		a := colData[indices[i]]
-		b := colData[indices[j]]
+    if isString {
+        keys := make([]string, df.Rows)
+        for i := 0; i < df.Rows; i++ {
+            if s, ok := colData[i].(string); ok { keys[i] = s }
+        }
+        sort.SliceStable(indices, func(i, j int) bool {
+            ai, aj := keys[indices[i]], keys[indices[j]]
+            if asc { return ai < aj }
+            return ai > aj
+        })
+    } else {
+        keys := make([]float64, df.Rows)
+        for i := 0; i < df.Rows; i++ {
+            f, _ := toFloat64(colData[i])
+            keys[i] = f
+        }
+        sort.SliceStable(indices, func(i, j int) bool {
+            ai, aj := keys[indices[i]], keys[indices[j]]
+            if asc { return ai < aj }
+            return ai > aj
+        })
+    }
 
-		// Attempt type assertion for strings.
-		aStr, aOk := a.(string)
-		bStr, bOk := b.(string)
-		if aOk && bOk {
-			if asc {
-				return aStr < bStr
-			}
-			return aStr > bStr
-		}
+    newData := make(map[string][]interface{}, len(df.Cols))
+    var wg sync.WaitGroup
+    var mu sync.Mutex
+    w := runtime.GOMAXPROCS(0)
+    sem := make(chan struct{}, w)
+    for _, col := range df.Cols {
+        c := col
+        wg.Add(1); sem <- struct{}{}
+        go func() {
+            defer wg.Done(); defer func(){ <-sem }()
+            orig := df.Data[c]
+            sorted := make([]interface{}, df.Rows)
+            for i, idx := range indices { sorted[i] = orig[idx] }
+            mu.Lock()
+            newData[c] = sorted
+            mu.Unlock()
+        }()
+    }
+    wg.Wait()
 
-		// Try converting to float64.
-		aFloat, errA := toFloat64(a)
-		bFloat, errB := toFloat64(b)
-		if errA != nil || errB != nil {
-			// Fallback to string comparison if conversion fails.
-			aFallback := fmt.Sprintf("%v", a)
-			bFallback := fmt.Sprintf("%v", b)
-			if asc {
-				return aFallback < bFallback
-			}
-			return aFallback > bFallback
-		}
-
-		if asc {
-			return aFloat < bFloat
-		}
-		return aFloat > bFloat
-	})
-
-	// Reorder each column according to the sorted indices.
-	newData := make(map[string][]interface{})
-	for _, col := range df.Cols {
-		origVals := df.Data[col]
-		sortedVals := make([]interface{}, df.Rows)
-		for i, idx := range indices {
-			sortedVals[i] = origVals[idx]
-		}
-		newData[col] = sortedVals
-	}
-
-	// Update the DataFrame.
-	df.Data = newData
-
-	return df
+    df.Data = newData
+    return df
 }

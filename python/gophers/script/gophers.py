@@ -1,72 +1,102 @@
-from ctypes import cdll, c_char_p, c_int
+from ctypes import cdll, c_int, c_void_p, string_at #use cffi instead of ctypes? needed for concurrency, ctypes does not release the GIL!
 import os
+import platform
 import json
 from IPython.display import HTML, display
 
+# _here = os.path.dirname(__file__)
 path = os.path.dirname(os.path.realpath(__file__))
-gophers = cdll.LoadLibrary(path + '/go_module/gophers.so')
+plat = platform.system().lower()
+# arch = platform.machine().lower()
+# map arch names (e.g. 'x86_64' -> 'amd64')
+# if arch == 'x86_64': arch = 'amd64'
+# gophers = os.path.join(_here, f'{plat}', f'{plat}_{arch}', 'gophers.so')
+gophers = cdll.LoadLibrary(path + f'/go_module/{plat}/gophers_py.so')
 # Set restype for functions at module load time
-gophers.ReadJSON.restype = c_char_p
-gophers.ReadNDJSON.restype = c_char_p
-gophers.ReadCSV.restype = c_char_p
-gophers.ReadYAML.restype = c_char_p
-gophers.GetAPIJSON.restype = c_char_p
-gophers.Show.restype = c_char_p
-gophers.Head.restype = c_char_p
-gophers.Tail.restype = c_char_p
-gophers.Vertical.restype = c_char_p
-gophers.ColumnWrapper.restype = c_char_p
-gophers.ColumnsWrapper.restype = c_char_p
+gophers.ReadJSON.restype = c_void_p
+gophers.ReadNDJSON.restype = c_void_p
+gophers.ReadCSV.restype = c_void_p
+gophers.ReadHTML.restype = c_void_p
+gophers.ReadYAML.restype = c_void_p
+gophers.ReadParquet.restype = c_void_p
+gophers.GetAPI.restype = c_void_p
+gophers.Show.restype = c_void_p
+gophers.Head.restype = c_void_p
+gophers.Tail.restype = c_void_p
+gophers.Vertical.restype = c_void_p
+gophers.ColumnWrapper.restype = c_void_p
+gophers.ColumnsWrapper.restype = c_void_p
 gophers.CountWrapper.restype = c_int
 gophers.CountDuplicatesWrapper.restype = c_int
 gophers.CountDistinctWrapper.restype = c_int
-gophers.CollectWrapper.restype = c_char_p
-gophers.DisplayBrowserWrapper.restype = c_char_p
-gophers.DisplayWrapper.restype = c_char_p
-gophers.DisplayToFileWrapper.restype = c_char_p
-gophers.DisplayHTMLWrapper.restype = c_char_p
-gophers.DisplayChartWrapper.restype = c_char_p
-gophers.BarChartWrapper.restype = c_char_p
-gophers.ColumnChartWrapper.restype = c_char_p
-gophers.StackedBarChartWrapper.restype = c_char_p
-gophers.StackedPercentChartWrapper.restype = c_char_p
-gophers.GroupByWrapper.restype = c_char_p
-gophers.ExplodeWrapper.restype = c_char_p
-gophers.FilterWrapper.restype = c_char_p
-gophers.SelectWrapper.restype = c_char_p
-gophers.UnionWrapper.restype = c_char_p
-gophers.JoinWrapper.restype = c_char_p
-gophers.SortWrapper.restype = c_char_p
-gophers.FilterWrapper.restype = c_char_p
-gophers.OrderByWrapper.restype = c_char_p
-gophers.DropWrapper.restype = c_char_p
-gophers.DropDuplicatesWrapper.restype = c_char_p
-gophers.DropNAWrapper.restype = c_char_p
-gophers.FillNAWrapper.restype = c_char_p
-gophers.RenameWrapper.restype = c_char_p
-gophers.GroupByWrapper.restype = c_char_p
-gophers.AggWrapper.restype = c_char_p
-gophers.SumWrapper.restype = c_char_p
-gophers.MaxWrapper.restype = c_char_p
-gophers.MinWrapper.restype = c_char_p
-gophers.MedianWrapper.restype = c_char_p
-gophers.MeanWrapper.restype = c_char_p
-gophers.ModeWrapper.restype = c_char_p
-gophers.UniqueWrapper.restype = c_char_p
-gophers.FirstWrapper.restype = c_char_p
-gophers.CreateReportWrapper.restype = c_char_p
-gophers.OpenReportWrapper.restype = c_char_p
-gophers.SaveReportWrapper.restype = c_char_p
-gophers.AddPageWrapper.restype = c_char_p
-gophers.AddHTMLWrapper.restype = c_char_p
-gophers.AddDataframeWrapper.restype = c_char_p
-gophers.AddChartWrapper.restype = c_char_p
-gophers.AddHeadingWrapper.restype = c_char_p
-gophers.AddTextWrapper.restype = c_char_p
-gophers.AddSubTextWrapper.restype = c_char_p
-gophers.AddBulletsWrapper.restype = c_char_p
-gophers.ToCSVFileWrapper.restype = c_char_p
+gophers.CollectWrapper.restype = c_void_p
+gophers.DisplayBrowserWrapper.restype = c_void_p
+gophers.DisplayWrapper.restype = c_void_p
+gophers.DisplayToFileWrapper.restype = c_void_p
+gophers.DisplayChartWrapper.restype = c_void_p
+gophers.BarChartWrapper.restype = c_void_p
+gophers.ColumnChartWrapper.restype = c_void_p
+gophers.StackedBarChartWrapper.restype = c_void_p
+gophers.StackedPercentChartWrapper.restype = c_void_p
+gophers.GroupByWrapper.restype = c_void_p
+gophers.Explode.restype = c_void_p
+gophers.FilterWrapper.restype = c_void_p
+gophers.SelectWrapper.restype = c_void_p
+gophers.UnionWrapper.restype = c_void_p
+gophers.JoinWrapper.restype = c_void_p
+gophers.SortWrapper.restype = c_void_p
+gophers.FilterWrapper.restype = c_void_p
+gophers.OrderByWrapper.restype = c_void_p
+gophers.DropWrapper.restype = c_void_p
+gophers.DropDuplicatesWrapper.restype = c_void_p
+gophers.DropNAWrapper.restype = c_void_p
+gophers.FillNAWrapper.restype = c_void_p
+gophers.RenameWrapper.restype = c_void_p
+gophers.GroupByWrapper.restype = c_void_p
+gophers.AggWrapper.restype = c_void_p
+gophers.SumWrapper.restype = c_void_p
+gophers.MaxWrapper.restype = c_void_p
+gophers.MinWrapper.restype = c_void_p
+gophers.MedianWrapper.restype = c_void_p
+gophers.MeanWrapper.restype = c_void_p
+gophers.ModeWrapper.restype = c_void_p
+gophers.UniqueWrapper.restype = c_void_p
+gophers.FirstWrapper.restype = c_void_p
+gophers.CreateReportWrapper.restype = c_void_p
+gophers.OpenReportWrapper.restype = c_void_p
+gophers.SaveReportWrapper.restype = c_void_p
+gophers.AddPageWrapper.restype = c_void_p
+gophers.AddHTMLWrapper.restype = c_void_p
+gophers.AddDataframeWrapper.restype = c_void_p
+gophers.AddChartWrapper.restype = c_void_p
+gophers.AddHeadingWrapper.restype = c_void_p
+gophers.AddTextWrapper.restype = c_void_p
+gophers.AddSubTextWrapper.restype = c_void_p
+gophers.AddBulletsWrapper.restype = c_void_p
+gophers.ToCSVFile.restype = c_void_p
+gophers.ToJSON.restype = c_void_p
+gophers.Flatten.restype = c_void_p
+gophers.StringArrayConvert.restype = c_void_p
+gophers.KeysToCols.restype = c_void_p
+gophers.ReadSqlite.restype = c_void_p
+gophers.WriteSqlite.restype = c_void_p
+gophers.PostAPI.restype = c_void_p
+gophers.GetSqliteSchema.restype = c_void_p
+gophers.GetSqliteTables.restype = c_void_p
+gophers.Clone.restype = c_void_p
+gophers.Free.argtypes = [c_void_p]
+gophers.Free.restype = None
 
+def _cstr(ptr_or_func, *args):
+    """Accepts either a ctypes function and its args, or a raw pointer.
+       Calls the function if callable, copies the C string, then frees it."""
+    ptr = ptr_or_func(*args) if callable(ptr_or_func) else ptr_or_func
+    if not ptr:
+        return ""
+    try:
+        return string_at(ptr).decode("utf-8", "replace")
+    finally:
+        gophers.Free(ptr)
 
 class ColumnExpr:
     def __init__(self, expr):
@@ -76,31 +106,32 @@ class ColumnExpr:
         return json.dumps(self.expr)
 
     def Help(self):
-        print("Column Help:")
-        print("\tIsNull()")
-        print("\tIsNotNull()")
-        print("\tIsIn(values)")
-        print("\tIsBetween(lower, upper)")
-        print("\tLike(pattern)")
-        print("\tNotLike(pattern)")
-        print("\tStartsWith(prefix)")
-        print("\tEndsWith(suffix)")
-        print("\tContains(substr)")
-        print("\tNotContains(substr)")
-        print("\tReplace(old, new)")
-        print("\tTrim()")
-        print("\tLTrim()")
-        print("\tRTrim()")
-        print("\tLower()")
-        print("\tUpper()")
-        print("\tTitle()")
-        print("\tSubstr(start, length)")
-        print("\tGt(other)")
-        print("\tLt(other)")
-        print("\tGe(other)")
-        print("\tLe(other)")
-        print("\tEq(other)")
-        print("\tNe(other)")
+        print("""Column Help:
+    Contains(substr)
+    EndsWith(suffix)
+    Eq(other)
+    Ge(other)
+    Gt(other)
+    HtmlUnescape()
+    IsBetween(lower, upper)
+    IsIn(values)
+    IsNotNull()
+    IsNull()
+    Le(other)
+    Like(pattern)
+    Lower()
+    Lt(other)
+    LTrim()
+    Ne(other)
+    NotContains(substr)
+    NotLike(pattern)
+    Replace(old, new)
+    RTrim()
+    StartsWith(prefix)
+    Substr(start, length)
+    Title()
+    Trim()
+    Upper()""")
         
     def __repr__(self):
         return f"ColumnExpr({self.expr})"
@@ -153,29 +184,40 @@ class ColumnExpr:
     def Upper(self):
         return ColumnExpr({ "type": "upper", "expr": self.expr })
     
+    def HtmlUnescape(self):
+        return ColumnExpr({ "type": "html_unescape", "expr": self.expr })
     # def Title(self):
     #     return ColumnExpr({ "type": "title", "expr": self.expr })
     
     # def Substr(self, start, length):
     #     return ColumnExpr({ "type": "substr", "expr": self.expr, "start": start, "length": length })
     
+    def _unwrap(self, v):
+        if isinstance(v, ColumnExpr):
+            return v.expr
+        if isinstance(v, list):
+            return [self._unwrap(x) for x in v]
+        if isinstance(v, tuple):
+            return [self._unwrap(x) for x in v]
+        return v
+    
     def Gt(self, other):
-        return ColumnExpr({ "type": "gt", "left": self.expr, "right": other })
+        return ColumnExpr({ "type": "gt", "left": self.expr, "right": self._unwrap(other) })
     
     def Lt(self, other):
-        return ColumnExpr({ "type": "lt", "left": self.expr, "right": other })
+        return ColumnExpr({ "type": "lt", "left": self.expr, "right": self._unwrap(other) })
     
     def Ge(self, other):
-        return ColumnExpr({ "type": "ge", "left": self.expr, "right": other })
+        return ColumnExpr({ "type": "ge", "left": self.expr, "right": self._unwrap(other) })
     
     def Le(self, other):
-        return ColumnExpr({ "type": "le", "left": self.expr, "right": other })
+        return ColumnExpr({ "type": "le", "left": self.expr, "right": self._unwrap(other) })
     
     def Eq(self, other):
-        return ColumnExpr({ "type": "eq", "left": self.expr, "right": other })
+        return ColumnExpr({ "type": "eq", "left": self.expr, "right": self._unwrap(other) })
     
     def Ne(self, other):
-        return ColumnExpr({ "type": "ne", "left": self.expr, "right": other })
+        return ColumnExpr({ "type": "ne", "left": self.expr, "right": self._unwrap(other) })
 
 # class SplitColumn:
 #     """Helper for function-based column operations.
@@ -197,35 +239,35 @@ class Report:
         self.report_json = report_json
 
     def Help(self):
-        print("Report Help:")
-        print("\tOpen()")
-        print("\tSave(filename)")
-        print("\tAddPage(name)")
-        print("\tAddHTML(page, text)")
-        print("\tAddDataframe(page, df)")
-        print("\tAddChart(page, chart)")
-        print("\tAddHeading(page, text, size)")
-        print("\tAddText(page, text)")
-        print("\tAddSubText(page, text)")
-        print("\tAddBullets(page, bullets)")
-
+        print("""Report Help:
+    AddBullets(page, bullets)
+    AddChart(page, chart)
+    AddDataframe(page, df)
+    AddHeading(page, text, size)
+    AddHTML(page, text)
+    AddPage(name)
+    AddSubText(page, text)
+    AddText(page, text)
+    Open()
+    Save(filename)""")
+        
     def Open(self):
         # print("")
-        print("printing open report:"+self.report_json)
+        # print("printing open report:"+self.report_json)
 
-        err = gophers.OpenReportWrapper(self.report_json.encode('utf-8')).decode('utf-8')
+        err = _cstr(gophers.OpenReportWrapper(self.report_json.encode('utf-8')))
         if err != "success":
             print("Error opening report:", err)
         return self
 
     def Save(self, filename):
-        err = gophers.SaveReportWrapper(self.report_json.encode('utf-8'), filename.encode('utf-8')).decode('utf-8')
+        err = _cstr(gophers.SaveReportWrapper(self.report_json.encode('utf-8'), filename.encode('utf-8')))
         if err:
             print("Error saving report:", err)
         return self
 
     def AddPage(self, name):
-        result = gophers.AddPageWrapper(self.report_json.encode('utf-8'), name.encode('utf-8')).decode('utf-8')
+        result = _cstr(gophers.AddPageWrapper(self.report_json.encode('utf-8'), name.encode('utf-8')))
         if result:
             self.report_json = result
             # print("AddPage: Updated report JSON:", self.report_json)
@@ -234,7 +276,7 @@ class Report:
         return self
 
     def AddHTML(self, page, text):
-        result = gophers.AddHTMLWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = _cstr(gophers.AddHTMLWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')))
         if result:
             self.report_json = result
         else:
@@ -242,7 +284,7 @@ class Report:
         return self
 
     def AddDataframe(self, page, df):
-        result = gophers.AddDataframeWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), df.df_json.encode('utf-8')).decode('utf-8')
+        result = _cstr(gophers.AddDataframeWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), df.df_json.encode('utf-8')))
         if result:
             self.report_json = result
         else:
@@ -253,11 +295,11 @@ class Report:
         chart_json = chart.html
         # print(f"Chart JSON: {chart_json}")
 
-        result = gophers.AddChartWrapper(
+        result = _cstr(gophers.AddChartWrapper(
             self.report_json.encode('utf-8'),
             page.encode('utf-8'),
             chart_json.encode('utf-8')
-        ).decode('utf-8')
+        ))
 
         if result:
             # print(f"Chart added successfully, result: {result[:100]}...")
@@ -266,7 +308,7 @@ class Report:
             print(f"Error adding chart, empty result")
         return self
     def AddHeading(self, page, text, size):
-        result = gophers.AddHeadingWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8'), size).decode('utf-8')
+        result = _cstr(gophers.AddHeadingWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8'), size))
         if result:
             self.report_json = result
         else:
@@ -274,7 +316,7 @@ class Report:
         return self
 
     def AddText(self, page, text):
-        result = gophers.AddTextWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = _cstr(gophers.AddTextWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')))
         if result:
             self.report_json = result
         else:
@@ -282,7 +324,7 @@ class Report:
         return self
 
     def AddSubText(self, page, text):
-        result = gophers.AddSubTextWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')).decode('utf-8')
+        result = _cstr(gophers.AddSubTextWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), text.encode('utf-8')))
         if result:
             self.report_json = result
         else:
@@ -291,7 +333,7 @@ class Report:
 
     def AddBullets(self, page, bullets):
         bullets_json = json.dumps(bullets)
-        result = gophers.AddBulletsWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), bullets_json.encode('utf-8')).decode('utf-8')
+        result = _cstr(gophers.AddBulletsWrapper(self.report_json.encode('utf-8'), page.encode('utf-8'), bullets_json.encode('utf-8')))
         if result:
             self.report_json = result
         else:
@@ -299,30 +341,74 @@ class Report:
         return self
 
 def Help():
-    print("Functions Help:")
-    print("\tReadJSON(json_data)")
-    print("\tReadNDJSON(json_data)")
-    print("\tReadCSV(csv_data)")
-    print("\tReadYAML(yaml_data)")
-    print("\tGetAPIJSON(endpoint, headers, query_params)")
-    print("\tSum(column_name)")
-    print("\tAgg(*aggregations)")
-    print("\tCol(name)")
-    print("\tLit(value)")
-    print("\tOr(left, right)")
-    print("\tAnd(left, right)")
-    print("\tIf(condition, trueExpr, falseExpr)")
-    print("\tSHA256(*cols)")
-    print("\tSHA512(*cols)")
-    print("\tCollectList(col_name)")
-    print("\tCollectSet(col_name)")
-    print("\tSplit(col_name, delimiter)")
+    print("""Functions Help:
+    Agg(*aggregations)
+    And(left, right)
+    ArraysZip(*cols)
+    Col(name)
+    CollectList(col_name)
+    CollectSet(col_name)
+    Concat(delimiter, *cols)
+    DisplayChart(chart)
+    DisplayHTML(html)
+    GetAPI(endpoint, headers, query_params)
+    GetSqliteSchema(db_path, table),
+    GetSqliteTables(db_path),
+    If(condition, trueExpr, falseExpr)
+    Lit(value)
+    Or(left, right)
+    ReadCSV(csv_data)
+    ReadHTML(html_input)
+    ReadJSON(json_data)
+    ReadNDJSON(json_data)
+    ReadSqlite(db_path, table, query)
+    ReadYAML(yaml_data)
+    ReadParquet(parquet_input)
+    SHA256(*cols)
+    SHA512(*cols)
+    Split(col_name, delimiter)
+    Sum(column_name)""")
 
     
 # Aggregate functions
 def Sum(column_name):
     # Call the Go SumWrapper function with only the column name
     sum_agg_json = gophers.SumWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Max(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MaxWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Min(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MinWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Median(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MedianWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Mean(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.MeanWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Mode(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.ModeWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def First(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.FirstWrapper(column_name.encode('utf-8')).decode('utf-8')
+    # Parse the JSON string into a Python dict before returning it
+    return json.loads(sum_agg_json)
+def Unique(column_name):
+    # Call the Go SumWrapper function with only the column name
+    sum_agg_json = gophers.UniqueWrapper(column_name.encode('utf-8')).decode('utf-8')
     # Parse the JSON string into a Python dict before returning it
     return json.loads(sum_agg_json)
 
@@ -374,17 +460,7 @@ def CollectSet(col_name):
 def Split(col_name, delimiter):
     return ColumnExpr({ "type": "split", "col": col_name, "delimiter": delimiter })
 
-def Concat(*cols):
-    """
-    Returns a ColumnExpr that concatenates the string representations
-    of the given column expressions.
-    """
-    return ColumnExpr({
-        "type": "concat",
-        "cols": [json.loads(col.to_json()) for col in cols]
-    })
-
-def Concat_WS(delimiter, *cols):
+def Concat(delimiter, *cols):
     """
     Returns a ColumnExpr that concatenates the string representations
     of the given column expressions using the specified delimiter.
@@ -395,31 +471,138 @@ def Concat_WS(delimiter, *cols):
         "cols": [json.loads(col.to_json()) for col in cols]
     })
 
+def ArraysZip(*cols):
+    """
+    Returns a ColumnExpr that zips the given column expressions
+    into an array of structs.
+    """
+    return ColumnExpr({
+        "type": "arrays_zip",
+        "cols": [json.loads(col.to_json()) for col in cols]
+    })
+
+def Keys(col_name):
+    return ColumnExpr({ "type": "keys", "col": col_name })
+
+def Lookup(key_expr, nested_col):
+    """
+    Creates a ColumnExpr for lookup.
+    
+    Parameters:
+      nested_col: the name of the nested column (will be wrapped with Col())
+      key_expr: a ColumnExpr representing the lookup key (e.g. Col('key') or Lit("some constant"))
+    
+    Returns:
+      A ColumnExpr with type "lookup".
+    """
+    # If key_expr is not already a ColumnExpr, wrap it.
+    if not isinstance(key_expr, ColumnExpr):
+        key_expr = Lit(key_expr)
+    return ColumnExpr({
+        "type": "lookup",
+        "left": json.loads(key_expr.to_json()),
+        "right": json.loads(Col(nested_col).to_json())
+    })
+
 # Source functions
 def ReadJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
-    df_json = gophers.ReadJSON(json_data.encode('utf-8')).decode('utf-8')
+    df_json = _cstr(gophers.ReadJSON(json_data.encode('utf-8')))
     return DataFrame(df_json)
 
 def ReadNDJSON(json_data):
     # Store the JSON representation of DataFrame from Go.
-    df_json = gophers.ReadNDJSON(json_data.encode('utf-8')).decode('utf-8')
+    df_json = _cstr(gophers.ReadNDJSON(json_data.encode('utf-8')))
     return DataFrame(df_json)
 
 def ReadCSV(json_data):
     # Store the JSON representation of DataFrame from Go.
-    df_json = gophers.ReadCSV(json_data.encode('utf-8')).decode('utf-8')
+    df_json = _cstr(gophers.ReadCSV(json_data.encode('utf-8')))
+    return DataFrame(df_json)
+
+def ReadHTML(html_input):
+    """
+    html_input: URL (http/https), file path, or raw HTML string.
+    Returns a DataFrame of HTML element nodes.
+    """
+    df_json = _cstr(gophers.ReadHTML, html_input.encode('utf-8'))
     return DataFrame(df_json)
 
 def ReadYAML(yaml_data):
     # Store the JSON representation of DataFrame from Go.
-    df_json = gophers.ReadYAML(yaml_data.encode('utf-8')).decode('utf-8')
+    df_json = _cstr(gophers.ReadYAML(yaml_data.encode('utf-8')))
     return DataFrame(df_json)
 
-def GetAPIJSON(endpoint, headers, query_params):
-    # Store the JSON representation of DataFrame from Go.
-    df_json = gophers.GetAPIJSON(endpoint.encode('utf-8'), headers.encode('utf-8'), query_params.encode('utf-8')).decode('utf-8')
+def ReadParquet(parquet_input):
+    """
+    parquet_input: path to a file or NDJSON fallback content (line-delimited JSON).
+    """
+    df_json = _cstr(gophers.ReadParquet(parquet_input.encode('utf-8')))
     return DataFrame(df_json)
+
+def GetAPI(endpoint, headers, query_params):
+    # Store the JSON representation of DataFrame from Go.
+    df_json = _cstr(
+        gophers.GetAPI(endpoint.encode('utf-8'), 
+            headers.encode('utf-8'), 
+            query_params.encode('utf-8'))
+    )
+    return DataFrame(df_json)
+
+def ReadSqlite(db_path, table=None, query=None):
+    """
+    Read from a SQLite database.
+    - If query is provided, it runs that SQL and returns a DataFrame.
+    - Else if table is provided, returns SELECT * FROM table.
+    - Else reads all user tables and merges rows (adds _table column).
+    """
+    t = "" if table is None else table
+    q = "" if query is None else query
+    df_json = _cstr(gophers.ReadSqlite(db_path.encode('utf-8'), t.encode('utf-8'), q.encode('utf-8')))
+    return DataFrame(df_json)
+
+def GetSqliteTables(db_path: str):
+    """
+    Return a list of table names in the SQLite database.
+    Raises RuntimeError on error.
+    """
+    raw = gophers.GetSqliteTables(db_path.encode("utf-8")).decode("utf-8")
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        raise RuntimeError(raw)
+    if isinstance(obj, dict) and obj.get("error"):
+        raise RuntimeError(obj["error"])
+    return obj.get("tables", [])
+
+def GetSqliteSchema(db_path: str, table: str):
+    """
+    Return schema info for a table:
+      { table, columns:[{cid,name,type,notnull,default,primaryKey}], foreign_keys:[...], indexes:[...] }
+    Raises RuntimeError on error.
+    """
+    raw = gophers.GetSqliteSchema(db_path.encode("utf-8"), table.encode("utf-8")).decode("utf-8")
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        raise RuntimeError(raw)
+    if isinstance(obj, dict) and obj.get("error"):
+        raise RuntimeError(obj["error"])
+    return obj
+
+# Display functions
+def DisplayHTML(html):
+    display(HTML(html))
+
+def DisplayChart(chart):
+    html = gophers.DisplayChartWrapper(chart.html.encode('utf-8'))
+    display(HTML(html))
+
+# Report methods
+def CreateReport(title):
+    report_json = _cstr(gophers.CreateReportWrapper(title.encode('utf-8')))
+    # print("CreateReport: Created report JSON:", report_json)
+    return Report(report_json)
 
 # PANDAS FUNCTIONS
 # loc
@@ -431,46 +614,50 @@ class DataFrame:
         self.df_json = df_json
 
     def Help(self):
-        print("DataFrame Help:")
-        print("\tShow(chars, record_count)")   
-        print("\tColumns()")
-        print("\tCount()")
-        print("\tCountDuplicates(cols)")
-        print("\tCountDistinct(cols)")
-        print("\tCollect(col_name)")
-        print("\tHead(chars)")
-        print("\tTail(chars)")
-        print("\tVertical(chars, record_count)")
-        print("\tDisplayBrowser()")
-        print("\tDisplay()")
-        print("\tDisplayToFile(file_path)")
-        print("\tBarChart(title, subtitle, groupcol, aggs)")
-        print("\tColumnChart(title, subtitle, groupcol, aggs)")
-        print("\tStackedBarChart(title, subtitle, groupcol, aggs)")
-        print("\tStackedPercentChart(title, subtitle, groupcol, aggs)")
-        print("\tColumn(col_name, col_spec)")
-        print("\tGroupBy(groupCol, aggs)")
-        print("\tSelect(*cols)")
-        print("\tUnion(df2)")
-        print("\tJoin(df2, col1, col2, how)")
-        print("\tSort(*cols)")
-        print("\tFilter(condition)")
-        print("\tOrderBy(col, asc)")
-        print("\tDrop(*cols)")
-        print("\tDropDuplicates(cols)")
-        print("\tDropNA(cols)")
-        print("\tFillNA(value)")
-        print("\tRenameWrapper(old_name, new_name)")
-        print("\tCreateReport(title)")
-        print("\tToCSVFile(filename)")
+        print("""DataFrame Help:
+    BarChart(title, subtitle, groupcol, aggs)
+    Clone()
+    Column(col_name, col_spec)
+    ColumnChart(title, subtitle, groupcol, aggs)
+    Columns()
+    Collect(col_name)
+    Count()
+    CountDistinct(cols)
+    CountDuplicates(cols)
+    CreateReport(title)
+    Display()
+    DisplayBrowser()
+    DisplayToFile(file_path)
+    Drop(*cols)
+    DropDuplicates(cols)
+    DropNA(cols)
+    FillNA(value)
+    Filter(condition)
+    Flatten(*cols)
+    GroupBy(groupCol, aggs)
+    Head(chars)
+    Join(df2, col1, col2, how)
+    OrderBy(col, asc)
+    PostAPI(endpoint, headers, query_params)
+    Select(*cols)
+    Show(chars, record_count)
+    Sort(*cols)
+    StackedBarChart(title, subtitle, groupcol, aggs)
+    StackedPercentChart(title, subtitle, groupcol, aggs)
+    StringArrayConvert(col_name)
+    Tail(chars)
+    ToCSVFile(filename)
+    Union(df2)
+    Vertical(chars, record_count)
+    WriteSqlite(db_path, table_name, mode, key_cols)""")
         
     # Display functions
     def Show(self, chars, record_count=100):
-        result = gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
+        result = _cstr(gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
         print(result)
 
     def Columns(self):
-        cols_json = gophers.ColumnsWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        cols_json = _cstr(gophers.ColumnsWrapper(self.df_json.encode('utf-8')))
         return json.loads(cols_json)
 
     def Count(self):
@@ -493,32 +680,33 @@ class DataFrame:
                                             cols_json.encode('utf-8'))
 
     def Collect(self, col_name):
-        collected = gophers.CollectWrapper(self.df_json.encode('utf-8'),
-                                           col_name.encode('utf-8')).decode('utf-8')
+        collected = _cstr(gophers.CollectWrapper(self.df_json.encode('utf-8'),
+                                           col_name.encode('utf-8')))
         return json.loads(collected)
     
     def Head(self, chars):
-        result = gophers.Head(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
+        result = _cstr(gophers.Head(self.df_json.encode('utf-8'), c_int(chars)))
         print(result)
 
     def Tail(self, chars):
-        result = gophers.Tail(self.df_json.encode('utf-8'), c_int(chars)).decode('utf-8')
+        result = _cstr(gophers.Tail(self.df_json.encode('utf-8'), c_int(chars)))
         print(result)
 
     def Vertical(self, chars, record_count=100):
-        result = gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)).decode('utf-8')
+        result = _cstr(gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
         print(result)
 
     def DisplayBrowser(self):
-        err = gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        err = _cstr(gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')))
         if err:
             print("Error displaying in browser:", err)
         return self
     
     def Display(self):
-        html = gophers.DisplayWrapper(self.df_json.encode('utf-8')).decode('utf-8')
+        html = _cstr(gophers.DisplayWrapper(self.df_json.encode('utf-8')))
+        # print(html)
         display(HTML(html))
-        return self
+        # return self
     
     def DisplayToFile(self, file_path):
         err = gophers.DisplayToFileWrapper(self.df_json.encode('utf-8'), file_path.encode('utf-8')).decode('utf-8')
@@ -589,131 +777,368 @@ class DataFrame:
     # Transform functions
     def Column(self, col_name, col_spec):
         if isinstance(col_spec, ColumnExpr):
-            self.df_json = gophers.ColumnWrapper(
+            self.df_json = _cstr(gophers.ColumnWrapper(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 col_spec.to_json().encode('utf-8')
-            ).decode('utf-8')
+            ))
         # Otherwise, treat col_spec as a literal.        
         else:
             print(f"Error running code, cannot run {col_name} within Column function.")
         return self 
     def GroupBy(self, groupCol, aggs):
         # aggs should be a list of JSON objects returned by Sum
-        self.df_json = gophers.GroupByWrapper(
+        self.df_json = _cstr(gophers.GroupByWrapper(
             self.df_json.encode('utf-8'),
             groupCol.encode('utf-8'),
             json.dumps(aggs).encode('utf-8')
-        ).decode('utf-8')
-        return self    
+        ))
+        return self
     def Select(self, *cols):
         # cols should be a list of column names
-        self.df_json = gophers.SelectWrapper(
+        self.df_json = _cstr(gophers.SelectWrapper(
             self.df_json.encode('utf-8'),
             json.dumps([col for col in cols]).encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def Union(self, df2):
-        self.df_json = gophers.UnionWrapper(
+        self.df_json = _cstr(gophers.UnionWrapper(
             self.df_json.encode('utf-8'),
             df2.df_json.encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def Join(self, df2, col1, col2, how):
-        self.df_json = gophers.JoinWrapper(
+        self.df_json = _cstr(gophers.JoinWrapper(
             self.df_json.encode('utf-8'),
             df2.df_json.encode('utf-8'),
             col1.encode('utf-8'),
             col2.encode('utf-8'),
             how.encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def Sort(self, *cols):
-        self.df_json = gophers.SortWrapper(
+        self.df_json = _cstr(gophers.SortWrapper(
             self.df_json.encode('utf-8'),
             json.dumps([col for col in cols]).encode('utf-8')
-        ).decode('utf-8')   
+        ))
         return self
+    # def Filter(self, condition):
+    #     colspec = condition#ColumnExpr(json.loads(condition.to_json()))
+    #     if isinstance(colspec, ColumnExpr):
+    #         self.df_json = _cstr(gophers.FilterWrapper(
+    #             self.df_json.encode('utf-8'),
+    #             colspec.to_json().encode('utf-8')
+    #         ))
+    #     else:
+    #         print(f"Error: condition must be a ColumnExpr, got {type(condition)}")
+    #     return self
     def Filter(self, condition):
-        self.df_json = gophers.FilterWrapper(
+        if not isinstance(condition, ColumnExpr):
+            print(f"Error: condition must be ColumnExpr, got {type(condition)}")
+            return self
+        self.df_json = _cstr(gophers.FilterWrapper(
             self.df_json.encode('utf-8'),
             condition.to_json().encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
+    
     def OrderBy(self, col, asc):
-        self.df_json = gophers.OrderByWrapper(
+        self.df_json = _cstr(gophers.OrderByWrapper(
             self.df_json.encode('utf-8'),
             col.encode('utf-8'),
             asc
-        ).decode('utf-8')
+        ))
         return self
     def Drop(self, *cols):
-        self.df_json = gophers.DropWrapper(
+        self.df_json = _cstr(gophers.DropWrapper(
             self.df_json.encode('utf-8'),
             json.dumps([col for col in cols]).encode('utf-8')
-        ).decode('utf-8')       
+        ))       
         return self
     def DropDuplicates(self, cols=None):
         if cols is None:
             cols_json = json.dumps([])
         else:
             cols_json = json.dumps(cols)
-        self.df_json = gophers.DropDuplicatesWrapper(
+        self.df_json = _cstr(gophers.DropDuplicatesWrapper(
             self.df_json.encode('utf-8'),
             cols_json.encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def DropNA(self, cols=None):
         if cols is None:
             cols_json = json.dumps([])
         else:
             cols_json = json.dumps(cols)
-        self.df_json = gophers.DropNAWrapper(
+        self.df_json = _cstr(gophers.DropNAWrapper(
             self.df_json.encode('utf-8'),
             cols_json.encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def FillNA(self, value):
-        self.df_json = gophers.FillNAWrapper(
+        self.df_json = _cstr(gophers.FillNAWrapper(
             self.df_json.encode('utf-8'),
             value.encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def Rename(self, old_name, new_name):
-        self.df_json = gophers.RenameWrapper(
+        self.df_json = _cstr(gophers.RenameWrapper(
             self.df_json.encode('utf-8'),
             old_name.encode('utf-8'),
             new_name.encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
     def Explode(self, *cols):
-        self.df_json = gophers.ExplodeWrapper(
+        self.df_json = _cstr(gophers.Explode(
             self.df_json.encode('utf-8'),
             json.dumps([col for col in cols]).encode('utf-8')
-        ).decode('utf-8')
+        ))
         return self
-    def Filter(self, condition):
-        self.df_json = gophers.FilterWrapper(
+    # def Filter(self, condition):
+    #     self.df_json = gophers.FilterWrapper(
+    #         self.df_json.encode('utf-8'),
+    #         condition.to_json().encode('utf-8')
+    #     ).decode('utf-8')
+    #     return self
+    def Flatten(self, *cols):
+        self.df_json = _cstr(gophers.Flatten(
             self.df_json.encode('utf-8'),
-            condition.to_json().encode('utf-8')
-        ).decode('utf-8')
+            json.dumps([col for col in cols]).encode('utf-8')
+        ))
         return self
     
-    # Report methods
-    def CreateReport(self, title):
-        report_json = gophers.CreateReportWrapper(self.df_json.encode('utf-8'), title.encode('utf-8')).decode('utf-8')
-        # print("CreateReport: Created report JSON:", report_json)
-        return Report(report_json)
+    def KeysToCols(self, col):
+        self.df_json = _cstr(gophers.KeysToCols(
+            self.df_json.encode('utf-8'),
+            col.encode('utf-8')
+        ))
+        return self
+    
+    def StringArrayConvert(self, col_name):
+        self.df_json = _cstr(gophers.StringArrayConvert(
+            self.df_json.encode('utf-8'),
+            col_name.encode('utf-8')
+        ))
+        return self
+    
+    def Clone(self):
+        """Return a new DataFrame copied from this one (deep copy)."""
+        new_json = _cstr(gophers.Clone(self.df_json.encode('utf-8')))
+        return DataFrame(new_json)
     
     # Sink Functions
     def ToCSVFile(self, filename):
-        gophers.ToCSVFileWrapper(self.df_json.encode('utf-8'), filename.encode('utf-8'))
+        gophers.ToCSVFile(self.df_json.encode('utf-8'), filename.encode('utf-8'))
         # add output giving file name/location
         return self
     
+    def ToJSON(self):
+        """
+        format: JSON array of row objects
+        """
+        s = _cstr(gophers.ToJSON(self.df_json.encode('utf-8')))
+        return s
+    
+    def WriteSqlite(self, db_path: str, table: str, mode: str = "upsert", key_cols=None, create_index: bool = True):
+        """
+        Standard write to SQLite for this DataFrame.
+        - mode: "overwrite" or "upsert"
+        - key_cols: required for upsert; list/tuple of column names
+        - create_index: create UNIQUE index on key_cols for upsert
+        """
+        keys_json = json.dumps(list(key_cols or []))
+        res = gophers.WriteSqlite(
+            db_path.encode("utf-8"),
+            table.encode("utf-8"),
+            self.df_json.encode("utf-8"),
+            mode.encode("utf-8"),
+            keys_json.encode("utf-8"),
+            c_int(1 if create_index else 0),
+        ).decode("utf-8")
+        if res != "success":
+            raise RuntimeError(res)
+        return self    
+    
+    def PostAPI(self, endpoint, headers="", query_params=""):
+        """
+        POST this DataFrame as JSON rows to an API endpoint.
+        headers: "Key: Value" lines
+        query_params: "a=b&c=d"
+        Returns raw response body (string).
+        """
+        resp = _cstr(
+            gophers.PostAPI(
+                self.df_json.encode('utf-8'),
+                endpoint.encode('utf-8'),
+                headers.encode('utf-8'),
+                query_params.encode('utf-8'),
+            )
+        )
+        return resp
+    
 # Example usage:
 def main():
-    pass
+    data = '''
+[
+        {
+            "name": "Julie Skels",
+            "alignment": "Melee Maniac",
+            "health": 90,
+            "max_health": 100,
+            "gold": 100,
+            "background_history": "Works as a mercenary for the Red Company.",
+            "body_appearance": "White woman with several scars etched on her body.",
+            "inventory": [
+                {
+                    "name": "Custom-blade Knife",
+                    "item_id": 2,
+                    "equipped": true,
+                    "description": "A sharp blade",
+                    "estimated_value": 5,
+                    "weight": 3,
+                    "history": [
+                        {
+                            "date": "1st of September, 1069",
+                            "event": "Received from the blacksmith in Anton."
+                        }
+                    ]
+                }
+            ],
+            "stats": {
+                "Strength": 15,
+                "Intelligence": 10,
+                "Dexterity": 12,
+                "Charisma": 8,
+                "Constitution": 14,
+                "Wisdom": 11
+            },
+            "character_id": 0,
+            "player_id": 0,
+            "is_npc": false,
+            "image_filename": "julie_skels.png",
+            "in_party": true,
+            "location_id": 2,
+            "history": [
+                {
+                    "date": "1st of September, 1069",
+                    "event": "Arrived at the marketplace for the festival."
+                }
+            ]
+        },
+        {
+            "name": "Bob",
+            "alignment": "Good",
+            "health": 80,
+            "max_health": 100,
+            "gold": 30,
+            "background_history": "Is the mayor of Anton.",
+            "body_appearance": "Burly white man with a sword-bow.",
+            "inventory": [
+                {
+                    "name": "Bow",
+                    "item_id": 3,
+                    "equipped": true,
+                    "description": "A long bow",
+                    "estimated_value": 3,
+                    "weight": 2,
+                    "history": []
+                }
+            ],
+            "stats": {
+                "Strength": 7,
+                "Intelligence": 12,
+                "Constitution": 10,
+                "Dexterity": 15,
+                "Wisdom": 8,
+                "Charisma": 9
+            },
+            "character_id": 1,
+            "player_id": -1,
+            "is_npc": true,
+            "image_filename": "bob.png",
+            "in_party": true,
+            "location_id": 2,
+            "history": [
+                {
+                    "date": "1st of September, 1069",
+                    "event": "Noticed goblin activity near Anton."
+                }
+            ]
+        },
+        {
+            "name": "Alice",
+            "alignment": "Neutral",
+            "health": 100,
+            "max_health": 100,
+            "gold": 50,
+            "background_history": "Daughter of Wolves.",
+            "body_appearance": "Slim tall body, free of marks or scars.",
+            "inventory": [
+                {
+                    "name": "Sword",
+                    "item_id": 4,
+                    "equipped": true,
+                    "description": "A sharp sword",
+                    "estimated_value": 12,
+                    "weight": 5,
+                    "history": []
+                }
+            ],
+            "stats": {
+                "Strength": 10,
+                "Intelligence": 8,
+                "Constitution": 12,
+                "Dexterity": 13,
+                "Wisdom": 9,
+                "Charisma": 11
+            },
+            "character_id": 2,
+            "player_id": -1,
+            "is_npc": true,
+            "image_filename": "alice.png",
+            "in_party": false,
+            "location_id": 1,
+            "history": []
+        }
+    ]
+'''
+    # df = ReadJSON(data)
+    # df = df.Explode("inventory")
+    # df = df.Flatten("inventory")
+    # df = df.Flatten("stats")
+    # df.Vertical(100, 10)
+    # report = CreateReport("Test Report")
+    # report.AddPage("Main Page")
+    # report.AddHeading("Main Page", "This is the main page of the report", 1)
+    # report.AddDataframe("Main Page", df)
+    # report.Open()
+    # df = GetAPI("https://poetrydb.org/title/Ozymandias/lines.json","","")
+    # df = df.Explode("lines")
+    # print(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
+    # df = ReadJSON(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
+    # df = df.Select("columns")\
+    #     .Explode("columns")\
+    #     .Flatten("columns")
+    # df.Vertical(100, 10)
+    # # df.DisplayBrowser()
+    # report = CreateReport("SQLite Schema Report")
+    # report.AddPage("Schema Page")
+    # report.AddHeading("Schema Page", "Schema of SCOPS2_Child_App_email Table", 1)
+    # report.AddDataframe("Schema Page", df)
+    # report.Save("sqlite_schema_report.html").Open()
+    df = ReadHTML('https://news.search.yahoo.com/search;_ylt=AwrNPpGJ5hNpwTcEW.5XNyoA;_ylu=Y29sbwNiZjEEcG9zAzEEdnRpZAMEc2VjA3BpdnM-?p=aapl+news&fr2=piv-web&type=E210US91088G0&fr=mcafee')
+    # df = df.Select('tag')
+    df = df.Filter(Col("tag").Eq(Lit("body")))
+    df = df.Select('outer_html_str')
+    df = df.Column('outer_html_str', Col('outer_html_str').HtmlUnescape())
+    html = df.Collect('outer_html_str')
+    html = html[0]
+    df = ReadHTML(html)
+    # df = df.Column('outer_html_str', Col('outer_html_str').Replace('&#34;','"'))
+    # df = df.Column('outer_html_str', Col('outer_html_str').Replace('&gt;','>'))
+    df.DisplayBrowser()
+    # df.Vertical(100, 10)
+    # pass
 
 if __name__ == '__main__':
     main()

@@ -5,14 +5,6 @@ import (
 	"fmt"
 )
 
-type Chart struct {
-	Htmlpreid  string
-	Htmldivid  string
-	Htmlpostid string
-	Jspreid    string
-	Jspostid   string
-}
-
 // BarChart returns Bar Chart HTML for the DataFrame.
 // It takes a title, subtitle, group column, and one or more aggregations.
 func (df *DataFrame) BarChart(title string, subtitle string, groupcol string, aggs []Aggregation) Chart {
