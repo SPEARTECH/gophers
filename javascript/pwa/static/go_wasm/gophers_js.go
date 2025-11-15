@@ -12,7 +12,7 @@ import (
 	"strings"
 	"strconv"
 
-	g "github.com/SPEARTECH/gophers/go/gophers"
+	g "github.com/SPEARTECH/gophers"
 )
 
 var finalReg js.Value

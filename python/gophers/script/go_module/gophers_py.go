@@ -17,7 +17,7 @@ import (
 	"strings"
 	"unsafe"
 
-	g "github.com/SPEARTECH/gophers/go/gophers"
+	g "github.com/SPEARTECH/gophers"
 	_ "github.com/mattn/go-sqlite3"
 )
 

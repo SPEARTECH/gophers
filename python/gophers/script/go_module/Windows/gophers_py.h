@@ -324,6 +324,7 @@ extern __declspec(dllexport) int CountDistinctWrapper(char* dfJson, char* colsJs
 //
 extern __declspec(dllexport) char* CollectWrapper(char* dfJson, char* colName);
 extern __declspec(dllexport) char* ToCSVFile(char* dfJson, char* filename);
+extern __declspec(dllexport) char* ToJSON(char* dfJson);
 extern __declspec(dllexport) char* WriteSqlite(char* dbPath, char* table, char* dfJson, char* mode, char* keyColsJson, int createIdx);
 extern __declspec(dllexport) char* PostAPI(char* dfJson, char* endpoint, char* headers, char* queryParams);
 
