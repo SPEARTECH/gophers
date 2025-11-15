@@ -944,7 +944,7 @@ func dfObject(id int) js.Value {
 			recordCount = args[1].Int()
 		}
 		out := df.Show(chars, recordCount)
-		js.Global().Get("console").Call("log", out)
+		// js.Global().Get("console").Call("log", out)
 		return out
 	}))
 	// df.Head(chars?) -> logs first 5 rows to console; returns string
@@ -958,7 +958,7 @@ func dfObject(id int) js.Value {
 			chars = args[0].Int()
 		}
 		out := df.Head(chars)
-		js.Global().Get("console").Call("log", out)
+		// js.Global().Get("console").Call("log", out)
 		return out
 	}))
 
@@ -973,7 +973,7 @@ func dfObject(id int) js.Value {
 			chars = args[0].Int()
 		}
 		out := df.Tail(chars)
-		js.Global().Get("console").Call("log", out)
+		// js.Global().Get("console").Call("log", out)
 		return out
 	}))
     // df.Vertical(chars?, recordCount?) -> logs to console; returns string
@@ -991,7 +991,7 @@ func dfObject(id int) js.Value {
             recordCount = args[1].Int()
         }
         out := df.Vertical(chars, recordCount)
-        js.Global().Get("console").Call("log", out)
+        // js.Global().Get("console").Call("log", out)
         return out
     }))
 

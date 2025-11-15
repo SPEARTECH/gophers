@@ -654,7 +654,7 @@ class DataFrame:
     # Display functions
     def Show(self, chars, record_count=100):
         result = _cstr(gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
-        print(result)
+        # print(result)
 
     def Columns(self):
         cols_json = _cstr(gophers.ColumnsWrapper(self.df_json.encode('utf-8')))
@@ -686,15 +686,15 @@ class DataFrame:
     
     def Head(self, chars):
         result = _cstr(gophers.Head(self.df_json.encode('utf-8'), c_int(chars)))
-        print(result)
+        # print(result)
 
     def Tail(self, chars):
         result = _cstr(gophers.Tail(self.df_json.encode('utf-8'), c_int(chars)))
-        print(result)
+        # print(result)
 
     def Vertical(self, chars, record_count=100):
         result = _cstr(gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
-        print(result)
+        # print(result)
 
     def DisplayBrowser(self):
         err = _cstr(gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')))

@@ -68,6 +68,7 @@ func (df *DataFrame) Show(chars, recordCount int) string {
 		}
 		b.WriteString("\n")
 	}
+	fmt.Print(b.String())
 	return b.String()
 }
 
@@ -129,6 +130,7 @@ func (df *DataFrame) Head(chars int) string {
 		}
 		b.WriteString("\n")
 	}
+	fmt.Print(b.String())
 	return b.String()
 }
 
@@ -190,7 +192,7 @@ func (df *DataFrame) Tail(chars int) string {
 		}
 		b.WriteString("\n")
 	}
-
+	fmt.Print(b.String())
 	return b.String()
 }
 
@@ -261,6 +263,7 @@ func (df *DataFrame) Vertical(chars int, recordCount int) string {
 		}
 		b.WriteString("\n")
 	}
+	fmt.Print(b.String())
 	return b.String()
 }
 
