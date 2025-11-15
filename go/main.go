@@ -2,7 +2,7 @@ package main
 
 import (
 	
-	. "gophers/gophers"
+	. "gophers"
 )
 
 func main() {
