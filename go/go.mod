@@ -1,4 +1,4 @@
-module github.com/SPEARTECH/gophers/go
+module github.com/SPEARTECH/gophers
 
 go 1.24.0
 
