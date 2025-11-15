@@ -1102,7 +1102,8 @@ def main():
         }
     ]
 '''
-    # df = ReadJSON(data)
+    df = ReadJSON(data)
+    df.Show(5,5)
     # df = df.Explode("inventory")
     # df = df.Flatten("inventory")
     # df = df.Flatten("stats")
@@ -1126,17 +1127,17 @@ def main():
     # report.AddHeading("Schema Page", "Schema of SCOPS2_Child_App_email Table", 1)
     # report.AddDataframe("Schema Page", df)
     # report.Save("sqlite_schema_report.html").Open()
-    df = ReadHTML('https://news.search.yahoo.com/search;_ylt=AwrNPpGJ5hNpwTcEW.5XNyoA;_ylu=Y29sbwNiZjEEcG9zAzEEdnRpZAMEc2VjA3BpdnM-?p=aapl+news&fr2=piv-web&type=E210US91088G0&fr=mcafee')
+    # df = ReadHTML('https://news.search.yahoo.com/search;_ylt=AwrNPpGJ5hNpwTcEW.5XNyoA;_ylu=Y29sbwNiZjEEcG9zAzEEdnRpZAMEc2VjA3BpdnM-?p=aapl+news&fr2=piv-web&type=E210US91088G0&fr=mcafee')
     # df = df.Select('tag')
-    df = df.Filter(Col("tag").Eq(Lit("body")))
-    df = df.Select('outer_html_str')
-    df = df.Column('outer_html_str', Col('outer_html_str').HtmlUnescape())
-    html = df.Collect('outer_html_str')
-    html = html[0]
-    df = ReadHTML(html)
+    # df = df.Filter(Col("tag").Eq(Lit("body")))
+    # df = df.Select('outer_html_str')
+    # df = df.Column('outer_html_str', Col('outer_html_str').HtmlUnescape())
+    # html = df.Collect('outer_html_str')
+    # html = html[0]
+    # df = ReadHTML(html)
     # df = df.Column('outer_html_str', Col('outer_html_str').Replace('&#34;','"'))
     # df = df.Column('outer_html_str', Col('outer_html_str').Replace('&gt;','>'))
-    df.DisplayBrowser()
+    # df.DisplayBrowser()
     # df.Vertical(100, 10)
     # pass
 
