@@ -1103,7 +1103,8 @@ def main():
     ]
 '''
     df = ReadJSON(data)
-    df.Show(5,5)
+    df = df.Column("alignment", Col("location_id"))
+    df.Vertical(15,15)
     # df = df.Explode("inventory")
     # df = df.Flatten("inventory")
     # df = df.Flatten("stats")

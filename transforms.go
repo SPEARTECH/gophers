@@ -157,7 +157,11 @@ func rowKeyFast(cols []string, data map[string][]interface{}, i int) string {
 //     return df
 // }
 
-func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
+// Column adds or modifies a column. Accepts either:
+//   - ColumnExpr (will Compile to Column)
+//   - Column (already compiled)
+// It keeps concurrency & referenced column optimization for ColumnExpr.
+func (df *DataFrame) Column(column string, spec interface{}) *DataFrame {
     if df == nil {
         return df
     }
@@ -175,49 +179,51 @@ func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
         return df
     }
 
-    compiled := Compile(colSpec)
+    var compiled Column
+    var refCols []string
 
-    // Collect referenced columns.
-    refSet := referencedCols(colSpec, nil)
-    refCols := make([]string, 0, len(refSet))
-    for c := range refSet {
-        refCols = append(refCols, c)
-    }
+    switch v := spec.(type) {
+    case ColumnExpr:
+        compiled = Compile(v)
+        refSet := referencedCols(v, nil)
+        refCols = make([]string, 0, len(refSet))
+        for c := range refSet { refCols = append(refCols, c) }
 
-    // Ensure slices exist and have df.Rows length (pad with nil).
-    for _, c := range refCols {
-        s := df.Data[c]
-        if s == nil {
-            s = make([]interface{}, df.Rows)
-            df.Data[c] = s
-        } else if len(s) < df.Rows {
-            // pad
-            padded := make([]interface{}, df.Rows)
-            copy(padded, s)
-            df.Data[c] = padded
+        // Pad referenced slices
+        for _, c := range refCols {
+            s := df.Data[c]
+            if s == nil {
+                s = make([]interface{}, df.Rows)
+                df.Data[c] = s
+            } else if len(s) < df.Rows {
+                p := make([]interface{}, df.Rows)
+                copy(p, s)
+                df.Data[c] = p
+            }
         }
+    case Column:
+        // Already compiled closure
+        compiled = v
+        // Fallback: no referenced column discovery; build full row maps.
+        refCols = append(refCols, df.Cols...)
+    default:
+        fmt.Printf("Column error: unsupported spec type %T\n", v)
+        return df
     }
 
     w := runtime.GOMAXPROCS(0)
-    if w < 1 {
-        w = 1
-    }
+    if w < 1 { w = 1 }
     chunk := (df.Rows + w - 1) / w
     var wg sync.WaitGroup
 
     for g := 0; g < w; g++ {
         start := g * chunk
         end := start + chunk
-        if start >= df.Rows {
-            break
-        }
-        if end > df.Rows {
-            end = df.Rows
-        }
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
         wg.Add(1)
         go func(s, e int) {
             defer wg.Done()
-            // Reuse row map per goroutine
             row := make(map[string]interface{}, len(refCols))
             for i := s; i < e; i++ {
                 for _, c := range refCols {
@@ -234,11 +240,10 @@ func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {
     for _, c := range df.Cols {
         if c == column { found = true; break }
     }
-    if !found {
-        df.Cols = append(df.Cols, column)
-    }
+    if !found { df.Cols = append(df.Cols, column) }
     return df
 }
+
 // Flatten (in-place, no []map intermediate)
 func (df *DataFrame) Flatten(flattenCols []string) *DataFrame {
 	if df == nil || df.Rows == 0 || len(flattenCols) == 0 {
@@ -389,38 +394,50 @@ func (df *DataFrame) Check() string {
     return "ok"
 }
 
-func (df *DataFrame) Filter(cond ColumnExpr) *DataFrame {
-    if df == nil || df.Rows == 0 { return &DataFrame{Cols: df.Cols, Data: make(map[string][]interface{}), Rows: 0} }
-    pred := Compile(cond)
-
-    refSet := referencedCols(cond, nil)
-    refCols := make([]string, 0, len(refSet))
-    for c := range refSet { refCols = append(refCols, c) }
-
-    // Ensure slices exist & have df.Rows length
-    refSlices := make(map[string][]interface{}, len(refCols))
-    for _, c := range refCols {
-        s := df.Data[c]
-        if s == nil {
-            s = make([]interface{}, df.Rows)
-            df.Data[c] = s
-        } else if len(s) < df.Rows {
-            padded := make([]interface{}, df.Rows)
-            copy(padded, s)
-            df.Data[c] = padded
-            s = padded
-        }
-        refSlices[c] = s
+func (df *DataFrame) Filter(cond interface{}) *DataFrame {
+    if df == nil || df.Rows == 0 {
+        return &DataFrame{Cols: df.Cols, Data: make(map[string][]interface{}), Rows: 0}
     }
+
+    var pred Column
+    var refCols []string
+
+    switch v := cond.(type) {
+    case ColumnExpr:
+        pred = Compile(v)
+        refSet := referencedCols(v, nil)
+        refCols = make([]string, 0, len(refSet))
+        for c := range refSet { refCols = append(refCols, c) }
+        // pad missing/short referenced columns
+        for _, c := range refCols {
+            s := df.Data[c]
+            if s == nil {
+                s = make([]interface{}, df.Rows)
+                df.Data[c] = s
+            } else if len(s) < df.Rows {
+                p := make([]interface{}, df.Rows)
+                copy(p, s)
+                df.Data[c] = p
+            }
+        }
+    case Column:
+        pred = v
+        // build full row maps (no ref optimization)
+        refCols = append(refCols, df.Cols...)
+    default:
+        fmt.Printf("Filter error: unsupported spec type %T\n", v)
+        return df
+    }
+
     w := runtime.GOMAXPROCS(0)
     chunk := (df.Rows + w - 1) / w
-
-    // Pass 1: masks + counts
     masks := make([][]bool, w)
     counts := make([]int, w)
     var wg sync.WaitGroup
+
     for g := 0; g < w; g++ {
-        start := g * chunk; end := start + chunk
+        start := g * chunk
+        end := start + chunk
         if start >= df.Rows { break }
         if end > df.Rows { end = df.Rows }
         wg.Add(1)
@@ -430,41 +447,48 @@ func (df *DataFrame) Filter(cond ColumnExpr) *DataFrame {
             row := make(map[string]interface{}, len(refCols))
             cnt := 0
             for i := s; i < e; i++ {
-                for _, c := range refCols { row[c] = refSlices[c][i] }
+                for _, c := range refCols { row[c] = df.Data[c][i] }
                 if ok, _ := pred.Fn(row).(bool); ok {
-                    mask[i-s] = true; cnt++
+                    mask[i-s] = true
+                    cnt++
                 }
             }
-            masks[idx] = mask; counts[idx] = cnt
+            masks[idx] = mask
+            counts[idx] = cnt
         }(g, start, end)
     }
     wg.Wait()
 
-    // scan
     total := 0
     offsets := make([]int, w)
-    for i := 0; i < w; i++ { offsets[i] = total; total += counts[i] }
+    for i := 0; i < w; i++ {
+        offsets[i] = total
+        total += counts[i]
+    }
 
     out := &DataFrame{Cols: df.Cols, Data: make(map[string][]interface{}, len(df.Cols)), Rows: total}
-    for _, c := range df.Cols { out.Data[c] = make([]interface{}, total) }
+    for _, c := range df.Cols {
+        out.Data[c] = make([]interface{}, total)
+    }
 
-    // Pass 2: scatter
     for g := 0; g < w; g++ {
-        start := g * chunk; end := start + chunk
+        start := g * chunk
+        end := start + chunk
         if start >= df.Rows { break }
         if end > df.Rows { end = df.Rows }
-        off := offsets[g]; mask := masks[g]
+        base := offsets[g]
+        mask := masks[g]
         wg.Add(1)
-        go func(s, e, base int, mask []bool) {
+        go func(s, e, off int, mask []bool) {
             defer wg.Done()
-            widx := base
+            widx := off
             for i := s; i < e; i++ {
                 if mask[i-s] {
                     for _, c := range df.Cols { out.Data[c][widx] = df.Data[c][i] }
                     widx++
                 }
             }
-        }(start, end, off, mask)
+        }(start, end, base, mask)
     }
     wg.Wait()
     return out
