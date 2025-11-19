@@ -80,7 +80,10 @@
             var df = ReadJSON(this.obj);
             this.jsobj = df.ToJSON();
             df = df.Column('age', Cast('age', 'int'));
-            df.BarChart('Ages','total ages','name',Sum('age')).ElementID('datatable');
+            this.jsobj = df.ToJSON();
+            df = df.Column('name', Col('age'));
+            this.jsobj = df.ToJSON();
+            // df.BarChart('Ages','total ages','name',Sum('age')).ElementID('datatable');
             df.Show(5,5);
           } catch (error) {
             console.error("Error loading Go WASM:", error);

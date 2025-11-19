@@ -2,7 +2,7 @@ module gophers_js
 
 go 1.24.0
 
-require github.com/speartech/gophers v0.1.5
+require github.com/speartech/gophers v0.1.6
 
 require (
 	github.com/kr/text v0.2.0 // indirect
@@ -10,4 +10,3 @@ require (
 	golang.org/x/net v0.47.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
-

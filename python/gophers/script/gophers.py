@@ -1102,7 +1102,7 @@ def main():
         }
     ]
 '''
-    df = ReadJSON(data)
+    df = ReadJSON('[{"alignment": "", "health": "", "inventory": "", "stats": "", "location_id": ""}]')
     df = df.Column("alignment", Col("location_id"))
     df.Vertical(15,15)
     # df = df.Explode("inventory")
