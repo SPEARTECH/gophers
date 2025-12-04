@@ -96,6 +96,46 @@ func rowKeyFast(cols []string, data map[string][]interface{}, i int) string {
     return strconv.FormatUint(h.Sum64(), 36)
 }
 
+func (df *DataFrame) Help() string {
+	help := `DataFrame Help:
+    BarChart(title, subtitle, groupcol, aggs)
+    Clone()
+    Column(col_name, col_spec)
+    ColumnChart(title, subtitle, groupcol, aggs)
+    Columns()
+    Collect(col_name)
+    Count()
+    CountDistinct(cols)
+    CountDuplicates(cols)
+    CreateReport(title)
+    Display()
+    DisplayBrowser()
+    DisplayToFile(file_path)
+    Drop(*cols)
+    DropDuplicates(cols)
+    DropNA(cols)
+    FillNA(value)
+    Filter(condition)
+    Flatten(*cols)
+    GroupBy(groupCol, aggs)
+    Head(chars)
+    Join(df2, col1, col2, how)
+    OrderBy(col, asc)
+    PostAPI(endpoint, headers, query_params)
+    Select(*cols)
+    Show(chars, record_count)
+    Sort(*cols)
+    StackedBarChart(title, subtitle, groupcol, aggs)
+    StackedPercentChart(title, subtitle, groupcol, aggs)
+    StringArrayConvert(col_name)
+    Tail(chars)
+    ToCSVFile(filename)
+    Union(df2)
+    Vertical(chars, record_count)
+    WriteSqlite(db_path, table_name, mode, key_cols)`
+	fmt.Println(help)
+	return help
+}
 // // Column adds or modifies a column in the DataFrame using a ColumnExpr.
 // // Compiles the expr once, then evaluates its closure per row.
 // func (df *DataFrame) Column(column string, colSpec ColumnExpr) *DataFrame {

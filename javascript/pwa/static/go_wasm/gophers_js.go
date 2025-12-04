@@ -246,6 +246,14 @@ func aggsFromJS(args []js.Value) ([]g.Aggregation, error) {
 func dfObject(id int) js.Value {
 	obj := js.Global().Get("Object").New()
 	obj.Set("handle", id)
+
+    obj.Set("Help", js.FuncOf(func(this js.Value, args []js.Value) any {
+        df := get(id)
+        if df == nil { return "error: invalid handle" }
+        out := df.Help()      // Go returns the help string
+        return out            // JS returns the same string; no console.log
+    }))
+
 	// ------ SOURCES -------
 
     // df.Clone() -> deep copy; returns a new DataFrame
@@ -290,156 +298,182 @@ func dfObject(id int) js.Value {
 	// - format: "rows" | "columnar" (default "rows")
 	// - pretty: boolean (default false)
 	obj.Set("ToJSONFile", js.FuncOf(func(this js.Value, args []js.Value) any {
-		df := get(id)
-		if df == nil {
-			return "error: invalid handle"
-		}
-		filename := "dataframe.json"
-		if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
-			filename = args[0].String()
-		}
-		format := "rows"
-		if len(args) >= 2 && args[1].Type() == js.TypeString {
-			format = args[1].String()
-		}
-		pretty := false
-		if len(args) >= 3 && args[2].Type() == js.TypeBoolean {
-			pretty = args[2].Bool()
-		}
+        df := get(id)
+        if df == nil {
+            return "error: invalid handle"
+        }
+        filename := "dataframe.json"
+        if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
+            filename = args[0].String()
+        }
+        format := "rows" // "rows" | "columnar"
+        if len(args) >= 2 && args[1].Type() == js.TypeString {
+            format = args[1].String()
+        }
+        pretty := false
+        if len(args) >= 3 && args[2].Type() == js.TypeBoolean {
+            pretty = args[2].Bool()
+        }
 
-		var b []byte
-		if format == "columnar" {
-			payload := map[string]any{
-				"cols": df.Cols,
-				"data": df.Data,
-				"rows": df.Rows,
-			}
-			if pretty {
-				b, _ = json.MarshalIndent(payload, "", "  ")
-			} else {
-				b, _ = json.Marshal(payload)
-			}
-		} else {
-			rows := df.ToRows()
-			if pretty {
-				b, _ = json.MarshalIndent(rows, "", "  ")
-			} else {
-				b, _ = json.Marshal(rows)
-			}
-		}
-		text := string(b)
+        // Build JSON bytes (pure Go style: rows slice or columnar payload)
+        var b []byte
+        if format == "columnar" {
+            payload := map[string]any{
+                "cols": df.Cols,
+                "data": df.Data,
+                "rows": df.Rows,
+            }
+            if pretty {
+                b, _ = json.MarshalIndent(payload, "", "  ")
+            } else {
+                b, _ = json.Marshal(payload)
+            }
+        } else {
+            rows := make([]map[string]interface{}, df.Rows)
+            for i := 0; i < df.Rows; i++ {
+                row := make(map[string]interface{}, len(df.Cols))
+                for _, c := range df.Cols {
+                    row[c] = df.Data[c][i]
+                }
+                rows[i] = row
+            }
+            if pretty {
+                b, _ = json.MarshalIndent(rows, "", "  ")
+            } else {
+                b, _ = json.Marshal(rows)
+            }
+        }
 
-		// Blob + anchor download
-		array := js.Global().Get("Array").New()
-		array.Call("push", js.ValueOf(text))
-		opts := js.Global().Get("Object").New()
-		opts.Set("type", "application/json;charset=utf-8")
-		blob := js.Global().Get("Blob").New(array, opts)
-		url := js.Global().Get("URL").Call("createObjectURL", blob)
+        // Download via Blob (Uint8Array for proper bytes)
+        u8 := js.Global().Get("Uint8Array").New(len(b))
+        _ = js.CopyBytesToJS(u8, b)
+        parts := js.Global().Get("Array").New()
+        parts.Call("push", u8)
+        blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "application/json;charset=utf-8"})
+        url := js.Global().Get("URL").Call("createObjectURL", blob)
 
-		doc := js.Global().Get("document")
-		a := doc.Call("createElement", "a")
-		a.Set("href", url)
-		a.Set("download", filename)
-		a.Set("rel", "noopener")
-		// append, click, remove
-		doc.Get("body").Call("appendChild", a)
-		a.Call("click")
-		a.Get("parentNode").Call("removeChild", a)
-		// cleanup
-		js.Global().Get("setTimeout").Invoke(js.FuncOf(func(this js.Value, args []js.Value) any {
-			js.Global().Get("URL").Call("revokeObjectURL", url)
-			return nil
-		}), 1000)
+        doc := js.Global().Get("document")
+        a := doc.Call("createElement", "a")
+        a.Set("href", url)
+        a.Set("download", filename)
+        a.Set("rel", "noopener")
+        doc.Get("body").Call("appendChild", a)
+        a.Call("click")
+        a.Get("parentNode").Call("removeChild", a)
+        js.Global().Get("setTimeout").Invoke(js.FuncOf(func(this js.Value, _ []js.Value) any {
+            js.Global().Get("URL").Call("revokeObjectURL", url)
+            return nil
+        }), 1000)
 
-		return "ok"
+        return "ok"
 	}))
 	obj.Set("ToCSVFile", js.FuncOf(func(this js.Value, args []js.Value) any {
-		df := get(id)
-		if df == nil {
-			return "error: invalid handle"
-		}
-		filename := "dataframe.csv"
-		if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
-			filename = args[0].String()
-		}
-		delimiter := ','
-		if len(args) >= 2 && args[1].Type() == js.TypeString && args[1].String() != "" {
-			runes := []rune(args[1].String())
-			if len(runes) > 0 {
-				delimiter = runes[0]
-			}
-		}
-		includeHeader := true
-		if len(args) >= 3 && args[2].Type() == js.TypeBoolean {
-			includeHeader = args[2].Bool()
-		}
+        df := get(id)
+        if df == nil {
+            return "error: invalid handle"
+        }
+        filename := "dataframe.csv"
+        if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
+            filename = args[0].String()
+        }
+        delimiter := ','
+        if len(args) >= 2 && args[1].Type() == js.TypeString && args[1].String() != "" {
+            runes := []rune(args[1].String())
+            if len(runes) > 0 {
+                delimiter = runes[0]
+            }
+        }
+        includeHeader := true
+        if len(args) >= 3 && args[2].Type() == js.TypeBoolean {
+            includeHeader = args[2].Bool()
+        }
 
-		// Build CSV text
-		var buf bytes.Buffer
-		cw := csv.NewWriter(&buf)
-		cw.Comma = delimiter
+        // Mirror sinks.go: build rows in parallel, fmt.Sprintf values
+        var buf bytes.Buffer
+        cw := csv.NewWriter(&buf)
+        cw.Comma = delimiter
 
-		if includeHeader {
-			if err := cw.Write(df.Cols); err != nil {
-				return fmt.Sprintf("error: write header: %v", err)
-			}
-		}
-		for i := 0; i < df.Rows; i++ {
-			rec := make([]string, len(df.Cols))
-			for ci, col := range df.Cols {
-				colData := df.Data[col]
-				var v interface{}
-				if i < len(colData) {
-					v = colData[i]
-				}
-				// stringify: strings as-is; objects/slices as JSON; others via fmt.Sprint
-				switch t := v.(type) {
-				case nil:
-					rec[ci] = ""
-				case string:
-					rec[ci] = t
-				default:
-					// Try JSON for complex types, else fallback to fmt.Sprint
-					if b, err := json.Marshal(v); err == nil && (t == nil || (fmt.Sprintf("%T", v)[0] == '[' || fmt.Sprintf("%T", v)[0] == 'm')) {
-						rec[ci] = string(b)
-					} else {
-						rec[ci] = fmt.Sprint(v)
-					}
-				}
-			}
-			if err := cw.Write(rec); err != nil {
-				return fmt.Sprintf("error: write row %d: %v", i, err)
-			}
-		}
-		cw.Flush()
-		if err := cw.Error(); err != nil {
-			return fmt.Sprintf("error: csv flush: %v", err)
-		}
-		csvText := buf.String()
+        if includeHeader {
+            if err := cw.Write(df.Cols); err != nil {
+                return fmt.Sprintf("error: write header: %v", err)
+            }
+        }
 
-		// Blob + anchor download
-		array := js.Global().Get("Array").New()
-		array.Call("push", js.ValueOf(csvText))
-		opts := js.Global().Get("Object").New()
-		opts.Set("type", "text/csv;charset=utf-8")
-		blob := js.Global().Get("Blob").New(array, opts)
-		url := js.Global().Get("URL").Call("createObjectURL", blob)
+        // Prebuild rows concurrently (same as sinks.go)
+        rows := make([][]string, df.Rows)
+        w := runtime.GOMAXPROCS(0)
+        if w < 1 { w = 1 }
+        chunk := (df.Rows + w - 1) / w
+        var wg sync.WaitGroup
+        for gIdx := 0; gIdx < w; gIdx++ {
+            start := gIdx * chunk
+            end := start + chunk
+            if start >= df.Rows {
+                break
+            }
+            if end > df.Rows {
+                end = df.Rows
+            }
+            wg.Add(1)
+            go func(s, e int) {
+                defer wg.Done()
+                bufRow := make([]string, len(df.Cols))
+                for i := s; i < e; i++ {
+                    for j, col := range df.Cols {
+                        // fmt.Sprintf like sinks.go
+                        colData := df.Data[col]
+                        var v interface{}
+                        if i < len(colData) {
+                            v = colData[i]
+                        }
+                        bufRow[j] = fmt.Sprintf("%v", v)
+                    }
+                    rowCopy := make([]string, len(bufRow))
+                    copy(rowCopy, bufRow)
+                    rows[i] = rowCopy
+                }
+            }(start, end)
+        }
+        wg.Wait()
 
-		doc := js.Global().Get("document")
-		a := doc.Call("createElement", "a")
-		a.Set("href", url)
-		a.Set("download", filename)
-		a.Set("rel", "noopener")
-		doc.Get("body").Call("appendChild", a)
-		a.Call("click")
-		a.Get("parentNode").Call("removeChild", a)
-		js.Global().Get("setTimeout").Invoke(js.FuncOf(func(this js.Value, args []js.Value) any {
-			js.Global().Get("URL").Call("revokeObjectURL", url)
-			return nil
-		}), 1000)
+        // Write sequentially
+        for i := 0; i < df.Rows; i++ {
+            if rows[i] == nil {
+                // defensive skip
+                continue
+            }
+            if err := cw.Write(rows[i]); err != nil {
+                return fmt.Sprintf("error: write row %d: %v", i, err)
+            }
+        }
+        cw.Flush()
+        if err := cw.Error(); err != nil {
+            return fmt.Sprintf("error: csv flush: %v", err)
+        }
 
-		return "ok"
+        // Download via Blob
+        csvBytes := []byte(buf.String())
+        u8 := js.Global().Get("Uint8Array").New(len(csvBytes))
+        _ = js.CopyBytesToJS(u8, csvBytes)
+        parts := js.Global().Get("Array").New()
+        parts.Call("push", u8)
+        blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "text/csv;charset=utf-8"})
+        url := js.Global().Get("URL").Call("createObjectURL", blob)
+
+        doc := js.Global().Get("document")
+        a := doc.Call("createElement", "a")
+        a.Set("href", url)
+        a.Set("download", filename)
+        a.Set("rel", "noopener")
+        doc.Get("body").Call("appendChild", a)
+        a.Call("click")
+        a.Get("parentNode").Call("removeChild", a)
+        js.Global().Get("setTimeout").Invoke(js.FuncOf(func(this js.Value, _ []js.Value) any {
+            js.Global().Get("URL").Call("revokeObjectURL", url)
+            return nil
+        }), 1000)
+
+        return "ok"
 	}))
     // df.ToNDJSONFile(filename) -> triggers browser download; returns "ok"
     obj.Set("ToNDJSONFile", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -447,39 +481,45 @@ func dfObject(id int) js.Value {
         if df == nil {
             return "error: invalid handle"
         }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage ToNDJSONFile(filename)"
+        filename := "dataframe.ndjson"
+        if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
+            filename = args[0].String()
         }
-        filename := args[0].String()
 
-        // Build NDJSON string
-        var b strings.Builder
+        // Build NDJSON bytes (one JSON object per line, like sinks.go)
+        var sb strings.Builder
         for i := 0; i < df.Rows; i++ {
             row := make(map[string]interface{}, len(df.Cols))
             for _, c := range df.Cols {
                 row[c] = df.Data[c][i]
             }
             j, _ := json.Marshal(row)
-            b.Write(j)
-            b.WriteByte('\n')
+            sb.Write(j)
+            sb.WriteByte('\n')
         }
-        nd := []byte(b.String())
+        nd := []byte(sb.String())
 
-        // Create Blob and download
+        // Download via Blob
         u8 := js.Global().Get("Uint8Array").New(len(nd))
         _ = js.CopyBytesToJS(u8, nd)
         parts := js.Global().Get("Array").New()
         parts.Call("push", u8)
         blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "application/x-ndjson"})
         url := js.Global().Get("URL").Call("createObjectURL", blob)
+
         doc := js.Global().Get("document")
         a := doc.Call("createElement", "a")
         a.Set("href", url)
         a.Set("download", filename)
+        a.Set("rel", "noopener")
         doc.Get("body").Call("appendChild", a)
         a.Call("click")
         a.Get("parentNode").Call("removeChild", a)
-        js.Global().Get("URL").Call("revokeObjectURL", url)
+        js.Global().Get("setTimeout").Invoke(js.FuncOf(func(this js.Value, _ []js.Value) any {
+            js.Global().Get("URL").Call("revokeObjectURL", url)
+            return nil
+        }), 1000)
+
         return "ok"
     }))
     // df.PostAPI(url[, headersObj, queryObj]) -> string (raw response body)
@@ -517,15 +557,19 @@ func dfObject(id int) js.Value {
             return "error: usage Column(newName, exprSpec)"
         }
         colName := args[0].String()
-
+        // Accept either a raw expr payload or a wrapped object with .expr
+        specVal := args[1]
+        if specVal.Type() == js.TypeObject && specVal.Get("expr").Truthy() {
+            specVal = specVal.Get("expr")
+        }
         // Build ColumnExpr from JS spec
-        colSpec, err := exprFromJS(args[1])
+        colSpec, err := exprFromJS(specVal)
         if err != nil {
             return "error: " + err.Error()
         }
 
         df.Column(colName, colSpec)
-        return dfObject(id)
+        return dfObject(id) // chaining supported: df.Column(...).Help()
     }))    
 	// df.Flatten(...cols) or df.Flatten(['nested1','nested2']) -> in-place; returns same df
     obj.Set("Flatten", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -1716,6 +1760,13 @@ func reportObject(id int) js.Value {
     r := js.Global().Get("Object").New()
     r.Set("handle", id)
 
+    r.Set("Help", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        out := rep.Help()
+        return out
+    }))
+
     // r.AddPage(name)
     r.Set("AddPage", js.FuncOf(func(this js.Value, args []js.Value) any {
         rep := getReport(id)
@@ -1870,6 +1921,105 @@ func reportObject(id int) js.Value {
             return nil
         }), 1000)
         return "ok"
+    }))
+
+    // r.Primary(color)
+    r.Set("Primary", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Primary(color)"
+        }
+        rep.Primary(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Accent(color)
+    r.Set("Accent", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Accent(color)"
+        }
+        rep.Accent(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Secondary(color)
+    r.Set("Secondary", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Secondary(color)"
+        }
+        rep.Secondary(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Base100(color)
+    r.Set("Base100", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Base100(color)"
+        }
+        rep.Base100(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Neutral(color)
+    r.Set("Neutral", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Neutral(color)"
+        }
+        rep.Neutral(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Err(color)
+    r.Set("Err", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Err(color)"
+        }
+        rep.Err(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Info(color)
+    r.Set("Info", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Info(color)"
+        }
+        rep.Info(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Success(color)
+    r.Set("Success", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Success(color)"
+        }
+        rep.Success(args[0].String())
+        return reportObject(id)
+    }))
+
+    // r.Warning(color)
+    r.Set("Warning", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id)
+        if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: usage Warning(color)"
+        }
+        rep.Warning(args[0].String())
+        return reportObject(id)
     }))
 
     // r.Open() -> opens in a new tab

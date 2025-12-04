@@ -13,6 +13,49 @@ type DataFrame struct {
 	Rows int
 }
 
+// Help returns a help string listing available DataFrame methods.
+func (df *DataFrame) Help() string {
+	help := `DataFrame Help:
+		BarChart(title, subtitle, groupcol, aggs)
+		Clone()
+		Column(col_name, col_spec)
+		ColumnChart(title, subtitle, groupcol, aggs)
+		Columns()
+		Collect(col_name)
+		Count()
+		CountDistinct(cols)
+		CountDuplicates(cols)
+		CreateReport(title)
+		Display()
+		DisplayBrowser()
+		DisplayToFile(file_path)
+		Drop(*cols)
+		DropDuplicates(cols)
+		DropNA(cols)
+		FillNA(value)
+		Filter(condition)
+		Flatten(*cols)
+		GroupBy(groupCol, aggs)
+		Head(chars)
+		Join(df2, col1, col2, how)
+		OrderBy(col, asc)
+		PostAPI(endpoint, headers, query_params)
+		Select(*cols)
+		Show(chars, record_count)
+		Sort(*cols)
+		StackedBarChart(title, subtitle, groupcol, aggs)
+		StackedPercentChart(title, subtitle, groupcol, aggs)
+		StringArrayConvert(col_name)
+		Tail(chars)
+		ToCSVFile(filename)
+		Union(df2)
+		Vertical(chars, record_count)
+		WriteSqlite(db_path, table_name, mode, key_cols)`
+	fmt.Println(help)
+	return help
+}
+
+
 type ColumnExpr struct {
 	Type      string          `json:"type"`
 	Name      string          `json:"name,omitempty"`
@@ -35,6 +78,38 @@ type ColumnExpr struct {
 	Suffix  interface{} `json:"suffix,omitempty"`
 	Pattern interface{} `json:"pattern,omitempty"`
 }
+
+func (ce *ColumnExpr) Help() string {
+	help := `Column Help:
+    Contains(substr)
+    EndsWith(suffix)
+    Eq(other)
+    Ge(other)
+    Gt(other)
+    HtmlUnescape()
+    IsBetween(lower, upper)
+    IsIn(values)
+    IsNotNull()
+    IsNull()
+    Le(other)
+    Like(pattern)
+    Lower()
+    Lt(other)
+    LTrim()
+    Ne(other)
+    NotContains(substr)
+    NotLike(pattern)
+    Replace(old, new)
+    RTrim()
+    StartsWith(prefix)
+    Substr(start, length)
+    Title()
+    Trim()
+    Upper()`
+	fmt.Println(help)
+	return help
+}
+
 
 // add other methods that modify the chart (no menu icon, no horizontal lines, highcharts vs apexcharts, colors, etc)?
 type Chart struct {
@@ -79,6 +154,34 @@ type Report struct {
 	Pageshtml     map[string]map[string]string
 	Pagesjs       map[string]map[string]string
 }
+
+// Help returns a help string listing available Report methods.
+func (report *Report) Help() string {
+	help := `Report Help:
+		Accent(color)
+		AddBullets(page, bullets)
+		AddChart(page, chart)
+		AddDataframe(page, df)
+		AddHeading(page, text, size)
+		AddHTML(page, text)
+		AddPage(name)
+		AddSubText(page, text)
+		AddText(page, text)
+		Base100(color)
+		Err(color)
+		Info(color)
+		Neutral(color)
+		Primary(color)
+		Secondary(color)
+		Success(color)
+		Warning(color)
+		Open()
+		Save(filename)`
+	fmt.Println(help)
+	return help
+}
+
+
 
 // ColumnFunc is a function type that takes a row and returns a value.
 // type Column func(row map[string]interface{}) interface{}

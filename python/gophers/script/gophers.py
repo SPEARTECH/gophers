@@ -240,6 +240,7 @@ class Report:
 
     def Help(self):
         print("""Report Help:
+    Accent(color)
     AddBullets(page, bullets)
     AddChart(page, chart)
     AddDataframe(page, df)
@@ -248,9 +249,98 @@ class Report:
     AddPage(name)
     AddSubText(page, text)
     AddText(page, text)
+    Base100(color)
+    Err(color)
+    Info(color)
+    Neutral(color)
+    Primary(color)
+    Secondary(color)
+    Success(color)
+    Warning(color)
     Open()
     Save(filename)""")
         
+    def Accent(self, color):
+        result = _cstr(gophers.Accent(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding accent color:", result)
+        return self
+
+    def Primary(self, color):
+        result = _cstr(gophers.Primary(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding primary color:", result)
+        return self
+
+    def Secondary(self, color):
+        result = _cstr(gophers.Secondary(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding secondary color:", result)
+        return self
+
+    def Success(self, color):
+        result = _cstr(gophers.Success(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding success color:", result)
+        return self
+
+    def Warning(self, color):
+        result = _cstr(gophers.Warning(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding warning color:", result)
+        return self
+
+    def Info(self, color):
+        result = _cstr(gophers.Info(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding info color:", result)
+        return self
+    
+    def Neutral(self, color):
+        result = _cstr(gophers.Neutral(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding neutral color:", result)
+        return self
+    
+    def Base100(self, color):
+        result = _cstr(gophers.Base100(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding base100 color:", result)
+        return self
+    
+    def Err(self, color):
+        result = _cstr(gophers.Err(self.report_json.encode('utf-8'), color.encode('utf-8')))
+        if result:
+            self.report_json = result
+            # print("AddPage: Updated report JSON:", self.report_json)
+        else:
+            print("Error adding err color:", result)
+        return self
+    
     def Open(self):
         # print("")
         # print("printing open report:"+self.report_json)
@@ -1103,8 +1193,8 @@ def main():
     ]
 '''
     df = ReadJSON('[{"alignment": "", "health": "", "inventory": "", "stats": "", "location_id": ""}]')
-    df = df.Column("alignment", Col("location_id"))
-    df.Vertical(15,15)
+    df = df.Column("alignment", Col("location_id")).Help()
+    # df.Vertical(15,15)
     # df = df.Explode("inventory")
     # df = df.Flatten("inventory")
     # df = df.Flatten("stats")

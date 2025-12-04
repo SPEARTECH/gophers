@@ -108,6 +108,61 @@ func CreateReport(title string) *Report {
 	return newReport
 }
 
+
+// Primary - set the primary color of the report
+func (report *Report) Primary(primary string) error {
+	report.Primary = fmt.Sprintf(`primary: "%s",`, primary)
+	return nil
+}
+
+// Secondary - set the secondary color of the report
+func (report *Report) Secondary(secondary string) error {
+	report.Secondary = fmt.Sprintf(`secondary: "%s",`, secondary)
+	return nil
+}
+
+// Accent - set the accent color of the report
+func (report *Report) Accent(accent string) error {
+	report.Accent = fmt.Sprintf(`accent: "%s",`, accent	)
+	return nil
+}
+
+// Neutral - set the neutral color of the report
+func (report *Report) Neutral(neutral string) error {
+	report.Neutral = fmt.Sprintf(`neutral: "%s",`, neutral	)
+	return nil
+}
+
+// Base100 - set the base100 color of the report
+func (report *Report) Base100(base100 string) error {
+	report.Base100 = fmt.Sprintf(`"base-100": "%s",`, base100		)
+	return nil
+}
+
+// Info - set the info color of the report
+func (report *Report) Info(info string) error {
+	report.Info = fmt.Sprintf(`info: "%s",`, info	)
+	return nil
+}
+
+// Success - set the success color of the report
+func (report *Report) Success(success string) error {
+	report.Success = fmt.Sprintf(`success: "%s",`, success	)
+	return nil
+}
+
+// Warning - set the warning color of the report
+func (report *Report) Warning(warning string) error {
+	report.Warning = fmt.Sprintf(`warning: "%s",`, warning	)
+	return nil
+}
+
+// Err - set the error color of the report
+func (report *Report) Err(err string) error {
+	report.Err = fmt.Sprintf(`error: "%s",`, err	)
+	return nil
+}
+
 // Open - open the report in browser
 func (report *Report) Open() error {
 	// add html element for page
