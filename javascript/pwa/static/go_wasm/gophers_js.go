@@ -11,6 +11,7 @@ import (
 	"syscall/js"
 	"strings"
 	"strconv"
+    "runtime"
 
 	g "github.com/speartech/gophers"
 )
@@ -1923,102 +1924,77 @@ func reportObject(id int) js.Value {
         return "ok"
     }))
 
-    // r.Primary(color)
-    r.Set("Primary", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Primary(color)"
-        }
-        rep.Primary(args[0].String())
+
+    // Theme setters (expose Set*; keep old names as aliases)
+    // SetPrimary(color)
+    r.Set("SetPrimary", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetPrimary(color)" }
+        if err := rep.SetPrimary(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Accent(color)
-    r.Set("Accent", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Accent(color)"
-        }
-        rep.Accent(args[0].String())
+    // SetSecondary(color)
+    r.Set("SetSecondary", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetSecondary(color)" }
+        if err := rep.SetSecondary(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Secondary(color)
-    r.Set("Secondary", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Secondary(color)"
-        }
-        rep.Secondary(args[0].String())
+    // SetAccent(color)
+    r.Set("SetAccent", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetAccent(color)" }
+        if err := rep.SetAccent(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Base100(color)
-    r.Set("Base100", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Base100(color)"
-        }
-        rep.Base100(args[0].String())
+    // SetNeutral(color)
+    r.Set("SetNeutral", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetNeutral(color)" }
+        if err := rep.SetNeutral(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Neutral(color)
-    r.Set("Neutral", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Neutral(color)"
-        }
-        rep.Neutral(args[0].String())
+    // SetBase100(color)
+    r.Set("SetBase100", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetBase100(color)" }
+        if err := rep.SetBase100(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Err(color)
-    r.Set("Err", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Err(color)"
-        }
-        rep.Err(args[0].String())
+    // SetInfo(color)
+    r.Set("SetInfo", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetInfo(color)" }
+        if err := rep.SetInfo(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Info(color)
-    r.Set("Info", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Info(color)"
-        }
-        rep.Info(args[0].String())
+    // SetSuccess(color)
+    r.Set("SetSuccess", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetSuccess(color)" }
+        if err := rep.SetSuccess(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Success(color)
-    r.Set("Success", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Success(color)"
-        }
-        rep.Success(args[0].String())
+    // SetWarning(color)
+    r.Set("SetWarning", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetWarning(color)" }
+        if err := rep.SetWarning(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 
-    // r.Warning(color)
-    r.Set("Warning", js.FuncOf(func(this js.Value, args []js.Value) any {
-        rep := getReport(id)
-        if rep == nil { return "error: invalid handle" }
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage Warning(color)"
-        }
-        rep.Warning(args[0].String())
+    // SetErr(color)
+    r.Set("SetErr", js.FuncOf(func(this js.Value, args []js.Value) any {
+        rep := getReport(id); if rep == nil { return "error: invalid handle" }
+        if len(args) < 1 || args[0].Type() != js.TypeString { return "error: usage SetErr(color)" }
+        if err := rep.SetErr(args[0].String()); err != nil { return "error: " + err.Error() }
         return reportObject(id)
     }))
 

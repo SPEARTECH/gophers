@@ -2,6 +2,7 @@ package gophers
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"golang.org/x/net/html"
 )
@@ -158,7 +159,6 @@ type Report struct {
 // Help returns a help string listing available Report methods.
 func (report *Report) Help() string {
 	help := `Report Help:
-		Accent(color)
 		AddBullets(page, bullets)
 		AddChart(page, chart)
 		AddDataframe(page, df)
@@ -167,15 +167,16 @@ func (report *Report) Help() string {
 		AddPage(name)
 		AddSubText(page, text)
 		AddText(page, text)
-		Base100(color)
-		Err(color)
-		Info(color)
-		Neutral(color)
-		Primary(color)
-		Secondary(color)
-		Success(color)
-		Warning(color)
 		Open()
+        SetPrimary(color)
+        SetSecondary(color)
+        SetAccent(color)
+        SetNeutral(color)
+        SetBase100(color)
+        SetInfo(color)
+        SetSuccess(color)
+        SetWarning(color)
+        SetErr(color)
 		Save(filename)`
 	fmt.Println(help)
 	return help
