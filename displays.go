@@ -726,6 +726,7 @@ func (df *DataFrame) Display() map[string]interface{} {
                 }
             }
 			const { createApp } = Vue
+            import { Gophers } from 'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
 			createApp({
 			delimiters : ['[[', ']]'],
 				data(){
@@ -766,40 +767,43 @@ func (df *DataFrame) Display() map[string]interface{} {
       last_page(){ this.current_page = this.pages; },
 					
        exportCSV() {
-         const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
-         if (!cols.length) return;
-         // Determine the maximum row count across all columns
-         let rowCount = 0;
-         for (const c of cols) {
-           const len = (this.data[c] || []).length;
-           if (len > rowCount) rowCount = len;
-         }
-         const esc = (v) => {
-           if (v === null || v === undefined) return '';
-           if (typeof v === 'object') v = JSON.stringify(v);
-           let s = String(v);
-           s = s.replace(/"/g, '""');
-           if (/[",\r\n]/.test(s)) s = '"' + s + '"';
-           return s;
-         };
-         const lines = [];
-         // Header row
-         lines.push(cols.map(esc).join(','));
-         // Data rows
-         for (let i = 0; i < rowCount; i++) {
-           const row = cols.map(c => esc((this.data[c] || [])[i]));
-           lines.push(row.join(','));
-         }
-         const csv = lines.join('\\r\\n');
-         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-         const url = URL.createObjectURL(blob);
-         const a = document.createElement('a');
-         a.href = url;
-         a.download = 'dataframe.csv';
-         document.body.appendChild(a);
-         a.click();
-         document.body.removeChild(a);
-         URL.revokeObjectURL(url);
+        //  const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
+        //  if (!cols.length) return;
+        //  // Determine the maximum row count across all columns
+        //  let rowCount = 0;
+        //  for (const c of cols) {
+        //    const len = (this.data[c] || []).length;
+        //    if (len > rowCount) rowCount = len;
+        //  }
+        //  const esc = (v) => {
+        //    if (v === null || v === undefined) return '';
+        //    if (typeof v === 'object') v = JSON.stringify(v);
+        //    let s = String(v);
+        //    s = s.replace(/"/g, '""');
+        //    if (/[",\r\n]/.test(s)) s = '"' + s + '"';
+        //    return s;
+        //  };
+        //  const lines = [];
+        //  // Header row
+        //  lines.push(cols.map(esc).join(','));
+        //  // Data rows
+        //  for (let i = 0; i < rowCount; i++) {
+        //    const row = cols.map(c => esc((this.data[c] || [])[i]));
+        //    lines.push(row.join(','));
+        //  }
+        //  const csv = lines.join('\\r\\n');
+        //  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        //  const url = URL.createObjectURL(blob);
+        //  const a = document.createElement('a');
+        //  a.href = url;
+        //  a.download = 'dataframe.csv';
+        //  document.body.appendChild(a);
+        //  a.click();
+        //  document.body.removeChild(a);
+        //  URL.revokeObjectURL(url);
+			var df = ReadJSON(this.data);        
+            df.ToCSVFile('test_js_dataframe.csv');
+
        },					
 	   sortColumnAsc(col) {
 						// Create an array of row indices

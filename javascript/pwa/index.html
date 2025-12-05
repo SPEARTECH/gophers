@@ -77,14 +77,16 @@
               { name: "Bob", age: '25' },
               { name: "Charlie", age: '35' }
             ];
-            var df = ReadJSON(this.obj);
-            this.jsobj = df.ToJSON();
-            df = df.Column('age', Cast('age', 'int'));
-            this.jsobj = df.ToJSON();
-            df = df.Column('name', Col('age'));
-            this.jsobj = df.ToJSON();
+            var df = ReadJSON(this.obj);        
+            df.Display().ElementID('datatable');
+            // df.ToCSVFile('test_js_dataframe.csv');
+            // this.jsobj = df.ToJSON();
+            // df = df.Column('age', Cast('age', 'int'));
+            // this.jsobj = df.ToJSON();
+            // df = df.Column('name', Col('age'));
+            // this.jsobj = df.ToJSON();
             // df.BarChart('Ages','total ages','name',Sum('age')).ElementID('datatable');
-            df.Show(5,5);
+            // df.Show(5,5);
           } catch (error) {
             console.error("Error loading Go WASM:", error);
           }

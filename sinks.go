@@ -17,151 +17,200 @@ import (
 )
 
 func (df *DataFrame) ToCSVFile(filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
+    if filename == "" {
+        filename = "dataframe.csv"
+    }
+    f, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
+    w := csv.NewWriter(f)
+    // Windows-friendly newlines
+    w.UseCRLF = true
+    defer w.Flush()
 
-	// headers
-	if err := writer.Write(df.Cols); err != nil {
-		return err
-	}
+    // Header
+    if err := w.Write(df.Cols); err != nil {
+        return err
+    }
 
-	// build rows in parallel, then write sequentially
-	rows := make([][]string, df.Rows)
-	w := runtime.GOMAXPROCS(0)
-	chunk := (df.Rows + w - 1) / w
-	var wg sync.WaitGroup
-	for g := 0; g < w; g++ {
-		start := g * chunk
-		end := start + chunk
-		if start >= df.Rows {
-			break
-		}
-		if end > df.Rows {
-			end = df.Rows
-		}
-		wg.Add(1)
-		go func(s, e int) {
-			defer wg.Done()
-			buf := make([]string, len(df.Cols))
-			for i := s; i < e; i++ {
-				// reuse buf capacity but must not share; copy per row
-				for j, col := range df.Cols {
-					buf[j] = fmt.Sprintf("%v", df.Data[col][i])
-				}
-				rowCopy := make([]string, len(buf))
-				copy(rowCopy, buf)
-				rows[i] = rowCopy
-			}
-		}(start, end)
-	}
-	wg.Wait()
-
-	for i := 0; i < df.Rows; i++ {
-		if rows[i] == nil {
-			// should not happen; skip defensively
-			continue
-		}
-		if err := writer.Write(rows[i]); err != nil {
-			return err
-		}
-	}
-	return nil
+    // Rows
+    for i := 0; i < df.Rows; i++ {
+        record := make([]string, len(df.Cols))
+        for j, col := range df.Cols {
+            var v any
+            colData, ok := df.Data[col]
+            if ok && i < len(colData) {
+                v = colData[i]
+            } else {
+                v = nil
+            }
+            switch x := v.(type) {
+            case nil:
+                record[j] = ""
+            case string:
+                record[j] = x
+            case []byte:
+                record[j] = string(x)
+            case []any, []interface{}, map[string]any, map[string]interface{}:
+                // Stabilize complex types as JSON strings
+                b, _ := json.Marshal(x)
+                record[j] = string(b)
+            default:
+                record[j] = fmt.Sprint(x)
+            }
+        }
+        if err := w.Write(record); err != nil {
+            return err
+        }
+    }
+    return w.Error()
 }
+// // dataframe to json file
+// func (df *DataFrame) ToJSONFile(filename string) error {
+// 	file, err := os.Create(filename)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer file.Close()
 
-// dataframe to json file
+// 	// Create a slice of maps to hold the rows of data.
+// 	rows := make([]map[string]interface{}, df.Rows)
+// 	for i := 0; i < df.Rows; i++ {
+// 		row := make(map[string]interface{})
+// 		for _, col := range df.Cols {
+// 			row[col] = df.Data[col][i]
+// 		}
+// 		rows[i] = row
+// 	}
+
+// 	// Marshal the rows into JSON format.
+// 	jsonData, err := json.Marshal(rows)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// Write the JSON data to the file.
+// 	_, err = file.Write(jsonData)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
+// // dataframe to json string
+// func (df *DataFrame) ToJSON() string {
+
+// 	// Create a slice of maps to hold the rows of data.
+// 	rows := make([]map[string]interface{}, df.Rows)
+// 	for i := 0; i < df.Rows; i++ {
+// 		row := make(map[string]interface{})
+// 		for _, col := range df.Cols {
+// 			row[col] = df.Data[col][i]
+// 		}
+// 		rows[i] = row
+// 	}
+
+// 	// Marshal the rows into JSON format.
+// 	jsonData, err := json.Marshal(rows)
+// 	if err != nil {
+// 		log.Fatalf("Error marshalling JSON: %v", err)
+// 	}
+
+// 	return string(jsonData)
+// }
+
+// // dataframe to ndjson file
+// func (df *DataFrame) ToNDJSONFile(filename string) error {
+// 	file, err := os.Create(filename)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer file.Close()
+
+// 	// Write each row as a separate JSON object on a new line.
+// 	for i := 0; i < df.Rows; i++ {
+// 		row := make(map[string]interface{})
+// 		for _, col := range df.Cols {
+// 			row[col] = df.Data[col][i]
+// 		}
+
+// 		// Marshal the row into JSON format.
+// 		jsonData, err := json.Marshal(row)
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		// Write the JSON data to the file, followed by a newline character.
+// 		_, err = file.Write(jsonData)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		_, err = file.WriteString("\n")
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
+
+// 	return nil
+// }
+
+// safeGet helper reused across sinks
+func (df *DataFrame) safeGet(col string, i int) any {
+    arr, ok := df.Data[col]
+    if !ok || i >= len(arr) || i < 0 {
+        return nil
+    }
+    return arr[i]
+}
+// ...existing code...
 func (df *DataFrame) ToJSONFile(filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Create a slice of maps to hold the rows of data.
-	rows := make([]map[string]interface{}, df.Rows)
-	for i := 0; i < df.Rows; i++ {
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-		rows[i] = row
-	}
-
-	// Marshal the rows into JSON format.
-	jsonData, err := json.Marshal(rows)
-	if err != nil {
-		return err
-	}
-
-	// Write the JSON data to the file.
-	_, err = file.Write(jsonData)
-	if err != nil {
-		return err
-	}
-
-	return nil
+    file, err := os.Create(filename)
+    if err != nil { return err }
+    defer file.Close()
+    enc := json.NewEncoder(file)
+    rows := make([]map[string]interface{}, df.Rows)
+    for i := 0; i < df.Rows; i++ {
+        row := make(map[string]interface{}, len(df.Cols))
+        for _, col := range df.Cols {
+            row[col] = df.safeGet(col, i)
+        }
+        rows[i] = row
+    }
+    return enc.Encode(rows)
 }
 
-// dataframe to json string
 func (df *DataFrame) ToJSON() string {
-
-	// Create a slice of maps to hold the rows of data.
-	rows := make([]map[string]interface{}, df.Rows)
-	for i := 0; i < df.Rows; i++ {
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-		rows[i] = row
-	}
-
-	// Marshal the rows into JSON format.
-	jsonData, err := json.Marshal(rows)
-	if err != nil {
-		log.Fatalf("Error marshalling JSON: %v", err)
-	}
-
-	return string(jsonData)
+    rows := make([]map[string]interface{}, df.Rows)
+    for i := 0; i < df.Rows; i++ {
+        row := make(map[string]interface{}, len(df.Cols))
+        for _, col := range df.Cols {
+            row[col] = df.safeGet(col, i)
+        }
+        rows[i] = row
+    }
+    b, _ := json.Marshal(rows)
+    return string(b)
 }
 
-// dataframe to ndjson file
 func (df *DataFrame) ToNDJSONFile(filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Write each row as a separate JSON object on a new line.
-	for i := 0; i < df.Rows; i++ {
-		row := make(map[string]interface{})
-		for _, col := range df.Cols {
-			row[col] = df.Data[col][i]
-		}
-
-		// Marshal the row into JSON format.
-		jsonData, err := json.Marshal(row)
-		if err != nil {
-			return err
-		}
-
-		// Write the JSON data to the file, followed by a newline character.
-		_, err = file.Write(jsonData)
-		if err != nil {
-			return err
-		}
-		_, err = file.WriteString("\n")
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+    file, err := os.Create(filename)
+    if err != nil { return err }
+    defer file.Close()
+    enc := json.NewEncoder(file)
+    for i := 0; i < df.Rows; i++ {
+        row := make(map[string]interface{}, len(df.Cols))
+        for _, col := range df.Cols {
+            row[col] = df.safeGet(col, i)
+        }
+        if err := enc.Encode(row); err != nil {
+            return err
+        }
+    }
+    return nil
 }
 
 // write to parquet?
