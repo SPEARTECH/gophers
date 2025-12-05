@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+
 	"net/http"
 	"net/url"
 	"os"
@@ -54,14 +54,15 @@ func (df *DataFrame) ToCSVFile(filename string) error {
                 record[j] = x
             case []byte:
                 record[j] = string(x)
-            case []any, []interface{}, map[string]any, map[string]interface{}:
-                // Stabilize complex types as JSON strings
+            case []interface{}:
+                b, _ := json.Marshal(x)
+                record[j] = string(b)
+            case map[string]interface{}:
                 b, _ := json.Marshal(x)
                 record[j] = string(b)
             default:
                 record[j] = fmt.Sprint(x)
-            }
-        }
+            }        }
         if err := w.Write(record); err != nil {
             return err
         }
