@@ -700,7 +700,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 				</table>
 			</div>
 		</body>
-		<script >
+		<script type="module">
             // Use Blob + anchor; fallback to window.open write.
             function openInNewTab() {
                 try {
