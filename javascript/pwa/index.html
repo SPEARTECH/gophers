@@ -78,7 +78,10 @@
               { name: "Bob", age: '25' },
               { name: "Charlie", age: '35' }
             ];
-            var df = ReadJSON(this.jsobj);    
+            const rows = Array.isArray(this.data) ? this.data : JSON.parse(
+              typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
+            );
+            var df = ReadJSON(rows);    
             const csvText = df.ToCSV();
             console.log(csvText); // verify it contains '\r\n' between rows    
             console.log(df.ToJSON());

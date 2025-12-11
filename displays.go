@@ -348,276 +348,222 @@ func rowsJSONString(df *DataFrame) string {
 
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
 func (df *DataFrame) DisplayBrowser() error {
-	// display an html table of the dataframe for analysis, filtering, sorting, etc
-	html := `
+    // display an html table of the dataframe for analysis, filtering, sorting, etc
+    html := `
 
-	<!DOCTYPE html>
-	<html>
-		<head>
-			<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
-			<script src="https://cdn.tailwindcss.com"></script>
-			<script src="https://code.highcharts.com/highcharts.js"></script>
-			<script src="https://code.highcharts.com/modules/boost.js"></script>
-			<script src="https://code.highcharts.com/modules/exporting.js"></script>
-			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-			<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
-		</head>
-		<body>
-			<div id="app" style="text-align: center;" class=" h-screen pt-12">
-				<button class="btn btn-sm fixed top-2 left-2 z-50" onclick="openInNewTab()">Open in Browser</button>
-				<button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+            <link href="https://cdn.jsdelivr.net/npm/daisyui@4.7.2/dist/full.min.css" rel="stylesheet" type="text/css" />
+            <script src="https://cdn.tailwindcss.com"></script>
+            <script src="https://code.highcharts.com/highcharts.js"></script>
+            <script src="https://code.highcharts.com/modules/boost.js"></script>
+            <script src="https://code.highcharts.com/modules/exporting.js"></script>
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+            <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+        </head>
+        <body>
+            <div id="app" style="text-align: center;" class="h-screen pt-12">
+                <button class="btn btn-sm fixed top-2 left-2 z-50" @click="openInNewTab">Open in Browser</button>
+                <button class="btn btn-sm fixed top-2 right-2 z-50" @click="exportCSV()">Export to CSV</button>
 
- <!-- center, fixed; container ignores pointer events -->
- <div class="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-   <!-- only this inner group is clickable -->
-   <div class="join pointer-events-auto">
-      <div v-if="current_page > 1">
-       <button class="btn btn-ghost btn-sm join-item" @click="first_page"><span class="material-symbols-outlined">first_page</span></button>
-       <button class="btn btn-ghost btn-sm join-item" @click="prev_page"><span class="material-symbols-outlined">chevron_left</span></button>
-      </div>
+                <div class="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                  <div class="join pointer-events-auto">
+                    <div v-if="current_page > 1">
+                      <button class="btn btn-ghost btn-sm join-item" @click="first_page"><span class="material-symbols-outlined">first_page</span></button>
+                      <button class="btn btn-ghost btn-sm join-item" @click="prev_page"><span class="material-symbols-outlined">chevron_left</span></button>
+                    </div>
 
-      <span v-if="pages <= 6" v-for="page in page_list" class="join">
-        <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
-        <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
-      </span>
+                    <span v-if="pages <= 6" v-for="page in page_list" class="join">
+                      <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
+                      <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
+                    </span>
 
-      <span class="join" v-else>
-       <span v-if="current_page > 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
-        <span v-for="page in page_list" class="join">
-          <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
-          <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
-        </span>
-       <span v-if="current_page <= pages - 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
-      </span>
+                    <span class="join" v-else>
+                      <span v-if="current_page > 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
+                      <span v-for="page in page_list" class="join">
+                        <button v-if="current_page === page" class="btn btn-sm btn-active no-animation join-item"><a href="#!">[[ current_page ]]</a></button>
+                        <button v-else class="btn btn-sm join-item" @click="pagefunc(page)"><a href="#!">[[ page ]]</a></button>
+                      </span>
+                      <span v-if="current_page <= pages - 3" class="btn btn-ghost btn-sm join-item pointer-events-none hover:bg-transparent focus:bg-transparent active:bg-transparent no-animation cursor-default select-none">…</span>
+                    </span>
 
-      <div v-if="current_page < pages">
-       <button class="btn btn-ghost btn-sm join-item" @click="next_page"><span class="material-symbols-outlined">chevron_right</span></button>
-       <button class="btn btn-ghost btn-sm join-item" @click="last_page"><span class="material-symbols-outlined">last_page</span></button>
-      </div>
-   </div>
- </div>			<!-- spacer to account for fixed toolbar height (~3rem) -->
-			<!-- <div class="h-12"></div> -->
-				<table class="table table-xs table-pin-rows w-full">
-	  				<thead>
-						<tr>
-							<th class="sticky top-12 z-40 bg-base-100 p-2"></th>
-						<th v-for="col in cols"  class="sticky top-12 z-40 bg-base-100 p-2"><div class="dropdown dropdown-hover"><div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
-							<ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
-								<li>
-									<details closed>
-									<summary class="btn-sm">Sort</summary>
-									<ul>
-										<li><a @click="sortColumnAsc(col)" class="flex justify-between items-center btn-sm">Ascending<span class="material-symbols-outlined">north</span></a></li>
-										<li><a @click="sortColumnDesc(col)" class="flex justify-between items-center btn-sm">Descending<span class="material-symbols-outlined">south</span></a></li>
-									</ul>
-									</details>
-								</li>
-							</ul>
-						</div></th>
-						</tr>
-					</thead>
-					<tbody>
-					<tr v-for="i in pageRowIndices" :key="i">
-							<th class="pl-5">[[ i + 1 ]]</th>
-							<td v-for="col in cols" :key="col" class="pl-5">[[ data[i]?.[col] ]]</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>
-		</body>
-		<script >
-            // Use Blob + anchor; fallback to window.open write.
-            function openInNewTab() {
-                try {
-                    const htmlContent = document.documentElement.outerHTML;
-                    const blob = new Blob([htmlContent], { type: 'text/html' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.target = '_blank';
-                    a.rel = 'noopener';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                } catch (e) {
-                    const w = window.open('', '_blank');
-                    if (!w) { alert('Popup blocked'); return; }
-                    w.document.open();
-                    w.document.write(document.documentElement.outerHTML);
-                    w.document.close();
+                    <div v-if="current_page < pages">
+                      <button class="btn btn-ghost btn-sm join-item" @click="next_page"><span class="material-symbols-outlined">chevron_right</span></button>
+                      <button class="btn btn-ghost btn-sm join-item" @click="last_page"><span class="material-symbols-outlined">last_page</span></button>
+                    </div>
+                  </div>
+                </div>
+
+                <table class="table table-xs table-pin-rows w-full">
+                  <thead>
+                    <tr>
+                      <th class="sticky top-12 z-40 bg-base-100 p-2"></th>
+                      <th v-for="col in cols" class="sticky top-12 z-40 bg-base-100 p-2">
+                        <div class="dropdown dropdown-hover">
+                          <div tabindex="0" role="button" class="btn btn-sm btn-ghost justify justify-start">[[ col ]]</div>
+                          <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
+                            <li>
+                              <details closed>
+                                <summary class="btn-sm">Sort</summary>
+                                <ul>
+                                  <li><a @click="sortColumnAsc(col)" class="flex justify-between items-center btn-sm">Ascending<span class="material-symbols-outlined">north</span></a></li>
+                                  <li><a @click="sortColumnDesc(col)" class="flex justify-between items-center btn-sm">Descending<span class="material-symbols-outlined">south</span></a></li>
+                                </ul>
+                              </details>
+                            </li>
+                          </ul>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="i in pageRowIndices" :key="i">
+                      <th class="pl-5">[[ i + 1 ]]</th>
+                      <td v-for="col in cols" :key="col" class="pl-5">[[ data[i]?.[col] ]]</td>
+                    </tr>
+                  </tbody>
+                </table>
+            </div>
+        </body>
+
+        <script type="module">
+          const { createApp } = Vue
+          createApp({
+            delimiters: ['[[', ']]'],
+            data() {
+              return {
+                cols: ` + QuoteArray(df.Cols) + `,
+                data: ` + rowsJSONString(df) + `,
+                selected_col: {},
+                pages: 0,
+                page_list: [],
+                current_page: 1,
+                pageSize: 50
+              }
+            },
+            methods: {
+              openInNewTab() {
+                const htmlContent = document.documentElement.outerHTML;
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+              },
+              recomputePagination() {
+                this.pages = Math.max(1, Math.ceil(this.rowCount / this.pageSize));
+                if (this.current_page > this.pages) this.current_page = this.pages;
+                if (this.current_page < 1) this.current_page = 1;
+                this.updatePageList();
+              },
+              updatePageList() {
+                const p = this.pages;
+                const cur = this.current_page;
+                if (p <= 6) {
+                  this.page_list = Array.from({ length: p }, (_, i) => i + 1);
+                  return;
                 }
+                let start = Math.max(1, cur - 2);
+                let end = Math.min(p, start + 5);
+                start = Math.max(1, end - 5);
+                this.page_list = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+              },
+              first_page() { this.current_page = 1; },
+              prev_page() { if (this.current_page > 1) this.current_page -= 1; },
+              pagefunc(page) { this.current_page = page; },
+              next_page() { if (this.current_page < this.pages) this.current_page += 1; },
+              last_page() { this.current_page = this.pages; },
+
+              exportCSV() {
+                const rows = Array.isArray(this.data) ? this.data : JSON.parse(
+                  typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
+                );
+                const df = ReadJSON(rows);
+                df.ToCSVFile('dataframe.csv');
+              },
+              sortColumnAsc(col) {
+                this.data = [...this.data].sort((a, b) => {
+                  const va = a?.[col]; const vb = b?.[col];
+                  if (va == null && vb == null) return 0;
+                  if (va == null) return 1;
+                  if (vb == null) return -1;
+                  return va < vb ? -1 : va > vb ? 1 : 0;
+                });
+                this.selected_col = col;
+              },
+              sortColumnDesc(col) {
+                this.data = [...this.data].sort((a, b) => {
+                  const va = a?.[col]; const vb = b?.[col];
+                  if (va == null && vb == null) return 0;
+                  if (va == null) return 1;
+                  if (vb == null) return -1;
+                  return va > vb ? -1 : va < vb ? 1 : 0;
+                });
+                this.selected_col = col;
+              },
+            },
+            watch: {
+              data() { this.recomputePagination(); },
+              pageSize() { this.recomputePagination(); },
+              current_page() { this.updatePageList(); }
+            },
+            created() {
+              this.recomputePagination();
+            },
+            async mounted() {
+              const mod = await import('https://cdn.jsdelivr.net/npm/gophers/gophers.js');
+              const { Gophers } = mod;
+              const gophers = await Gophers();
+              Object.assign(globalThis, gophers);
+            },
+            computed: {
+              rowCount() {
+                return Array.isArray(this.data) ? this.data.length : 0;
+              },
+              pageRowIndices() {
+                const start = (this.current_page - 1) * this.pageSize;
+                const end = Math.min(start + this.pageSize, this.rowCount);
+                const n = Math.max(end - start, 0);
+                return Array.from({ length: n }, (_, i) => start + i);
+              }
             }
+          }).mount('#app')
+        </script>
+    </html>`
 
-			const { createApp } = Vue
-			createApp({
-			delimiters : ['[[', ']]'],
-				data(){
-					return {
-						cols: ` + QuoteArray(df.Cols) + `,
-						data: ` + rowsJSONString(df) + `,
-						selected_col: {},
-						pages: 0,
-						page_list: [],
-						current_page: 1,
-						pageSize: 50
-					}
-				},
-				methods: {
-				      openInNewTab() {
-        const htmlContent = document.documentElement.outerHTML;
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-      },
-      recomputePagination() {
-        this.pages = Math.max(1, Math.ceil(this.rowCount / this.pageSize));
-        if (this.current_page > this.pages) this.current_page = this.pages;
-        if (this.current_page < 1) this.current_page = 1;
-        this.updatePageList();
-      },
-      updatePageList() {
-        const p = this.pages;
-        const cur = this.current_page;
-        if (p <= 6) {
-          this.page_list = Array.from({length: p}, (_, i) => i + 1);
-          return;
-        }
-        // sliding window of up to 6 pages
-        let start = Math.max(1, cur - 2);
-        let end = Math.min(p, start + 5);
-        start = Math.max(1, end - 5);
-        this.page_list = Array.from({length: end - start + 1}, (_, i) => start + i);
-      },
-      first_page(){ this.current_page = 1; },
-      prev_page(){ if (this.current_page > 1) this.current_page -= 1; },
-      pagefunc(page){ this.current_page = page; },
-      next_page(){ if (this.current_page < this.pages) this.current_page += 1; },
-      last_page(){ this.current_page = this.pages; },
-					
-       exportCSV() {
-			const rows = Array.isArray(this.data) ? this.data : JSON.parse(
-              typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
-            );
-			var df = ReadJSON(rows);        
-            df.ToCSVFile('test_js_dataframe.csv');
+    // Create a temporary file
+    tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
+    if err != nil {
+        return fmt.Errorf("failed to create temporary file: %v", err)
+    }
+    defer tmpFile.Close()
 
-       },					
-	   sortColumnAsc(col) {
-						// Create an array of row indices
-						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
+    if _, err := tmpFile.Write([]byte(html)); err != nil {
+        return fmt.Errorf("failed to write to temporary file: %v", err)
+    }
 
-						// Sort the row indices based on the values in the specified column (ascending)
-						rowIndices.sort((a, b) => {
-							if (this.data[col][a] < this.data[col][b]) return -1;
-							if (this.data[col][a] > this.data[col][b]) return 1;
-							return 0;
-						});
+    var cmd *exec.Cmd
+    switch runtime.GOOS {
+    case "windows":
+        cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
+    case "darwin":
+        cmd = exec.Command("open", tmpFile.Name())
+    default:
+        cmd = exec.Command("xdg-open", tmpFile.Name())
+    }
 
-						// Reorder all columns based on the sorted row indices
-						for (const key in this.data) {
-							this.data[key] = rowIndices.map(i => this.data[key][i]);
-						}
+    if err := cmd.Start(); err != nil {
+        return fmt.Errorf("failed to open file in browser: %v", err)
+    }
 
-						// Update the selected column
-						this.selected_col = col;
-					},
-					sortColumnDesc(col) {
-						// Create an array of row indices
-						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
-
-						// Sort the row indices based on the values in the specified column (descending)
-						rowIndices.sort((a, b) => {
-							if (this.data[col][a] > this.data[col][b]) return -1;
-							if (this.data[col][a] < this.data[col][b]) return 1;
-							return 0;
-						});
-
-						// Reorder all columns based on the sorted row indices
-						for (const key in this.data) {
-							this.data[key] = rowIndices.map(i => this.data[key][i]);
-						}
-
-						// Update the selected column
-						this.selected_col = col;
-					}
-				},
-				watch: {
-					rowCount() {
-						// this.recomputePagination();
-						return Array.isArray(this.data) ? this.data.length : 0;
-					},
-					pageSize() {
-						this.recomputePagination();
-					},
-					current_page() {
-						// keep page_list window centered
-						this.updatePageList();
-					}
-				},
-				created(){
-					this.recomputePagination();
-
-				},
-
-				async mounted() {
-					const mod = await import('https://cdn.jsdelivr.net/npm/gophers/gophers.js');
-					const { Gophers } = mod;
-                    const gophers = await Gophers();
-                    Object.assign(globalThis, gophers);
-				},
-				computed:{
-					// Max row count across all columns
-					rowCount() {
-						let rc = 0;
-						for (const c of this.cols || []) {
-						const len = (this.data[c] || []).length;
-						if (len > rc) rc = len;
-						}
-						return rc;
-					},
-					// Indices for the current page
-					pageRowIndices() {
-						const start = (this.current_page - 1) * this.pageSize;
-						const end = Math.min(start + this.pageSize, this.rowCount);
-						const n = Math.max(end - start, 0);
-						return Array.from({ length: n }, (_, i) => start + i);
-					}				
-				}
-
-			}).mount('#app')
-		</script>
-	</html>
-		`
-	// Create a temporary file
-	tmpFile, err := os.CreateTemp(os.TempDir(), "temp-*.html")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file: %v", err)
-	}
-	defer tmpFile.Close()
-
-	// Write the HTML string to the temporary file
-	if _, err := tmpFile.Write([]byte(html)); err != nil {
-		return fmt.Errorf("failed to write to temporary file: %v", err)
-	}
-
-	// Open the temporary file in the default web browser
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", tmpFile.Name())
-	case "darwin":
-		cmd = exec.Command("open", tmpFile.Name())
-	default: // "linux", "freebsd", "openbsd", "netbsd"
-		cmd = exec.Command("xdg-open", tmpFile.Name())
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to open file in browser: %v", err)
-	}
-
-	return nil
+    return nil
 }
 
 // Display an html table of the data
@@ -700,165 +646,83 @@ func (df *DataFrame) Display() map[string]interface{} {
 				</table>
 			</div>
 		</body>
-		<script type="module">
-            // Use Blob + anchor; fallback to window.open write.
-            function openInNewTab() {
-                try {
-                    const htmlContent = document.documentElement.outerHTML;
-                    const blob = new Blob([htmlContent], { type: 'text/html' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.target = '_blank';
-                    a.rel = 'noopener';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                } catch (e) {
-                    const w = window.open('', '_blank');
-                    if (!w) { alert('Popup blocked'); return; }
-                    w.document.open();
-                    w.document.write(document.documentElement.outerHTML);
-                    w.document.close();
-                }
-            }
-			const { createApp } = Vue
-			createApp({
-			delimiters : ['[[', ']]'],
-				data(){
-					return {
-						cols: ` + QuoteArray(df.Cols) + `,
-						data: ` + rowsJSONString(df) + `,
-						selected_col: {},
-						pages: 0,
-						page_list: [],
-						current_page: 1,
-						pageSize: 50
-					}
-				},
-				methods: {
-      recomputePagination() {
-        this.pages = Math.max(1, Math.ceil(this.rowCount / this.pageSize));
-        if (this.current_page > this.pages) this.current_page = this.pages;
-        if (this.current_page < 1) this.current_page = 1;
-        this.updatePageList();
-      },
-      updatePageList() {
-        const p = this.pages;
-        const cur = this.current_page;
-        if (p <= 6) {
-          this.page_list = Array.from({length: p}, (_, i) => i + 1);
-          return;
-        }
-        // sliding window of up to 6 pages
-        let start = Math.max(1, cur - 2);
-        let end = Math.min(p, start + 5);
-        start = Math.max(1, end - 5);
-        this.page_list = Array.from({length: end - start + 1}, (_, i) => start + i);
-      },
-      first_page(){ this.current_page = 1; },
-      prev_page(){ if (this.current_page > 1) this.current_page -= 1; },
-      pagefunc(page){ this.current_page = page; },
-      next_page(){ if (this.current_page < this.pages) this.current_page += 1; },
-      last_page(){ this.current_page = this.pages; },
-					
+        <script type="module">
+            const { createApp } = Vue
+            createApp({
+            delimiters : ['[[', ']]'],
+                data(){
+                    return {
+                        cols: ` + QuoteArray(df.Cols) + `,
+                        data: ` + rowsJSONString(df) + `,
+                        selected_col: {},
+                        pages: 0,
+                        page_list: [],
+                        current_page: 1,
+                        pageSize: 50
+                    }
+                },
+                methods: {
+      // ...existing code...
        exportCSV() {
-			const rows = Array.isArray(this.data) ? this.data : JSON.parse(
+            const rows = Array.isArray(this.data) ? this.data : JSON.parse(
               typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
             );
-			var df = ReadJSON(rows);        
+            var df = ReadJSON(rows);
             df.ToCSVFile('test_js_dataframe.csv');
-
-       },					
-	   sortColumnAsc(col) {
-						// Create an array of row indices
-						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
-
-						// Sort the row indices based on the values in the specified column (ascending)
-						rowIndices.sort((a, b) => {
-							if (this.data[col][a] < this.data[col][b]) return -1;
-							if (this.data[col][a] > this.data[col][b]) return 1;
-							return 0;
-						});
-
-						// Reorder all columns based on the sorted row indices
-						for (const key in this.data) {
-							this.data[key] = rowIndices.map(i => this.data[key][i]);
-						}
-
-						// Update the selected column
-						this.selected_col = col;
-					},
-					sortColumnDesc(col) {
-						// Create an array of row indices
-						const rowIndices = Array.from({ length: this.data[col].length }, (_, i) => i);
-
-						// Sort the row indices based on the values in the specified column (descending)
-						rowIndices.sort((a, b) => {
-							if (this.data[col][a] > this.data[col][b]) return -1;
-							if (this.data[col][a] < this.data[col][b]) return 1;
-							return 0;
-						});
-
-						// Reorder all columns based on the sorted row indices
-						for (const key in this.data) {
-							this.data[key] = rowIndices.map(i => this.data[key][i]);
-						}
-
-						// Update the selected column
-						this.selected_col = col;
-					}
-				},
-				watch: {
-					// rowCount() {
-					// 	// this.recomputePagination();
-					// 	return Array.isArray(this.data) ? this.data.length : 0;
-					// },
-					data() {
-						this.recomputePagination();
-					},
-					pageSize() {
-						this.recomputePagination();
-					},
-					current_page() {
-						// keep page_list window centered
-						this.updatePageList();
-					}
-				},
-				created(){
-					this.recomputePagination();
-
-				},
-
-				async mounted() {
-					const mod = await import('https://cdn.jsdelivr.net/npm/gophers/gophers.js');
-					const { Gophers } = mod;
+       },
+       sortColumnAsc(col) {
+         // sort array of row objects ascending by col
+         this.data = [...this.data].sort((a, b) => {
+           const va = a?.[col]; const vb = b?.[col];
+           if (va == null && vb == null) return 0;
+           if (va == null) return 1;
+           if (vb == null) return -1;
+           return va < vb ? -1 : va > vb ? 1 : 0;
+         });
+         this.selected_col = col;
+       },
+       sortColumnDesc(col) {
+         // sort array of row objects descending by col
+         this.data = [...this.data].sort((a, b) => {
+           const va = a?.[col]; const vb = b?.[col];
+           if (va == null && vb == null) return 0;
+           if (va == null) return 1;
+           if (vb == null) return -1;
+           return va > vb ? -1 : va < vb ? 1 : 0;
+         });
+         this.selected_col = col;
+       },
+                },
+                watch: {
+                    data() { this.recomputePagination(); },
+                    pageSize() { this.recomputePagination(); },
+                    current_page() { this.updatePageList(); }
+                },
+                created(){
+                    this.recomputePagination();
+                },
+                async mounted() {
+                    const mod = await import('https://cdn.jsdelivr.net/npm/gophers/gophers.js');
+                    const { Gophers } = mod;
                     const gophers = await Gophers();
                     Object.assign(globalThis, gophers);
-
-				},
-				computed:{
-					// Max row count across all columns
-					// rowCount() {
-					// 	// this.recomputePagination();
-					// 	return Array.isArray(this.data) ? this.data.length : 0;
-					// },
-					data() {
-						this.recomputePagination();
-					},
-					// Indices for the current page
-					pageRowIndices() {
-						const start = (this.current_page - 1) * this.pageSize;
-						const end = Math.min(start + this.pageSize, this.rowCount);
-						const n = Math.max(end - start, 0);
-						return Array.from({ length: n }, (_, i) => start + i);
-					}				
-				}
-
-			}).mount('#app')
-		</script>
-	</html>
+                },
+                computed:{
+                    // Total row count from array of row objects
+                    rowCount() {
+            return Array.isArray(this.data) ? this.data.length : 0;
+                    },
+                    // Indices for the current page
+                    pageRowIndices() {
+                        const start = (this.current_page - 1) * this.pageSize;
+                        const end = Math.min(start + this.pageSize, this.rowCount);
+                        const n = Math.max(end - start, 0);
+                        return Array.from({ length: n }, (_, i) => start + i);
+                    }				
+                }
+            }).mount('#app')
+        </script>	
+		</html>
 	
 `
 	return map[string]interface{}{
