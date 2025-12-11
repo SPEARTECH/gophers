@@ -811,9 +811,12 @@ func (df *DataFrame) Display() map[string]interface{} {
 					}
 				},
 				watch: {
-					rowCount() {
-						// this.recomputePagination();
-						return Array.isArray(this.data) ? this.data.length : 0;
+					// rowCount() {
+					// 	// this.recomputePagination();
+					// 	return Array.isArray(this.data) ? this.data.length : 0;
+					// },
+					data() {
+						this.recomputePagination();
 					},
 					pageSize() {
 						this.recomputePagination();
@@ -837,13 +840,12 @@ func (df *DataFrame) Display() map[string]interface{} {
 				},
 				computed:{
 					// Max row count across all columns
-					rowCount() {
-						let rc = 0;
-						for (const c of this.cols || []) {
-						const len = (this.data[c] || []).length;
-						if (len > rc) rc = len;
-						}
-						return rc;
+					// rowCount() {
+					// 	// this.recomputePagination();
+					// 	return Array.isArray(this.data) ? this.data.length : 0;
+					// },
+					data() {
+						this.recomputePagination();
 					},
 					// Indices for the current page
 					pageRowIndices() {
