@@ -451,6 +451,7 @@ func (df *DataFrame) DisplayBrowser() error {
             }
 
 			const { createApp } = Vue
+			import { Gophers } from 'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
 			createApp({
 			delimiters : ['[[', ']]'],
 				data(){
@@ -561,7 +562,7 @@ func (df *DataFrame) DisplayBrowser() error {
 
 				},
 
-				mounted() {
+				async mounted() {
                     const gophers = await Gophers();
                     Object.assign(globalThis, gophers);
 				},
@@ -827,7 +828,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 
 				},
 
-				mounted() {
+				async mounted() {
                     const gophers = await Gophers();
                     Object.assign(globalThis, gophers);
 
