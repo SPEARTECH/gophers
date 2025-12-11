@@ -426,7 +426,7 @@ func (df *DataFrame) DisplayBrowser() error {
 				</table>
 			</div>
 		</body>
-		<script type="module">
+		<script >
             // Use Blob + anchor; fallback to window.open write.
             function openInNewTab() {
                 try {
@@ -451,7 +451,6 @@ func (df *DataFrame) DisplayBrowser() error {
             }
 
 			const { createApp } = Vue
-			import { Gophers } from 'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
 			createApp({
 			delimiters : ['[[', ']]'],
 				data(){
@@ -501,7 +500,7 @@ func (df *DataFrame) DisplayBrowser() error {
 			const rows = Array.isArray(this.data) ? this.data : JSON.parse(
               typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
             );
-			var df = ReadJSON(this.data);        
+			var df = ReadJSON(rows);        
             df.ToCSVFile('test_js_dataframe.csv');
 
        },					
@@ -563,6 +562,8 @@ func (df *DataFrame) DisplayBrowser() error {
 				},
 
 				async mounted() {
+					const mod = await import('https://cdn.jsdelivr.net/npm/gophers/gophers.js');
+					const { Gophers } = mod;
                     const gophers = await Gophers();
                     Object.assign(globalThis, gophers);
 				},
@@ -699,7 +700,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 				</table>
 			</div>
 		</body>
-		<script type="module">
+		<script >
             // Use Blob + anchor; fallback to window.open write.
             function openInNewTab() {
                 try {
@@ -723,7 +724,6 @@ func (df *DataFrame) Display() map[string]interface{} {
                 }
             }
 			const { createApp } = Vue
-            import { Gophers } from 'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
 			createApp({
 			delimiters : ['[[', ']]'],
 				data(){
@@ -767,7 +767,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 			const rows = Array.isArray(this.data) ? this.data : JSON.parse(
               typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
             );
-			var df = ReadJSON(this.data);        
+			var df = ReadJSON(rows);        
             df.ToCSVFile('test_js_dataframe.csv');
 
        },					
@@ -829,6 +829,8 @@ func (df *DataFrame) Display() map[string]interface{} {
 				},
 
 				async mounted() {
+					const mod = await import('https://cdn.jsdelivr.net/npm/gophers/gophers.js');
+					const { Gophers } = mod;
                     const gophers = await Gophers();
                     Object.assign(globalThis, gophers);
 
