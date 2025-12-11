@@ -298,61 +298,29 @@ func dfObject(id int) js.Value {
 	// - filename: string (default "dataframe.json")
 	// - format: "rows" | "columnar" (default "rows")
 	// - pretty: boolean (default false)
-	obj.Set("ToJSONFile", js.FuncOf(func(this js.Value, args []js.Value) any {
-        df := get(id)
-        if df == nil {
-            return "error: invalid handle"
-        }
-        filename := "dataframe.json"
-        if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
-            filename = args[0].String()
-        }
-        format := "rows" // "rows" | "columnar"
-        if len(args) >= 2 && args[1].Type() == js.TypeString {
-            format = args[1].String()
-        }
-        pretty := false
-        if len(args) >= 3 && args[2].Type() == js.TypeBoolean {
-            pretty = args[2].Bool()
-        }
+    obj.Set("ToJSONFile", js.FuncOf(func(this js.Value, args []js.Value) any {
+        df := get(id); if df == nil { return "error: invalid handle" }
+        filename, format, pretty := "dataframe.json", "rows", false
+        if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" { filename = args[0].String() }
+        if len(args) >= 2 && args[1].Type() == js.TypeString { format = args[1].String() }
+        if len(args) >= 3 && args[2].Type() == js.TypeBoolean { pretty = args[2].Bool() }
 
-        // Build JSON bytes (pure Go style: rows slice or columnar payload)
         var b []byte
         if format == "columnar" {
-            payload := map[string]any{
-                "cols": df.Cols,
-                "data": df.Data,
-                "rows": df.Rows,
-            }
-            if pretty {
-                b, _ = json.MarshalIndent(payload, "", "  ")
-            } else {
-                b, _ = json.Marshal(payload)
-            }
+            payload := map[string]any{"cols": df.Cols, "data": df.Data, "rows": df.Rows}
+            if pretty { b, _ = json.MarshalIndent(payload, "", "  ") } else { b, _ = json.Marshal(payload) }
         } else {
-            rows := make([]map[string]interface{}, df.Rows)
-            for i := 0; i < df.Rows; i++ {
-                row := make(map[string]interface{}, len(df.Cols))
-                for _, c := range df.Cols {
-                    row[c] = df.Data[c][i]
-                }
-                rows[i] = row
-            }
-            if pretty {
-                b, _ = json.MarshalIndent(rows, "", "  ")
-            } else {
-                b, _ = json.Marshal(rows)
-            }
+            rows := df.ToRows()
+            if pretty { b, _ = json.MarshalIndent(rows, "", "  ") } else { b, _ = json.Marshal(rows) }
         }
 
-        // Download via Blob (Uint8Array for proper bytes)
+        // download blob
         u8 := js.Global().Get("Uint8Array").New(len(b))
         _ = js.CopyBytesToJS(u8, b)
         parts := js.Global().Get("Array").New()
         parts.Call("push", u8)
         blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "application/json;charset=utf-8"})
         url := js.Global().Get("URL").Call("createObjectURL", blob)
-
         doc := js.Global().Get("document")
         a := doc.Call("createElement", "a")
         a.Set("href", url)
@@ -365,10 +333,9 @@ func dfObject(id int) js.Value {
             js.Global().Get("URL").Call("revokeObjectURL", url)
             return nil
         }), 1000)
-
         return "ok"
-	}))
-	obj.Set("ToCSVFile", js.FuncOf(func(this js.Value, args []js.Value) any {
+    })) 
+    obj.Set("ToCSVFile", js.FuncOf(func(this js.Value, args []js.Value) any {
         df := get(id)
         if df == nil {
             return "error: invalid handle"
@@ -389,18 +356,18 @@ func dfObject(id int) js.Value {
             includeHeader = args[2].Bool()
         }
 
-        // Mirror sinks.go: build rows in parallel, fmt.Sprintf values
         var buf bytes.Buffer
         cw := csv.NewWriter(&buf)
         cw.Comma = delimiter
+        cw.UseCRLF = true // Windows CRLF rows
 
         if includeHeader {
             if err := cw.Write(df.Cols); err != nil {
                 return fmt.Sprintf("error: write header: %v", err)
             }
         }
-
-        // Prebuild rows concurrently (same as sinks.go)
+js.Global().Get("console").Call("log", fmt.Sprintf("rows=%d, cols=%d", df.Rows, len(df.Cols)))
+        // Prebuild rows concurrently (stable ordering)
         rows := make([][]string, df.Rows)
         w := runtime.GOMAXPROCS(0)
         if w < 1 { w = 1 }
@@ -409,28 +376,34 @@ func dfObject(id int) js.Value {
         for gIdx := 0; gIdx < w; gIdx++ {
             start := gIdx * chunk
             end := start + chunk
-            if start >= df.Rows {
-                break
-            }
-            if end > df.Rows {
-                end = df.Rows
-            }
+            if start >= df.Rows { break }
+            if end > df.Rows { end = df.Rows }
             wg.Add(1)
             go func(s, e int) {
                 defer wg.Done()
-                bufRow := make([]string, len(df.Cols))
+                rec := make([]string, len(df.Cols))
                 for i := s; i < e; i++ {
                     for j, col := range df.Cols {
-                        // fmt.Sprintf like sinks.go
+                        var v any
                         colData := df.Data[col]
-                        var v interface{}
-                        if i < len(colData) {
-                            v = colData[i]
+                        if i < len(colData) { v = colData[i] }
+                        switch x := v.(type) {
+                        case nil:
+                            rec[j] = ""
+                        case string:
+                            rec[j] = x
+                        case []byte:
+                            rec[j] = string(x)
+                        case []interface{}:
+                            b, _ := json.Marshal(x); rec[j] = string(b)
+                        case map[string]interface{}:
+                            b, _ := json.Marshal(x); rec[j] = string(b)
+                        default:
+                            rec[j] = fmt.Sprint(x)
                         }
-                        bufRow[j] = fmt.Sprintf("%v", v)
                     }
-                    rowCopy := make([]string, len(bufRow))
-                    copy(rowCopy, bufRow)
+                    rowCopy := make([]string, len(rec))
+                    copy(rowCopy, rec)
                     rows[i] = rowCopy
                 }
             }(start, end)
@@ -439,10 +412,7 @@ func dfObject(id int) js.Value {
 
         // Write sequentially
         for i := 0; i < df.Rows; i++ {
-            if rows[i] == nil {
-                // defensive skip
-                continue
-            }
+            if rows[i] == nil { continue }
             if err := cw.Write(rows[i]); err != nil {
                 return fmt.Sprintf("error: write row %d: %v", i, err)
             }
@@ -452,10 +422,12 @@ func dfObject(id int) js.Value {
             return fmt.Sprintf("error: csv flush: %v", err)
         }
 
+        // Prefix UTF‑8 BOM so Excel detects encoding
+        out := append([]byte{0xEF, 0xBB, 0xBF}, buf.Bytes()...)
+
         // Download via Blob
-        csvBytes := []byte(buf.String())
-        u8 := js.Global().Get("Uint8Array").New(len(csvBytes))
-        _ = js.CopyBytesToJS(u8, csvBytes)
+        u8 := js.Global().Get("Uint8Array").New(len(out))
+        _ = js.CopyBytesToJS(u8, out)
         parts := js.Global().Get("Array").New()
         parts.Call("push", u8)
         blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "text/csv;charset=utf-8"})
@@ -475,37 +447,54 @@ func dfObject(id int) js.Value {
         }), 1000)
 
         return "ok"
-	}))
-    // df.ToNDJSONFile(filename) -> triggers browser download; returns "ok"
-    obj.Set("ToNDJSONFile", js.FuncOf(func(this js.Value, args []js.Value) any {
-        df := get(id)
-        if df == nil {
-            return "error: invalid handle"
-        }
-        filename := "dataframe.ndjson"
+    }))
+    obj.Set("ToCSV", js.FuncOf(func(this js.Value, args []js.Value) any {
+        df := get(id); if df == nil { return "error: invalid handle" }
+        delimiter := ','
         if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" {
-            filename = args[0].String()
+            r := []rune(args[0].String()); if len(r) > 0 { delimiter = r[0] }
         }
-
-        // Build NDJSON bytes (one JSON object per line, like sinks.go)
-        var sb strings.Builder
-        for i := 0; i < df.Rows; i++ {
-            row := make(map[string]interface{}, len(df.Cols))
-            for _, c := range df.Cols {
-                row[c] = df.Data[c][i]
+        var buf bytes.Buffer
+        cw := csv.NewWriter(&buf)
+        cw.Comma = delimiter
+        cw.UseCRLF = true
+        _ = cw.Write(df.Cols)
+        rows := df.ToRows()
+        for _, r := range rows {
+            rec := make([]string, len(df.Cols))
+            for j, c := range df.Cols {
+                v := r[c]
+                switch x := v.(type) {
+                case nil: rec[j] = ""
+                case string: rec[j] = x
+                case []byte: rec[j] = string(x)
+                case []interface{}: b, _ := json.Marshal(x); rec[j] = string(b)
+                case map[string]interface{}: b, _ := json.Marshal(x); rec[j] = string(b)
+                default: rec[j] = fmt.Sprint(x)
+                }
             }
-            j, _ := json.Marshal(row)
-            sb.Write(j)
-            sb.WriteByte('\n')
+            _ = cw.Write(rec)
         }
-        nd := []byte(sb.String())
+        cw.Flush()
+        // Return UTF-8 BOM + bytes as a string so you can inspect
+        out := append([]byte{0xEF, 0xBB, 0xBF}, buf.Bytes()...)
+        return string(out)
+    }))
+    obj.Set("ToNDJSONFile", js.FuncOf(func(this js.Value, args []js.Value) any {
+        df := get(id); if df == nil { return "error: invalid handle" }
+        filename := "dataframe.ndjson"
+        if len(args) >= 1 && args[0].Type() == js.TypeString && args[0].String() != "" { filename = args[0].String() }
 
-        // Download via Blob
-        u8 := js.Global().Get("Uint8Array").New(len(nd))
-        _ = js.CopyBytesToJS(u8, nd)
+        var sb strings.Builder
+        enc := json.NewEncoder(&sb)
+        for _, row := range df.ToRows() { _ = enc.Encode(row) }
+
+        data := []byte(sb.String())
+        u8 := js.Global().Get("Uint8Array").New(len(data))
+        _ = js.CopyBytesToJS(u8, data)
         parts := js.Global().Get("Array").New()
         parts.Call("push", u8)
-        blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "application/x-ndjson"})
+        blob := js.Global().Get("Blob").New(parts, map[string]any{"type": "application/x-ndjson;charset=utf-8"})
         url := js.Global().Get("URL").Call("createObjectURL", blob)
 
         doc := js.Global().Get("document")
@@ -520,7 +509,6 @@ func dfObject(id int) js.Value {
             js.Global().Get("URL").Call("revokeObjectURL", url)
             return nil
         }), 1000)
-
         return "ok"
     }))
     // df.PostAPI(url[, headersObj, queryObj]) -> string (raw response body)
@@ -1445,7 +1433,6 @@ func dfObject(id int) js.Value {
 	}
 	return obj
 }
-
 // ------------- SINKS ---------------
 // toJSONString converts a JS value to JSON text.
 // - string: returns as-is
@@ -1512,7 +1499,7 @@ func readJSON(this js.Value, args []js.Value) any {
     }
     v := args[0]
 
-    // New: support File/Blob (async)
+    // File/Blob path (unchanged)
     if isBlobOrFile(v) {
         return js.Global().Get("Promise").New(js.FuncOf(func(this js.Value, prArgs []js.Value) any {
             resolve, reject := prArgs[0], prArgs[1]
@@ -1533,7 +1520,85 @@ func readJSON(this js.Value, args []js.Value) any {
         }))
     }
 
-    // Existing sync paths
+    // If a plain JS value, normalize before g.ReadJSON
+    // 1) Arrays (rows) -> stringify directly
+    arrCtor := js.Global().Get("Array")
+    if arrCtor.Truthy() && v.InstanceOf(arrCtor) {
+        text := js.Global().Get("JSON").Call("stringify", v).String()
+        df := g.ReadJSON(text)
+        id := put(df)
+        return dfObject(id)
+    }
+
+    // 2) Objects: detect columnar or newline-packed columns and convert to rows
+    if v.Type() == js.TypeObject {
+        // Convert to Go map for easy handling
+        mm, ok := jsValToAny(v).(map[string]interface{})
+        if ok && len(mm) > 0 {
+            // Build columnar map[string][]any from either arrays or newline-split strings
+            colmap := map[string][]interface{}{}
+            rowCount := 0
+
+            // helper: split lines
+            splitLines := func(s string) []string {
+                // handle CRLF, LF, or CR
+                s = strings.ReplaceAll(s, "\r\n", "\n")
+                s = strings.ReplaceAll(s, "\r", "\n")
+                if s == "" { return []string{""} }
+                return strings.Split(s, "\n")
+            }
+
+            // isColumnarLike := true // REMOVE: unused
+            for k, val := range mm {
+                switch t := val.(type) {
+                    case []interface{}:
+                    colmap[k] = t
+                    if len(t) > rowCount { rowCount = len(t) }
+                case string:
+                    // Treat strings with line breaks as column data
+                    if strings.Contains(t, "\n") || strings.Contains(t, "\r") {
+                        ls := splitLines(t)
+                        arr := make([]interface{}, len(ls))
+                        for i := range ls { arr[i] = ls[i] }
+                        colmap[k] = arr
+                        if len(arr) > rowCount { rowCount = len(arr) }
+                    } else {
+                        // scalar -> single row
+                        colmap[k] = []interface{}{t}
+                        if rowCount < 1 { rowCount = 1 }
+                    }
+                default:
+                    // not an array -> scalar -> single row
+                    colmap[k] = []interface{}{t}
+                    if rowCount < 1 { rowCount = 1 }
+                    // if we see scalars, it’s not purely columnar arrays
+                }
+            }
+
+            if rowCount > 0 {
+                rows := make([]map[string]interface{}, rowCount)
+                for i := 0; i < rowCount; i++ {
+                    r := make(map[string]interface{}, len(colmap))
+                    for k, arr := range colmap {
+                        if i < len(arr) { r[k] = arr[i] } else { r[k] = nil }
+                    }
+                    rows[i] = r
+                }
+                b, _ := json.Marshal(rows)
+                df := g.ReadJSON(string(b))
+                id := put(df)
+                return dfObject(id)
+            }
+        }
+
+        // Fallback: stringify object as-is
+        text := js.Global().Get("JSON").Call("stringify", v).String()
+        df := g.ReadJSON(text)
+        id := put(df)
+        return dfObject(id)
+    }
+
+    // Primitives/strings: existing path
     jsonText, err := toJSONString(v)
     if err != "" {
         return err
@@ -1542,7 +1607,6 @@ func readJSON(this js.Value, args []js.Value) any {
     id := put(df)
     return dfObject(id)
 }
-
 // ...existing code...
 
 // ReadCSV takes CSV (string/Uint8Array/ArrayBuffer|File|Blob) and returns a DataFrame object.
@@ -1552,13 +1616,12 @@ func readCSV(this js.Value, args []js.Value) any {
     }
     v := args[0]
 
-    // New: support File/Blob (async)
     if isBlobOrFile(v) {
         return js.Global().Get("Promise").New(js.FuncOf(func(this js.Value, prArgs []js.Value) any {
             resolve, reject := prArgs[0], prArgs[1]
             promiseReadBlobText(v).Call("then",
                 js.FuncOf(func(this js.Value, a []js.Value) any {
-                    text := a[0].String()
+                    text := normalizeNewlines(a[0].String())
                     df := g.ReadCSV(text)
                     id := put(df)
                     resolve.Invoke(dfObject(id))
@@ -1573,16 +1636,13 @@ func readCSV(this js.Value, args []js.Value) any {
         }))
     }
 
-    // Existing sync paths
     csvText, err := toText(v)
-    if err != "" {
-        return err
-    }
+    if err != "" { return err }
+    csvText = normalizeNewlines(csvText)
     df := g.ReadCSV(csvText)
     id := put(df)
     return dfObject(id)
 }
-
 // jsObjToStringMap converts a plain JS object to map[string]string (values are coerced to String()).
 func jsObjToStringMap(v js.Value) map[string]string {
 	out := map[string]string{}
@@ -1683,7 +1743,11 @@ func promiseReadBlobText(v js.Value) js.Value {
     }))
 }
 
-// ...existing code...
+func normalizeNewlines(s string) string {
+    s = strings.ReplaceAll(s, "\r\n", "\n")
+    s = strings.ReplaceAll(s, "\r", "\n")
+    return s
+}
 
 // ReadNDJSON(text|Uint8Array|ArrayBuffer|File|Blob) -> DataFrame object or Promise<DataFrame>
 func readNDJSON(this js.Value, args []js.Value) any {
@@ -1697,7 +1761,7 @@ func readNDJSON(this js.Value, args []js.Value) any {
             resolve, reject := prArgs[0], prArgs[1]
             promiseReadBlobText(v).Call("then",
                 js.FuncOf(func(this js.Value, a []js.Value) any {
-                    text := a[0].String()
+                    text := normalizeNewlines(a[0].String())
                     df := g.ReadNDJSON(text)
                     id := put(df)
                     resolve.Invoke(dfObject(id))
@@ -1713,9 +1777,8 @@ func readNDJSON(this js.Value, args []js.Value) any {
     }
     // Synchronous inputs (string/Uint8Array/ArrayBuffer)
     text, err := toText(v)
-    if err != "" {
-        return err
-    }
+    if err != "" { return err }
+    text = normalizeNewlines(text)
     df := g.ReadNDJSON(text)
     id := put(df)
     return dfObject(id)

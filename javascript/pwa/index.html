@@ -27,6 +27,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
   <link rel="icon" href="./static/icon/gopher.png" type="image/png">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="./static/go_wasm/wasm_exec.js"></script> 
   </head>
 <body>
   <div id="app1" style="text-align: center;">
@@ -47,7 +48,7 @@
 <!-- <script src="https://unpkg.com/gophers@0.0.1/gophers.js"></script> -->
  <script type="module">
     const { createApp } = Vue
-     import { Gophers } from 'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
+     import { Gophers } from './gophers.js'  //'https://cdn.jsdelivr.net/npm/gophers/gophers.js'
     createApp({
       delimiters : ['[[', ']]'],
         data(){
@@ -70,14 +71,17 @@
 
         async mounted() {
           try {
-            const gophers = await Gophers();
+            const gophers = await Gophers({ wasmURL: './static/go_wasm/gophers_js.wasm' });
             Object.assign(globalThis, gophers);
-            this.obj = [
+            this.jsobj = [
               { name: "Alice", age: '30' },
               { name: "Bob", age: '25' },
               { name: "Charlie", age: '35' }
             ];
-            var df = ReadJSON(this.obj);        
+            var df = ReadJSON(this.jsobj);    
+            const csvText = df.ToCSV();
+            console.log(csvText); // verify it contains '\r\n' between rows    
+            console.log(df.ToJSON());
             df.Display().ElementID('datatable');
             // df.ToCSVFile('test_js_dataframe.csv');
             // this.jsobj = df.ToJSON();

@@ -1,6 +1,6 @@
 {
     "name": "gophers",
-    "version": "0.0.7",
+    "version": "0.0.9",
     "main": "gophers.js",
     "files": [
       "gophers.js",

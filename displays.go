@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"encoding/json"
 )
 
 // Show returns a plain-text table representation of the DataFrame.
@@ -324,6 +325,27 @@ func mapToString(data map[string][]interface{}) string {
 	return builder.String()
 }
 
+// rowsJSONString marshals the DataFrame into an array of row objects (JSON).
+func rowsJSONString(df *DataFrame) string {
+    rows := make([]map[string]interface{}, df.Rows)
+    for i := 0; i < df.Rows; i++ {
+        row := make(map[string]interface{}, len(df.Cols))
+        for _, col := range df.Cols {
+            vals := df.Data[col]
+            var v interface{}
+            if i < len(vals) {
+                v = vals[i]
+            } else {
+                v = nil
+            }
+            row[col] = v
+        }
+        rows[i] = row
+    }
+    b, _ := json.Marshal(rows)
+    return string(b)
+}
+
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
 func (df *DataFrame) DisplayBrowser() error {
 	// display an html table of the dataframe for analysis, filtering, sorting, etc
@@ -398,13 +420,13 @@ func (df *DataFrame) DisplayBrowser() error {
 					<tbody>
 					<tr v-for="i in pageRowIndices" :key="i">
 							<th class="pl-5">[[ i + 1 ]]</th>
-							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col]?.[i] ]]</td>
+							<td v-for="col in cols" :key="col" class="pl-5">[[ data[i]?.[col] ]]</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
 		</body>
-		<script>
+		<script type="module">
             // Use Blob + anchor; fallback to window.open write.
             function openInNewTab() {
                 try {
@@ -434,7 +456,7 @@ func (df *DataFrame) DisplayBrowser() error {
 				data(){
 					return {
 						cols: ` + QuoteArray(df.Cols) + `,
-						data: ` + mapToString(df.Data) + `,
+						data: ` + rowsJSONString(df) + `,
 						selected_col: {},
 						pages: 0,
 						page_list: [],
@@ -475,40 +497,12 @@ func (df *DataFrame) DisplayBrowser() error {
       last_page(){ this.current_page = this.pages; },
 					
        exportCSV() {
-         const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
-         if (!cols.length) return;
-         // Determine the maximum row count across all columns
-         let rowCount = 0;
-         for (const c of cols) {
-           const len = (this.data[c] || []).length;
-           if (len > rowCount) rowCount = len;
-         }
-         const esc = (v) => {
-           if (v === null || v === undefined) return '';
-           if (typeof v === 'object') v = JSON.stringify(v);
-           let s = String(v);
-           s = s.replace(/"/g, '""');
-           if (/[",\r\n]/.test(s)) s = '"' + s + '"';
-           return s;
-         };
-         const lines = [];
-         // Header row
-         lines.push(cols.map(esc).join(','));
-         // Data rows
-         for (let i = 0; i < rowCount; i++) {
-           const row = cols.map(c => esc((this.data[c] || [])[i]));
-           lines.push(row.join(','));
-         }
-         const csv = lines.join('\\r\\n');
-         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-         const url = URL.createObjectURL(blob);
-         const a = document.createElement('a');
-         a.href = url;
-         a.download = 'dataframe.csv';
-         document.body.appendChild(a);
-         a.click();
-         document.body.removeChild(a);
-         URL.revokeObjectURL(url);
+			const rows = Array.isArray(this.data) ? this.data : JSON.parse(
+              typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
+            );
+			var df = ReadJSON(this.data);        
+            df.ToCSVFile('test_js_dataframe.csv');
+
        },					
 	   sortColumnAsc(col) {
 						// Create an array of row indices
@@ -551,7 +545,8 @@ func (df *DataFrame) DisplayBrowser() error {
 				},
 				watch: {
 					rowCount() {
-						this.recomputePagination();
+						// this.recomputePagination();
+						return Array.isArray(this.data) ? this.data.length : 0;
 					},
 					pageSize() {
 						this.recomputePagination();
@@ -567,7 +562,8 @@ func (df *DataFrame) DisplayBrowser() error {
 				},
 
 				mounted() {
-
+                    const gophers = await Gophers();
+                    Object.assign(globalThis, gophers);
 				},
 				computed:{
 					// Max row count across all columns
@@ -696,13 +692,13 @@ func (df *DataFrame) Display() map[string]interface{} {
 					<tbody>
 					<tr v-for="i in pageRowIndices" :key="i">
 							<th class="pl-5">[[ i + 1 ]]</th>
-							<td v-for="col in cols" :key="col" class="pl-5">[[ data[col]?.[i] ]]</td>
+							<td v-for="col in cols" :key="col" class="pl-5">[[ data[i]?.[col] ]]</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
 		</body>
-		<script>
+		<script type="module">
             // Use Blob + anchor; fallback to window.open write.
             function openInNewTab() {
                 try {
@@ -732,7 +728,7 @@ func (df *DataFrame) Display() map[string]interface{} {
 				data(){
 					return {
 						cols: ` + QuoteArray(df.Cols) + `,
-						data: ` + mapToString(df.Data) + `,
+						data: ` + rowsJSONString(df) + `,
 						selected_col: {},
 						pages: 0,
 						page_list: [],
@@ -767,40 +763,9 @@ func (df *DataFrame) Display() map[string]interface{} {
       last_page(){ this.current_page = this.pages; },
 					
        exportCSV() {
-        //  const cols = Array.isArray(this.cols) ? this.cols.slice() : [];
-        //  if (!cols.length) return;
-        //  // Determine the maximum row count across all columns
-        //  let rowCount = 0;
-        //  for (const c of cols) {
-        //    const len = (this.data[c] || []).length;
-        //    if (len > rowCount) rowCount = len;
-        //  }
-        //  const esc = (v) => {
-        //    if (v === null || v === undefined) return '';
-        //    if (typeof v === 'object') v = JSON.stringify(v);
-        //    let s = String(v);
-        //    s = s.replace(/"/g, '""');
-        //    if (/[",\r\n]/.test(s)) s = '"' + s + '"';
-        //    return s;
-        //  };
-        //  const lines = [];
-        //  // Header row
-        //  lines.push(cols.map(esc).join(','));
-        //  // Data rows
-        //  for (let i = 0; i < rowCount; i++) {
-        //    const row = cols.map(c => esc((this.data[c] || [])[i]));
-        //    lines.push(row.join(','));
-        //  }
-        //  const csv = lines.join('\\r\\n');
-        //  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        //  const url = URL.createObjectURL(blob);
-        //  const a = document.createElement('a');
-        //  a.href = url;
-        //  a.download = 'dataframe.csv';
-        //  document.body.appendChild(a);
-        //  a.click();
-        //  document.body.removeChild(a);
-        //  URL.revokeObjectURL(url);
+			const rows = Array.isArray(this.data) ? this.data : JSON.parse(
+              typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
+            );
 			var df = ReadJSON(this.data);        
             df.ToCSVFile('test_js_dataframe.csv');
 
@@ -846,7 +811,8 @@ func (df *DataFrame) Display() map[string]interface{} {
 				},
 				watch: {
 					rowCount() {
-						this.recomputePagination();
+						// this.recomputePagination();
+						return Array.isArray(this.data) ? this.data.length : 0;
 					},
 					pageSize() {
 						this.recomputePagination();
@@ -862,6 +828,8 @@ func (df *DataFrame) Display() map[string]interface{} {
 				},
 
 				mounted() {
+                    const gophers = await Gophers();
+                    Object.assign(globalThis, gophers);
 
 				},
 				computed:{

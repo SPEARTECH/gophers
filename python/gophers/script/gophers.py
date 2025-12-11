@@ -1192,8 +1192,11 @@ def main():
         }
     ]
 '''
-    df = ReadJSON('[{"alignment": "", "health": "", "inventory": "", "stats": "", "location_id": ""}]')
-    df = df.Column("alignment", Col("location_id")).Help()
+    df = ReadJSON(data)
+    df.Vertical(15,15)
+    df.ToCSVFile("output.csv")
+    df.DisplayBrowser()
+    # df = df.Column("alignment", Col("location_id")).Help()
     # df.Vertical(15,15)
     # df = df.Explode("inventory")
     # df = df.Flatten("inventory")
