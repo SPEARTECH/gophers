@@ -78,15 +78,14 @@
               { name: "Bob", age: '25' },
               { name: "Charlie", age: '35' }
             ];
-            const rows = Array.isArray(this.data) ? this.data : JSON.parse(
-              typeof this.data === 'string' ? this.data : JSON.stringify(this.data)
-            );
-            var df = ReadJSON(rows);    
-            const csvText = df.ToCSV();
-            console.log(csvText); // verify it contains '\r\n' between rows    
-            console.log(df.ToJSON());
-            df.Display().ElementID('datatable');
+              // const rows = Array.isArray(this.jsobj) ? this.jsobj : JSON.parse(
+              //   typeof this.jsobj === 'string' ? this.jsobj : JSON.stringify(this.jsobj)
+              // );
+            var df = ReadJSON(this.jsobj);    
+            // df.Display().ElementID('datatable');
+            // df.DisplayBrowser()
             // df.ToCSVFile('test_js_dataframe.csv');
+            df.ToNDJSONFile('test_js_dataframe.ndjson');
             // this.jsobj = df.ToJSON();
             // df = df.Column('age', Cast('age', 'int'));
             // this.jsobj = df.ToJSON();

@@ -1,6 +1,6 @@
 {
   "name": "gophers",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Go dataframe library available for Go, Python, and Javascript.",
   "main": "gophers.js",
   "scripts": {
@@ -23,6 +23,6 @@
   ],
   "type": "module",
   "dependencies": {
-    "gophers": "^0.1.9"
+    "gophers": "^0.2.0"
   }
 }
