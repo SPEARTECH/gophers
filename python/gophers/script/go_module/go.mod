@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.32
-	github.com/speartech/gophers v0.3.3
+	github.com/speartech/gophers v0.3.4
 )
 
 require (
@@ -12,5 +12,3 @@ require (
 	golang.org/x/net v0.47.0 // indirect
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
-
-replace github.com/speartech/gophers => ../../../../../gophers

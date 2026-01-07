@@ -71,7 +71,7 @@
 
         async mounted() {
           try {
-            const gophers = await Gophers({ wasmURL: './static/go_wasm/gophers_js.wasm' });
+            const gophers = await Gophers({ wasmURL: './static/go_wasm/gophers_js.wasm' }); // wasmURL temp for local testing
             Object.assign(globalThis, gophers);
             this.jsobj = [
               { name: "Alice", age: '30' },
