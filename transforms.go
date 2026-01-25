@@ -986,295 +986,285 @@ func (df *DataFrame) Select(columns ...string) *DataFrame {
 }
 
 // GroupBy groups the DataFrame rows by the value produced by groupcol.
-// For each group, it applies each provided Aggregation on the values from the corresponding column.
-// Parallel sharded build + merge; then aggregate.
+// For each group, applies provided Aggregations; all other columns are
+// automatically CollectList'ed to preserve data and alignment.
 func (df *DataFrame) GroupBy(groupcol string, aggs ...Aggregation) *DataFrame {
-	if df == nil || df.Rows == 0 {
-		return &DataFrame{Cols: []string{groupcol}, Data: map[string][]interface{}{groupcol: {}}, Rows: 0}
-	}
-	// shard in parallel: key -> (col -> []interface{})
-	w := runtime.GOMAXPROCS(0)
-	chunk := (df.Rows + w - 1) / w
-	type groupMap = map[interface{}]map[string][]interface{}
-	shards := make([]groupMap, w)
+    if df == nil || df.Rows == 0 {
+        return &DataFrame{Cols: []string{groupcol}, Data: map[string][]interface{}{groupcol: {}}, Rows: 0}
+    }
 
-	var wg sync.WaitGroup
-	for g := 0; g < w; g++ {
-		start := g * chunk
-		end := start + chunk
-		if start >= df.Rows {
-			break
-		}
-		if end > df.Rows {
-			end = df.Rows
-		}
-		wg.Add(1)
-		go func(idx, s, e int) {
-			defer wg.Done()
-			local := make(groupMap)
-			row := make(map[string]interface{}, len(df.Cols))
-			for i := s; i < e; i++ {
-				for _, c := range df.Cols {
-					row[c] = df.Data[c][i]
-				}
-				key := row[groupcol]
-				dst, ok := local[key]
-				if !ok {
-					dst = make(map[string][]interface{}, len(aggs))
-					for _, agg := range aggs {
-						dst[agg.ColumnName] = make([]interface{}, 0, 8)
-					}
-					local[key] = dst
-				}
-				for _, agg := range aggs {
-					if v, ok := row[agg.ColumnName]; ok {
-						dst[agg.ColumnName] = append(dst[agg.ColumnName], v)
-					}
-				}
-			}
-			shards[idx] = local
-		}(g, start, end)
-	}
-	wg.Wait()
+    // Build effective aggregation list: user-provided + default CollectList for the rest
+    aggSet := make(map[string]struct{}, len(aggs))
+    for _, a := range aggs { aggSet[a.ColumnName] = struct{}{} }
 
-	// merge shards
-	master := make(groupMap)
-	for _, sh := range shards {
-		for key, cols := range sh {
-			dst, ok := master[key]
-			if !ok {
-				dst = make(map[string][]interface{}, len(cols))
-				for name := range cols {
-					dst[name] = make([]interface{}, 0, len(cols[name]))
-				}
-				master[key] = dst
-			}
-			for name, vals := range cols {
-				master[key][name] = append(master[key][name], vals...)
-			}
-		}
-	}
+    effectiveAggs := make([]Aggregation, 0, len(aggs)+len(df.Cols))
+    effectiveAggs = append(effectiveAggs, aggs...)
+    for _, c := range df.Cols {
+        if c == groupcol { continue }
+        if _, ok := aggSet[c]; !ok {
+            effectiveAggs = append(effectiveAggs, CollectList(c))
+        }
+    }
 
-	// // Build output columns: group key + one per agg target (same names as input cols)
-	// newCols := []string{groupcol}
-	// for _, agg := range aggs {
-	//     newCols = append(newCols, agg.ColumnName)
-	// }
-	// newData := make(map[string][]interface{}, len(newCols))
-	// for _, c := range newCols {
-	//     newData[c] = []interface{}{}
-	// }
+    // shard in parallel: key -> (col -> []interface{})
+    w := runtime.GOMAXPROCS(0)
+    chunk := (df.Rows + w - 1) / w
+    type groupMap = map[interface{}]map[string][]interface{}
+    shards := make([]groupMap, w)
 
-	// // Emit one row per group (order is map iteration order; sort keys if you need determinism)
-	// for key, colVals := range master {
-	//     newData[groupcol] = append(newData[groupcol], key)
-	//     for _, agg := range aggs {
-	//         newData[agg.ColumnName] = append(newData[agg.ColumnName], agg.Fn(colVals[agg.ColumnName]))
-	//     }
-	// }
+    var wg sync.WaitGroup
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= df.Rows { break }
+        if end > df.Rows { end = df.Rows }
+        wg.Add(1)
+        go func(idx, s, e int) {
+            defer wg.Done()
+            local := make(groupMap)
+            row := make(map[string]interface{}, len(df.Cols))
+            for i := s; i < e; i++ {
+                for _, c := range df.Cols {
+                    row[c] = df.Data[c][i]
+                }
+                key := row[groupcol]
+                dst, ok := local[key]
+                if !ok {
+                    dst = make(map[string][]interface{}, len(effectiveAggs))
+                    for _, agg := range effectiveAggs {
+                        dst[agg.ColumnName] = make([]interface{}, 0, 8)
+                    }
+                    local[key] = dst
+                }
+                for _, agg := range effectiveAggs {
+                    if v, ok := row[agg.ColumnName]; ok {
+                        dst[agg.ColumnName] = append(dst[agg.ColumnName], v)
+                    }
+                }
+            }
+            shards[idx] = local
+        }(g, start, end)
+    }
+    wg.Wait()
 
-	newCols := []string{groupcol}
-	for _, agg := range aggs {
-		newCols = append(newCols, agg.ColumnName)
-	}
-	newData := make(map[string][]interface{}, len(newCols))
-	for _, c := range newCols {
-		newData[c] = make([]interface{}, 0, len(master))
-	}
+    // merge shards
+    master := make(groupMap)
+    for _, sh := range shards {
+        for key, cols := range sh {
+            dst, ok := master[key]
+            if !ok {
+                dst = make(map[string][]interface{}, len(cols))
+                for name := range cols {
+                    dst[name] = make([]interface{}, 0, len(cols[name]))
+                }
+                master[key] = dst
+            }
+            for name, vals := range cols {
+                master[key][name] = append(master[key][name], vals...)
+            }
+        }
+    }
 
-	// Extract keys (for deterministic order you could sort later)
-	keys := make([]interface{}, 0, len(master))
-	for k := range master {
-		keys = append(keys, k)
-	}
+    // Output schema: group key + all aggregated columns (user aggs + defaults)
+    newCols := []string{groupcol}
+    for _, agg := range effectiveAggs {
+        newCols = append(newCols, agg.ColumnName)
+    }
+    newData := make(map[string][]interface{}, len(newCols))
+    for _, c := range newCols {
+        newData[c] = make([]interface{}, 0, len(master))
+    }
 
-	// Parallel aggregate per key
-	w2 := runtime.GOMAXPROCS(0)
-	chunk2 := (len(keys) + w2 - 1) / w2
-	type rowAgg struct {
-		key  interface{}
-		vals []interface{} // len = 1 + len(aggs)
-	}
-	rowsAgg := make([]rowAgg, len(keys))
-	var wg2 sync.WaitGroup
-	for g := 0; g < w2; g++ {
-		s := g * chunk2
-		e := s + chunk2
-		if s >= len(keys) {
-			break
-		}
-		if e > len(keys) {
-			e = len(keys)
-		}
-		wg2.Add(1)
-		go func(s, e int) {
-			defer wg2.Done()
-			for i := s; i < e; i++ {
-				k := keys[i]
-				cols := master[k]
-				ra := rowAgg{key: k, vals: make([]interface{}, 1+len(aggs))}
-				ra.vals[0] = k
-				for j, agg := range aggs {
-					ra.vals[1+j] = agg.Fn(cols[agg.ColumnName])
-				}
-				rowsAgg[i] = ra
-			}
-		}(s, e)
-	}
-	wg2.Wait()
+    // Extract keys (order undefined; sort if needed)
+    keys := make([]interface{}, 0, len(master))
+    for k := range master { keys = append(keys, k) }
 
-	// Assemble
-	for _, r := range rowsAgg {
-		newData[groupcol] = append(newData[groupcol], r.vals[0])
-		for j, agg := range aggs {
-			newData[agg.ColumnName] = append(newData[agg.ColumnName], r.vals[1+j])
-		}
-	}
+    // Parallel aggregate per key
+    w2 := runtime.GOMAXPROCS(0)
+    chunk2 := (len(keys) + w2 - 1) / w2
+    type rowAgg struct {
+        key  interface{}
+        vals []interface{} // len = 1 + len(effectiveAggs)
+    }
+    rowsAgg := make([]rowAgg, len(keys))
+    var wg2 sync.WaitGroup
+    for g := 0; g < w2; g++ {
+        s := g * chunk2
+        e := s + chunk2
+        if s >= len(keys) { break }
+        if e > len(keys) { e = len(keys) }
+        wg2.Add(1)
+        go func(s, e int) {
+            defer wg2.Done()
+            for i := s; i < e; i++ {
+                k := keys[i]
+                cols := master[k]
+                ra := rowAgg{key: k, vals: make([]interface{}, 1+len(effectiveAggs))}
+                ra.vals[0] = k
+                for j, agg := range effectiveAggs {
+                    ra.vals[1+j] = agg.Fn(cols[agg.ColumnName])
+                }
+                rowsAgg[i] = ra
+            }
+        }(s, e)
+    }
+    wg2.Wait()
 
-	return &DataFrame{
-		Cols: newCols,
-		Data: newData,
-		Rows: len(newData[groupcol]),
-	}
+    // Assemble
+    for _, r := range rowsAgg {
+        newData[groupcol] = append(newData[groupcol], r.vals[0])
+        for j, agg := range effectiveAggs {
+            newData[agg.ColumnName] = append(newData[agg.ColumnName], r.vals[1+j])
+        }
+    }
+
+    return &DataFrame{
+        Cols: newCols,
+        Data: newData,
+        Rows: len(newData[groupcol]),
+    }
 }
-
 // Join performs a join between the receiver (left DataFrame) and the provided right DataFrame.
 // leftOn is the join key column in the left DataFrame and rightOn is the join key column in the right DataFrame.
 // joinType can be "inner", "left", "right", or "outer". It returns a new joined DataFrame.
 // Parallel Join (index build + row assembly)
+// Join: keep both sides; collisions become name_l (left) and name_r (right)
 func (left *DataFrame) Join(right *DataFrame, leftOn, rightOn, joinType string) *DataFrame {
-	if left == nil || right == nil {
-		return nil
-	}
-	newCols := append([]string{}, left.Cols...)
-	for _, c := range right.Cols {
-		if c != rightOn {
-			newCols = append(newCols, c)
-		}
-	}
-	leftIndex := make(map[interface{}][]int, left.Rows)
-	rightIndex := make(map[interface{}][]int, right.Rows)
-	// Build indices in parallel
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < left.Rows; i++ {
-			k := left.Data[leftOn][i]
-			leftIndex[k] = append(leftIndex[k], i)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for i := 0; i < right.Rows; i++ {
-			k := right.Data[rightOn][i]
-			rightIndex[k] = append(rightIndex[k], i)
-		}
-	}()
-	wg.Wait()
+    if left == nil || right == nil { return nil }
 
-	type pair struct{ l, r *int }
-	pairs := []pair{}
-	switch joinType {
-	case "inner", "left", "outer":
-		for k, lRows := range leftIndex {
-			rRows, ok := rightIndex[k]
-			if ok {
-				for _, li := range lRows {
-					for _, ri := range rRows {
-						liCopy, riCopy := li, ri
-						pairs = append(pairs, pair{&liCopy, &riCopy})
-					}
-				}
-			} else if joinType == "left" || joinType == "outer" {
-				for _, li := range lRows {
-					liCopy := li
-					pairs = append(pairs, pair{&liCopy, nil})
-				}
-			}
-		}
-		if joinType == "outer" {
-			for k, rRows := range rightIndex {
-				if _, ok := leftIndex[k]; !ok {
-					for _, ri := range rRows {
-						riCopy := ri
-						pairs = append(pairs, pair{nil, &riCopy})
-					}
-				}
-			}
-		}
-	case "right":
-		for k, rRows := range rightIndex {
-			lRows, ok := leftIndex[k]
-			if ok {
-				for _, li := range lRows {
-					for _, ri := range rRows {
-						liCopy, riCopy := li, ri
-						pairs = append(pairs, pair{&liCopy, &riCopy})
-					}
-				}
-			} else {
-				for _, ri := range rRows {
-					riCopy := ri
-					pairs = append(pairs, pair{nil, &riCopy})
-				}
-			}
-		}
-	default:
-		fmt.Printf("Unsupported join type %s\n", joinType)
-		return nil
-	}
+    // Build collision-aware mappings
+    leftSet := make(map[string]struct{}, len(left.Cols))
+    rightSet := make(map[string]struct{}, len(right.Cols))
+    for _, c := range left.Cols { leftSet[c] = struct{}{} }
+    for _, c := range right.Cols { rightSet[c] = struct{}{} }
 
-	out := make(map[string][]interface{}, len(newCols))
-	for _, c := range newCols {
-		out[c] = make([]interface{}, len(pairs))
-	}
+    leftOut := make(map[string]string, len(left.Cols))
+    rightOut := make(map[string]string, len(right.Cols))
+    newCols := make([]string, 0, len(left.Cols)+len(right.Cols))
 
-	// Parallel materialize pairs
-	w := runtime.GOMAXPROCS(0)
-	chunk := (len(pairs) + w - 1) / w
-	wg = sync.WaitGroup{}
-	for g := 0; g < w; g++ {
-		start := g * chunk
-		end := start + chunk
-		if start >= len(pairs) {
-			break
-		}
-		if end > len(pairs) {
-			end = len(pairs)
-		}
-		wg.Add(1)
-		go func(s, e int) {
-			defer wg.Done()
-			for idx := s; idx < e; idx++ {
-				p := pairs[idx]
-				// left columns
-				for _, c := range left.Cols {
-					if p.l != nil {
-						out[c][idx] = left.Data[c][*p.l]
-					} else {
-						out[c][idx] = nil
-					}
-				}
-				// right columns (skip rightOn)
-				for _, c := range right.Cols {
-					if c == rightOn {
-						continue
-					}
-					if p.r != nil {
-						out[c][idx] = right.Data[c][*p.r]
-					} else {
-						out[c][idx] = nil
-					}
-				}
-			}
-		}(start, end)
-	}
-	wg.Wait()
+    for _, c := range left.Cols {
+        if _, dup := rightSet[c]; dup {
+            name := c + "_l"
+            leftOut[c] = name
+            newCols = append(newCols, name)
+        } else {
+            leftOut[c] = c
+            newCols = append(newCols, c)
+        }
+    }
+    for _, c := range right.Cols {
+        if _, dup := leftSet[c]; dup {
+            name := c + "_r"
+            rightOut[c] = name
+            newCols = append(newCols, name)
+        } else {
+            rightOut[c] = c
+            newCols = append(newCols, c)
+        }
+    }
 
-	return &DataFrame{Cols: newCols, Data: out, Rows: len(pairs)}
+    // Build indices
+    leftIndex := make(map[interface{}][]int, left.Rows)
+    rightIndex := make(map[interface{}][]int, right.Rows)
+    var wg sync.WaitGroup
+    wg.Add(2)
+    go func() {
+        defer wg.Done()
+        for i := 0; i < left.Rows; i++ {
+            k := left.Data[leftOn][i]
+            leftIndex[k] = append(leftIndex[k], i)
+        }
+    }()
+    go func() {
+        defer wg.Done()
+        for i := 0; i < right.Rows; i++ {
+            k := right.Data[rightOn][i]
+            rightIndex[k] = append(rightIndex[k], i)
+        }
+    }()
+    wg.Wait()
+
+    type pair struct{ l, r *int }
+    pairs := []pair{}
+    switch joinType {
+    case "inner", "left", "outer":
+        for k, lRows := range leftIndex {
+            if rRows, ok := rightIndex[k]; ok {
+                for _, li := range lRows {
+                    for _, ri := range rRows {
+                        liCopy, riCopy := li, ri
+                        pairs = append(pairs, pair{&liCopy, &riCopy})
+                    }
+                }
+            } else if joinType == "left" || joinType == "outer" {
+                for _, li := range lRows {
+                    liCopy := li
+                    pairs = append(pairs, pair{&liCopy, nil})
+                }
+            }
+        }
+        if joinType == "outer" {
+            for k, rRows := range rightIndex {
+                if _, ok := leftIndex[k]; !ok {
+                    for _, ri := range rRows {
+                        riCopy := ri
+                        pairs = append(pairs, pair{nil, &riCopy})
+                    }
+                }
+            }
+        }
+    case "right":
+        for k, rRows := range rightIndex {
+            if lRows, ok := leftIndex[k]; ok {
+                for _, li := range lRows {
+                    for _, ri := range rRows {
+                        liCopy, riCopy := li, ri
+                        pairs = append(pairs, pair{&liCopy, &riCopy})
+                    }
+                }
+            } else {
+                for _, ri := range rRows {
+                    riCopy := ri
+                    pairs = append(pairs, pair{nil, &riCopy})
+                }
+            }
+        }
+    default:
+        fmt.Printf("Unsupported join type %s\n", joinType)
+        return nil
+    }
+
+    out := make(map[string][]interface{}, len(newCols))
+    for _, c := range newCols { out[c] = make([]interface{}, len(pairs)) }
+
+    // Materialize pairs using mapped names
+    w := runtime.GOMAXPROCS(0)
+    chunk := (len(pairs) + w - 1) / w
+    wg = sync.WaitGroup{}
+    for g := 0; g < w; g++ {
+        start := g * chunk
+        end := start + chunk
+        if start >= len(pairs) { break }
+        if end > len(pairs) { end = len(pairs) }
+        wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            for idx := s; idx < e; idx++ {
+                p := pairs[idx]
+                for _, c := range left.Cols {
+                    name := leftOut[c]
+                    if p.l != nil { out[name][idx] = left.Data[c][*p.l] } else { out[name][idx] = nil }
+                }
+                for _, c := range right.Cols {
+                    name := rightOut[c]
+                    if p.r != nil { out[name][idx] = right.Data[c][*p.r] } else { out[name][idx] = nil }
+                }
+            }
+        }(start, end)
+    }
+    wg.Wait()
+    return &DataFrame{Cols: newCols, Data: out, Rows: len(pairs)}
 }
-
 // Union appends the rows of the other DataFrame to the receiver.
 // It returns a new DataFrame that contains the union (vertical concatenation)
 // of rows. Columns missing in one DataFrame are filled with nil.
@@ -1432,4 +1422,128 @@ func (df *DataFrame) OrderBy(column string, asc bool) *DataFrame {
 
     df.Data = newData
     return df
+}
+
+// ExceptAll returns rows from df that are not present in other, considering duplicates.
+// Comparison is done on the provided columns; if none given, uses the intersection of df and other columns.
+func (df *DataFrame) ExceptAll(other *DataFrame, columns ...string) *DataFrame {
+    if df == nil {
+        return nil
+    }
+    if other == nil || other.Rows == 0 {
+        return df
+    }
+    // Determine comparison columns
+    var cols []string
+    if len(columns) > 0 {
+        cols = append([]string(nil), columns...)
+    } else {
+        // intersection of column names, in df order
+        rightSet := make(map[string]struct{}, len(other.Cols))
+        for _, c := range other.Cols { rightSet[c] = struct{}{} }
+        for _, c := range df.Cols {
+            if _, ok := rightSet[c]; ok {
+                cols = append(cols, c)
+            }
+        }
+    }
+    if len(cols) == 0 {
+        // Nothing to compare; return df unchanged
+        return df
+    }
+
+    // Prepare data views with required columns padded to full length
+    prepare := func(data map[string][]interface{}, rows int, cols []string) map[string][]interface{} {
+        view := make(map[string][]interface{}, len(cols))
+        for _, c := range cols {
+            s := data[c]
+            if s == nil || len(s) < rows {
+                tmp := make([]interface{}, rows)
+                if s != nil { copy(tmp, s) }
+                s = tmp
+            }
+            view[c] = s
+        }
+        return view
+    }
+    leftView := prepare(df.Data, df.Rows, cols)
+    rightView := prepare(other.Data, other.Rows, cols)
+
+    // Compute keys in parallel
+    w := runtime.GOMAXPROCS(0)
+    if w < 1 { w = 1 }
+    chunkL := (df.Rows + w - 1) / w
+    keysLeft := make([]string, df.Rows)
+    var wg sync.WaitGroup
+    for g := 0; g < w; g++ {
+        s := g * chunkL
+        e := s + chunkL
+        if s >= df.Rows { break }
+        if e > df.Rows { e = df.Rows }
+        wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            for i := s; i < e; i++ {
+                keysLeft[i] = rowKeyFast(cols, leftView, i)
+            }
+        }(s, e)
+    }
+    wg.Wait()
+
+    chunkR := (other.Rows + w - 1) / w
+    keysRight := make([]string, other.Rows)
+    for g := 0; g < w; g++ {
+        s := g * chunkR
+        e := s + chunkR
+        if s >= other.Rows { break }
+        if e > other.Rows { e = other.Rows }
+        wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            for i := s; i < e; i++ {
+                keysRight[i] = rowKeyFast(cols, rightView, i)
+            }
+        }(s, e)
+    }
+    wg.Wait()
+
+    // Build multiset counts from right
+    rightCount := make(map[string]int, len(keysRight))
+    for _, k := range keysRight {
+        rightCount[k]++
+    }
+
+    // Keep mask: skip as many left duplicates as rightCount permits
+    keep := make([]bool, df.Rows)
+    kept := 0
+    for i := 0; i < df.Rows; i++ {
+        k := keysLeft[i]
+        if cnt := rightCount[k]; cnt > 0 {
+            rightCount[k] = cnt - 1 // consume
+            continue
+        }
+        keep[i] = true
+        kept++
+    }
+
+    // Prefix-sum positions
+    pos := make([]int, df.Rows+1)
+    for i := 0; i < df.Rows; i++ {
+        pos[i+1] = pos[i]
+        if keep[i] { pos[i+1]++ }
+    }
+
+    // Assemble output with same schema as df
+    newData := make(map[string][]interface{}, len(df.Cols))
+    for _, c := range df.Cols {
+        dst := make([]interface{}, kept)
+        src := df.Data[c]
+        for i := 0; i < df.Rows; i++ {
+            if keep[i] {
+                dst[pos[i]] = src[i]
+            }
+        }
+        newData[c] = dst
+    }
+    return &DataFrame{Cols: append([]string(nil), df.Cols...), Data: newData, Rows: kept}
 }

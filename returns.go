@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"strings"
 )
 
 func (df *DataFrame) Columns() []string {
@@ -135,10 +136,18 @@ func (df *DataFrame) CountDistinct(columns ...string) int {
 }
 
 func (df *DataFrame) Collect(c string) []interface{} {
-	if values, exists := df.Data[c]; exists {
-		return values
-	}
-	return []interface{}{}
+    if df == nil || df.Rows == 0 {
+        return []interface{}{}
+    }
+    col := strings.TrimSpace(c)
+    if col == "" {
+        return []interface{}{}
+    }
+    data, ok := df.Data[col]
+    if !ok || data == nil {
+        return []interface{}{}
+    }
+    return data
 }
 
 // Pure Go schema builder (no cgo types).
@@ -349,4 +358,173 @@ func GetSqliteTablesJSON(dbPath string) string {
 	}
 	b, _ := json.Marshal(map[string]any{"tables": names})
 	return string(b)
+}
+
+// Dtypes returns PySpark-like [(col, type)].
+func (df *DataFrame) Dtypes() [][2]string {
+    if df == nil || df.Rows == 0 || len(df.Cols) == 0 {
+        return [][2]string{}
+    }
+    out := make([][2]string, len(df.Cols))
+
+    var wg sync.WaitGroup
+    for i, c := range df.Cols {
+        wg.Add(1)
+        go func(idx int, col string) {
+            defer wg.Done()
+            data := df.Data[col]
+            t, _ := inferColumnType(data)
+            out[idx] = [2]string{col, t}
+        }(i, c)
+    }
+    wg.Wait()
+    return out
+}
+
+// Schema returns detailed column schema.
+func (df *DataFrame) Schema() []ColumnSchema {
+    if df == nil || df.Rows == 0 || len(df.Cols) == 0 {
+        return []ColumnSchema{}
+    }
+    out := make([]ColumnSchema, len(df.Cols))
+
+    var wg sync.WaitGroup
+    for i, c := range df.Cols {
+        wg.Add(1)
+        go func(idx int, col string) {
+            defer wg.Done()
+            data := df.Data[col]
+            t, nullable := inferColumnType(data)
+            out[idx] = ColumnSchema{Name: col, Type: t, Nullable: nullable}
+        }(i, c)
+    }
+    wg.Wait()
+    return out
+}
+
+// PrintSchema pretty-prints the schema (like PySpark printSchema).
+func (df *DataFrame) PrintSchema() {
+    s := df.Schema()
+    fmt.Println("root")
+    for _, cs := range s {
+        nn := "true"
+        if !cs.Nullable { nn = "false" }
+        fmt.Printf(" |-- %s: %s (nullable = %s)\n", cs.Name, cs.Type, nn)
+    }
+}
+
+// SchemaJSON returns the schema as JSON.
+func (df *DataFrame) SchemaJSON() string {
+    b, _ := json.Marshal(struct {
+        Schema []ColumnSchema `json:"schema"`
+        Rows   int            `json:"rows"`
+        Cols   int            `json:"cols"`
+    }{
+        Schema: df.Schema(),
+        Rows:   df.Rows,
+        Cols:   len(df.Cols),
+    })
+    return string(b)
+}
+
+// --- helpers ---
+
+// inferColumnType inspects all values in a column and returns a Spark-like type string and nullability.
+func inferColumnType(col []interface{}) (string, bool) {
+    nullable := false
+    elemType := "" // unified type
+    for _, v := range col {
+        if v == nil {
+            nullable = true
+            continue
+        }
+        t := typeString(v)
+        elemType = unifyType(elemType, t)
+    }
+    if elemType == "" {
+        // all nulls
+        return "null", true
+    }
+    return elemType, nullable
+}
+
+// typeString maps Go values to Spark-ish types.
+func typeString(v interface{}) string {
+    switch t := v.(type) {
+    case string:
+        return "string"
+    case bool:
+        return "boolean"
+    case int, int32, int64:
+        return "int"
+    case float32, float64:
+        return "float"
+    case []string:
+        // array<string>
+        return "array<string>"
+    case []interface{}:
+        // infer element type
+        et := ""
+        for _, e := range t {
+            et = unifyType(et, typeString(e))
+        }
+        if et == "" {
+            et = "any"
+        }
+        return "array<" + et + ">"
+    case map[string]interface{}:
+        vt := ""
+        for _, vv := range t {
+            vt = unifyType(vt, typeString(vv))
+        }
+        if vt == "" {
+            vt = "any"
+        }
+        return "map<string," + vt + ">"
+    case map[interface{}]interface{}:
+        // best-effort: keys coerced to string, values unified
+        vt := ""
+        for _, vv := range t {
+            vt = unifyType(vt, typeString(vv))
+        }
+        if vt == "" {
+            vt = "any"
+        }
+        return "map<string," + vt + ">"
+    default:
+        return "any"
+    }
+}
+
+// unifyType promotes types to a common supertype.
+func unifyType(a, b string) string {
+    if a == "" {
+        return b
+    }
+    if b == "" || a == b {
+        return a
+    }
+    // numeric promotion
+    if (a == "int" && b == "float") || (a == "float" && b == "int") {
+        return "float"
+    }
+    // arrays/maps: if element/value types differ, fall back to any
+    if strings.HasPrefix(a, "array<") && strings.HasPrefix(b, "array<") {
+        ae := strings.TrimSuffix(strings.TrimPrefix(a, "array<"), ">")
+        be := strings.TrimSuffix(strings.TrimPrefix(b, "array<"), ">")
+        ue := unifyType(ae, be)
+        return "array<" + ue + ">"
+    }
+    if strings.HasPrefix(a, "map<string,") && strings.HasPrefix(b, "map<string,") {
+        ae := strings.TrimSuffix(strings.TrimPrefix(a, "map<string,"), ">")
+        be := strings.TrimSuffix(strings.TrimPrefix(b, "map<string,"), ">")
+        ue := unifyType(ae, be)
+        return "map<string," + ue + ">"
+    }
+    // string wins over anything else for mixed types
+    if a == "string" || b == "string" {
+        return "string"
+    }
+    // mixed boolean/numeric -> string (to be safe)
+    return "string"
 }

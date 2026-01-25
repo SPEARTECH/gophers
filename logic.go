@@ -821,32 +821,34 @@ func (c Column) Ne(threshold interface{}) Column {
 	}
 }
 
-// Or returns a Column that evaluates to true if either of the two provided Conditions is true.
-func Or(c1, c2 Column) Column {
-	return Column{
-		Name: "or",
-		Fn: func(row map[string]interface{}) interface{} {
-			cond1, ok1 := c1.Fn(row).(bool)
-			cond2, ok2 := c2.Fn(row).(bool)
-			if !ok1 || !ok2 {
-				return false
-			}
-			return cond1 || cond2
-		},
-	}
+// Or returns true if any of the provided conditions is true.
+func Or(conds ...Column) Column {
+    return Column{
+        Name: "or",
+        Fn: func(row map[string]interface{}) interface{} {
+            for _, c := range conds {
+                v, ok := c.Fn(row).(bool)
+                if ok && v {
+                    return true
+                }
+            }
+            return false
+        },
+    }
 }
 
-// And returns a Column that evaluates to true if both of the two provided Conditions is true.
-func And(c1, c2 Column) Column {
-	return Column{
-		Name: "and",
-		Fn: func(row map[string]interface{}) interface{} {
-			cond1, ok1 := c1.Fn(row).(bool)
-			cond2, ok2 := c2.Fn(row).(bool)
-			if !ok1 || !ok2 {
-				return false
-			}
-			return cond1 && cond2
-		},
-	}
+// And returns true if all provided conditions are true.
+func And(conds ...Column) Column {
+    return Column{
+        Name: "and",
+        Fn: func(row map[string]interface{}) interface{} {
+            for _, c := range conds {
+                v, ok := c.Fn(row).(bool)
+                if !ok || !v {
+                    return false
+                }
+            }
+            return true
+        },
+    }
 }

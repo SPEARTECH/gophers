@@ -5,29 +5,31 @@ import (
 	"sort"
 )
 
-// Agg converts multiple Column functions to a slice of Aggregation structs for use in aggregation.
-func Agg(cols ...Column) []Aggregation {
-	aggs := []Aggregation{}
-	for _, col := range cols {
-		colName := col.Name
-		agg := Aggregation{
-			ColumnName: colName,
-			Fn: func(vals []interface{}) interface{} {
-				// Create a map with the column name as key and the first value
-				// We're using a dummy map just to match the expected type
-				dummyRow := make(map[string]interface{})
-				// Put all values in the map under the column name
-				dummyRow[colName] = vals[0] // Use just the first value for simplicity
-
-				// Call the Column's function with this map
-				return col.Fn(dummyRow)
-			},
-		}
-		aggs = append(aggs, agg)
-	}
-	return aggs
+// Agg packs aggregations into a slice for GroupBy.
+// Supports Aggregation, []Aggregation, and Column (Column defaults to first-value).
+func Agg(items ...interface{}) []Aggregation {
+    aggs := make([]Aggregation, 0, len(items))
+    for _, it := range items {
+        switch v := it.(type) {
+        case Aggregation:
+            aggs = append(aggs, v)
+        case []Aggregation:
+            aggs = append(aggs, v...)
+        case Column:
+            name := v.Name
+            aggs = append(aggs, Aggregation{
+                ColumnName: name,
+                Fn: func(vals []interface{}) interface{} {
+                    if len(vals) == 0 { return nil }
+                    return v.Fn(map[string]interface{}{name: vals[0]}) // default: first
+                },
+            })
+        default:
+            fmt.Printf("Agg: unsupported type %T\n", it)
+        }
+    }
+    return aggs
 }
-
 // Sum returns an Aggregation that sums numeric values from the specified column.
 func Sum(name string) Aggregation {
 	return Aggregation{
@@ -213,4 +215,33 @@ func First(name string) Aggregation {
 			return vals[0]
 		},
 	}
+}
+
+// CollectList aggregates all values of a column into a list (preserves duplicates, order).
+func CollectList(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            out := make([]interface{}, len(vals))
+            copy(out, vals)
+            return out
+        },
+    }
+}
+
+// CollectSet aggregates unique values of a column into a list (removes duplicates).
+func CollectSet(name string) Aggregation {
+    return Aggregation{
+        ColumnName: name,
+        Fn: func(vals []interface{}) interface{} {
+            seen := make(map[interface{}]struct{}, len(vals))
+            out := make([]interface{}, 0, len(vals))
+            for _, v := range vals {
+                if _, ok := seen[v]; ok { continue }
+                seen[v] = struct{}{}
+                out = append(out, v)
+            }
+            return out
+        },
+    }
 }

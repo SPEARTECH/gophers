@@ -15,8 +15,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	
+    htmllib "html"
+    "golang.org/x/net/html"
+    "golang.org/x/net/html/atom"
 
-	"golang.org/x/net/html"
 	"gopkg.in/yaml.v2"
 
 	// "github.com/xitongsys/parquet-go/ParquetFile"
@@ -692,44 +695,79 @@ func GetAPI(endpoint string, headers map[string]string, queryParams map[string]s
 // ReadHTML scrapes a URL / file / raw HTML and returns a DataFrame of element metadata.
 // All HTML fragments are stored as escaped strings (safe for plain text display).
 func ReadHTML(input string) *DataFrame {
-	raw := input
-	var baseURL *url.URL
-	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
-		resp, err := http.Get(input)
-		if err != nil {
-			log.Fatalf("ReadHTML: GET error: %v", err)
-		}
-		defer resp.Body.Close()
-		b, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatalf("ReadHTML: read body: %v", err)
-		}
-		raw = string(b)
-		baseURL, _ = url.Parse(input)
-	} else if fileExists(input) {
-		b, err := os.ReadFile(input)
-		if err != nil {
-			log.Fatalf("ReadHTML: read file: %v", err)
-		}
-		raw = string(b)
-	}
+    raw := input
+    var baseURL *url.URL
+    if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+        resp, err := http.Get(input)
+        if err != nil {
+            log.Fatalf("ReadHTML: GET error: %v", err)
+        }
+        defer resp.Body.Close()
+        b, err := io.ReadAll(resp.Body)
+        if err != nil {
+            log.Fatalf("ReadHTML: read body: %v", err)
+        }
+        raw = string(b)
+        baseURL, _ = url.Parse(input)
+    } else if fileExists(input) {
+        b, err := os.ReadFile(input)
+        if err != nil {
+            log.Fatalf("ReadHTML: read file: %v", err)
+        }
+        raw = string(b)
+    }
 
-	doc, err := html.Parse(strings.NewReader(raw))
-	if err != nil {
-		log.Fatalf("ReadHTML: parse: %v", err)
-	}
+    raw = htmllib.UnescapeString(raw)
 
-	nodes := make([]*nodeInfo, 0, 1024)
-	var stack []struct {
-		n         *html.Node
-		parentIdx int
-		depth     int
-	}
-	stack = append(stack, struct {
-		n         *html.Node
-		parentIdx int
-		depth     int
-	}{doc, -1, 0})
+    // Detect full document vs fragment
+    isDoc := func(s string) bool {
+        t := strings.ToLower(strings.TrimSpace(s))
+        return strings.Contains(t, "<!doctype") || strings.Contains(t, "<html")
+    }
+
+    // Build traversal roots
+    var roots []*html.Node
+    if isDoc(raw) {
+        doc, err := html.Parse(strings.NewReader(raw))
+        if err != nil {
+            log.Fatalf("ReadHTML: parse: %v", err)
+        }
+        roots = []*html.Node{doc}
+    } else {
+        // Parse as fragment to avoid injected <html><head><body>
+        ctx := &html.Node{Type: html.ElementNode, DataAtom: atom.Div, Data: "div"}
+        frags, err := html.ParseFragment(strings.NewReader(raw), ctx)
+        if err != nil {
+            log.Fatalf("ReadHTML: parse fragment: %v", err)
+        }
+        roots = frags
+    }
+
+    nodes := make([]*nodeInfo, 0, 1024)
+    var stack []struct {
+        n         *html.Node
+        parentIdx int
+        depth     int
+    }
+    // push roots in reverse so the first root is popped first (preserve order)
+    for i := len(roots) - 1; i >= 0; i-- {
+        r := roots[i]
+        stack = append(stack, struct {
+            n         *html.Node
+            parentIdx int
+            depth     int
+        }{r, -1, 0})
+    }
+    // AFTER: push in reverse so the first root is popped first (LIFO)
+    // for i := len(roots) - 1; i >= 0; i-- {
+    //     r := roots[i]
+    //     stack = append(stack, struct {
+    //         n         *html.Node
+    //         parentIdx int
+    //         depth     int
+    //     }{r, -1, 0})
+    // }
+
 
 	for len(stack) > 0 {
 		top := stack[len(stack)-1]
@@ -857,20 +895,257 @@ func ReadHTML(input string) *DataFrame {
 			end = len(nodes)
 		}
 		wg.Add(1)
-		go func(s, e int) {
-			defer wg.Done()
-			for i := s; i < e; i++ {
-				n := nodes[i]
-				rawOuter := renderNode(n.n)
-				rawInner := renderInner(n.n)
-				out[i] = rendered{
-					outer: html.EscapeString(rawOuter),
-					inner: html.EscapeString(rawInner),
-					habs:  resolve(n.href),
-					sabs:  resolve(n.src),
+        go func(s, e int) {
+            defer wg.Done()
+            for i := s; i < e; i++ {
+                n := nodes[i]
+                rawOuter := renderNode(n.n)
+                rawInner := renderInner(n.n)
+                out[i] = rendered{
+                    // store real HTML, not entity-escaped
+                    outer: rawOuter,
+                    inner: rawInner,
+                    habs:  resolve(n.href),
+                    sabs:  resolve(n.src),
+                }
+            }
+        }(start, end)
+	}
+	wg.Wait()
+
+    rows := make([]map[string]interface{}, len(nodes))
+    for i, n := range nodes {
+        rows[i] = map[string]interface{}{
+            "index":          n.index,
+            "parent_index":   n.parentIndex,
+            "depth":          n.depth,
+            "tag":            n.tag,
+            "text":           n.textDirect,
+            "href":           n.href,
+            "href_abs":       out[i].habs,
+            "src":            n.src,
+            "src_abs":        out[i].sabs,
+            "outer_html_str": out[i].outer,
+            "inner_html_str": out[i].inner,
+        }
+    }
+	return Dataframe(rows)
+}
+
+// ReadHTMLTop scrapes a URL / file / raw HTML and returns a DataFrame of element metadata.
+// All HTML fragments are stored as escaped strings (safe for plain text display).
+func ReadHTMLTop(input string) *DataFrame {
+    raw := input
+    var baseURL *url.URL
+    if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
+        resp, err := http.Get(input)
+        if err != nil {
+            log.Fatalf("ReadHTMLTop: GET error: %v", err)
+        }
+        defer resp.Body.Close()
+        b, err := io.ReadAll(resp.Body)
+        if err != nil {
+            log.Fatalf("ReadHTMLTop: read body: %v", err)
+        }
+        raw = string(b)
+        baseURL, _ = url.Parse(input)
+    } else if fileExists(input) {
+        b, err := os.ReadFile(input)
+        if err != nil {
+            log.Fatalf("ReadHTMLTop: read file: %v", err)
+        }
+        raw = string(b)
+    }
+
+    raw = htmllib.UnescapeString(raw)
+
+    // Detect full document vs fragment
+    isDoc := func(s string) bool {
+        t := strings.ToLower(strings.TrimSpace(s))
+        return strings.Contains(t, "<!doctype") || strings.Contains(t, "<html")
+    }
+
+    // Build traversal roots
+    var roots []*html.Node
+    if isDoc(raw) {
+        doc, err := html.Parse(strings.NewReader(raw))
+        if err != nil {
+            log.Fatalf("ReadHTMLTop: parse: %v", err)
+        }
+        roots = []*html.Node{doc}
+    } else {
+        // Parse as fragment to avoid injected <html><head><body>
+        ctx := &html.Node{Type: html.ElementNode, DataAtom: atom.Div, Data: "div"}
+        frags, err := html.ParseFragment(strings.NewReader(raw), ctx)
+        if err != nil {
+            log.Fatalf("ReadHTMLTop: parse fragment: %v", err)
+        }
+        roots = frags
+    }
+
+	nodes := make([]*nodeInfo, 0, 1024)
+	var stack []struct {
+		n         *html.Node
+		parentIdx int
+		depth     int
+	}
+    // seed stack with all roots (ensure source order for fragments)
+    // BEFORE:
+    // for _, r := range roots {
+    //     stack = append(stack, struct{ n *html.Node; parentIdx, depth int }{r, -1, 0})
+    // }
+    // AFTER: push in reverse so the first root is popped first (LIFO)
+    for i := len(roots) - 1; i >= 0; i-- {
+        r := roots[i]
+        stack = append(stack, struct {
+            n         *html.Node
+            parentIdx int
+            depth     int
+        }{r, -1, 0})
+    }
+
+
+	for len(stack) > 0 {
+		top := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		cur := top.n
+
+		if cur.Type == html.ElementNode {
+			// Skip script/iframe entirely
+			if cur.Data == "script" || cur.Data == "iframe" {
+				continue
+			}
+			idx := len(nodes)
+			// Direct text
+			var tb strings.Builder
+			for c := cur.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == html.TextNode {
+					t := strings.TrimSpace(c.Data)
+					if t != "" {
+						if tb.Len() > 0 {
+							tb.WriteByte(' ')
+						}
+						tb.WriteString(t)
+					}
 				}
 			}
-		}(start, end)
+			var href, src string
+			for _, a := range cur.Attr {
+				switch a.Key {
+				case "href":
+					href = a.Val
+				case "src":
+					src = a.Val
+				}
+			}
+			nodes = append(nodes, &nodeInfo{
+				n:           cur,
+				index:       idx,
+				parentIndex: top.parentIdx,
+				depth:       top.depth,
+				tag:         cur.Data,
+				textDirect:  tb.String(),
+				href:        href,
+				src:         src,
+			})
+			parent := idx
+
+			// Push children (reverse for natural order)
+			var rev []*html.Node
+			for c := cur.FirstChild; c != nil; c = c.NextSibling {
+				rev = append(rev, c)
+			}
+			for i := len(rev) - 1; i >= 0; i-- {
+				stack = append(stack, struct {
+					n         *html.Node
+					parentIdx int
+					depth     int
+				}{rev[i], parent, top.depth + 1})
+			}
+		} else {
+			// Traverse non-elements
+			var rev []*html.Node
+			for c := cur.FirstChild; c != nil; c = c.NextSibling {
+				rev = append(rev, c)
+			}
+			for i := len(rev) - 1; i >= 0; i-- {
+				stack = append(stack, struct {
+					n         *html.Node
+					parentIdx int
+					depth     int
+				}{rev[i], top.parentIdx, top.depth + 1})
+			}
+		}
+	}
+
+	if len(nodes) == 0 {
+		return Dataframe([]map[string]interface{}{})
+	}
+
+	// Helpers
+	renderNode := func(n *html.Node) string {
+		var buf bytes.Buffer
+		html.Render(&buf, n)
+		return buf.String()
+	}
+	renderInner := func(n *html.Node) string {
+		var buf bytes.Buffer
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode && (c.Data == "script" || c.Data == "iframe") {
+				continue
+			}
+			html.Render(&buf, c)
+		}
+		return buf.String()
+	}
+	resolve := func(raw string) string {
+		if raw == "" || baseURL == nil {
+			return raw
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		if u.Scheme == "" && u.Host == "" {
+			return baseURL.ResolveReference(u).String()
+		}
+		return raw
+	}
+
+	// Concurrency for rendering
+	w := runtime.GOMAXPROCS(0)
+	if w < 1 {
+		w = 1
+	}
+	chunk := (len(nodes) + w - 1) / w
+
+	out := make([]rendered, len(nodes))
+	var wg sync.WaitGroup
+	for g := 0; g < w; g++ {
+		start := g * chunk
+		end := start + chunk
+		if start >= len(nodes) {
+			break
+		}
+		if end > len(nodes) {
+			end = len(nodes)
+		}
+		wg.Add(1)
+        go func(s, e int) {
+            defer wg.Done()
+            for i := s; i < e; i++ {
+                n := nodes[i]
+                rawOuter := renderNode(n.n)
+                rawInner := renderInner(n.n)
+                out[i] = rendered{
+                    // store real HTML, not entity-escaped
+                    outer: rawOuter,
+                    inner: rawInner,
+                    habs:  resolve(n.href),
+                    sabs:  resolve(n.src),
+                }
+            }
+        }(start, end)
 	}
 	wg.Wait()
 
@@ -890,7 +1165,23 @@ func ReadHTML(input string) *DataFrame {
 			"inner_html_str": out[i].inner,
 		}
 	}
+    // If input was a fragment, only return top-level nodes (one indent)
+    if !isDoc(raw) {
+        top := make([]map[string]interface{}, 0, len(rows))
+        for _, r := range rows {
+            switch v := r["parent_index"].(type) {
+            case int:
+                if v == -1 { top = append(top, r) }
+            case float64:
+                if int(v) == -1 { top = append(top, r) }
+            }
+        }
+        // optional: reindex top-level rows to 0..n-1
+        for i := range top {
+            top[i]["index"] = i
+        }
+        rows = top
+    }
 	return Dataframe(rows)
 }
-
 // javascript request source? (django/flask?)

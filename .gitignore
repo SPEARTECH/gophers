@@ -4,3 +4,4 @@ __pycache__
 dist
 node_modules
 temp.html
+test_data/
