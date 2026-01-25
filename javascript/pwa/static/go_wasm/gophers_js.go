@@ -342,7 +342,7 @@ func dfObject(id int) js.Value {
                 return fmt.Sprintf("error: write header: %v", err)
             }
         }
-js.Global().Get("console").Call("log", fmt.Sprintf("rows=%d, cols=%d", df.Rows, len(df.Cols)))
+        js.Global().Get("console").Call("log", fmt.Sprintf("rows=%d, cols=%d", df.Rows, len(df.Cols)))
         // Prebuild rows concurrently (stable ordering)
         rows := make([][]string, df.Rows)
         w := runtime.GOMAXPROCS(0)
@@ -1620,6 +1620,7 @@ func readCSV(this js.Value, args []js.Value) any {
     id := put(df)
     return dfObject(id)
 }
+
 // jsObjToStringMap converts a plain JS object to map[string]string (values are coerced to String()).
 func jsObjToStringMap(v js.Value) map[string]string {
 	out := map[string]string{}
@@ -1636,6 +1637,70 @@ func jsObjToStringMap(v js.Value) map[string]string {
 		}
 	}
 	return out
+}
+
+// ReadHTML(value|File|Blob) -> DataFrame object or Promise<DataFrame>
+func readHTML(this js.Value, args []js.Value) any {
+    if len(args) < 1 {
+        return "error: usage ReadHTML(value|File|Blob)"
+    }
+    v := args[0]
+    if isBlobOrFile(v) {
+        return js.Global().Get("Promise").New(js.FuncOf(func(this js.Value, prArgs []js.Value) any {
+            resolve, reject := prArgs[0], prArgs[1]
+            promiseReadBlobText(v).Call("then",
+                js.FuncOf(func(this js.Value, a []js.Value) any {
+                    text := a[0].String()
+                    df := g.ReadHTML(text)
+                    id := put(df)
+                    resolve.Invoke(dfObject(id))
+                    return nil
+                }),
+                js.FuncOf(func(this js.Value, a []js.Value) any {
+                    reject.Invoke(a[0])
+                    return nil
+                }),
+            )
+            return nil
+        }))
+    }
+    text, err := toText(v)
+    if err != "" { return err }
+    df := g.ReadHTML(text)
+    id := put(df)
+    return dfObject(id)
+}
+
+// ReadHTMLTop(value|File|Blob) -> DataFrame object or Promise<DataFrame>
+func readHTMLTop(this js.Value, args []js.Value) any {
+    if len(args) < 1 {
+        return "error: usage ReadHTMLTop(value|File|Blob)"
+    }
+    v := args[0]
+    if isBlobOrFile(v) {
+        return js.Global().Get("Promise").New(js.FuncOf(func(this js.Value, prArgs []js.Value) any {
+            resolve, reject := prArgs[0], prArgs[1]
+            promiseReadBlobText(v).Call("then",
+                js.FuncOf(func(this js.Value, a []js.Value) any {
+                    text := a[0].String()
+                    df := g.ReadHTMLTop(text)
+                    id := put(df)
+                    resolve.Invoke(dfObject(id))
+                    return nil
+                }),
+                js.FuncOf(func(this js.Value, a []js.Value) any {
+                    reject.Invoke(a[0])
+                    return nil
+                }),
+            )
+            return nil
+        }))
+    }
+    text, err := toText(v)
+    if err != "" { return err }
+    df := g.ReadHTMLTop(text)
+    id := put(df)
+    return dfObject(id)
 }
 
 // GetAPI(url[, headersObj, queryObj]) -> DataFrame object
@@ -2180,6 +2245,8 @@ func main() {
 	api.Set("ReadCSV", js.FuncOf(readCSV))
     api.Set("ReadNDJSON", js.FuncOf(readNDJSON))
     api.Set("ReadYAML", js.FuncOf(readYAML))
+    api.Set("ReadHTML", js.FuncOf(readHTML))
+    api.Set("ReadHTMLTop", js.FuncOf(readHTMLTop))
 	api.Set("GetAPI", js.FuncOf(getAPI))
     // CloneJSON(dfJsonLike) -> string (JSON of cloned DataFrame)
     // Accepts a string, object, array, Uint8Array, or ArrayBuffer.

@@ -199,6 +199,18 @@ func ReadHTML(htmlInput *C.char) *C.char {
 	return C.CString(string(js))
 }
 
+//export ReadHTMLTop
+func ReadHTMLTop(htmlInput *C.char) *C.char {
+    df := g.ReadHTMLTop(C.GoString(htmlInput))
+    js, err := json.Marshal(df)
+    if err != nil {
+        errStr := fmt.Sprintf("ReadHTMLTop: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+    return C.CString(string(js))
+}
+
 //export Clone
 func Clone(dfJson *C.char) *C.char {
 	js := g.CloneJSON(C.GoString(dfJson))

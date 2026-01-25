@@ -17,6 +17,7 @@ gophers.ReadJSON.restype = c_void_p
 gophers.ReadNDJSON.restype = c_void_p
 gophers.ReadCSV.restype = c_void_p
 gophers.ReadHTML.restype = c_void_p
+gophers.ReadHTMLTop.restype = c_void_p
 gophers.ReadYAML.restype = c_void_p
 gophers.ReadParquet.restype = c_void_p
 gophers.GetAPI.restype = c_void_p
@@ -707,6 +708,10 @@ def ReadHTML(html_input):
     Returns a DataFrame of HTML element nodes.
     """
     df_json = _cstr(gophers.ReadHTML, html_input.encode('utf-8'))
+    return DataFrame(df_json)
+
+def ReadHTMLTop(html_input):
+    df_json = _cstr(gophers.ReadHTMLTop, html_input.encode('utf-8'))
     return DataFrame(df_json)
 
 def ReadYAML(yaml_data):
