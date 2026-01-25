@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html"
 	"reflect"
-	"regexp"
 	"strings"
 )
 

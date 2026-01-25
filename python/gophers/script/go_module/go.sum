@@ -7,6 +7,8 @@ github.com/mattn/go-sqlite3 v1.14.32 h1:JD12Ag3oLy1zQA+BNn74xRgaBbdhbNIDYvQUEuuE
 github.com/mattn/go-sqlite3 v1.14.32/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/speartech/gophers v0.3.4 h1:p4yqnlkH9q1OXOkaZKmRjFVMP+GhlIIPPKQJP2v/IJ0=
 github.com/speartech/gophers v0.3.4/go.mod h1:8vFGzI6rse8UoW/7EVpsvdoy++LSQ1PyEEzyqyaz6o0=
+github.com/speartech/gophers v0.3.5 h1:gk7djx3wopTv4BIRrQBOG1fZys0eDW0bJuDQXKd2umg=
+github.com/speartech/gophers v0.3.5/go.mod h1:8vFGzI6rse8UoW/7EVpsvdoy++LSQ1PyEEzyqyaz6o0=
 golang.org/x/net v0.47.0 h1:Mx+4dIFzqraBXUugkia1OOvlD6LemFo1ALMHjrXDOhY=
 golang.org/x/net v0.47.0/go.mod h1:/jNxtkgq5yWUGYkaZGqo27cfGZ1c5Nen03aYrrKpVRU=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
