@@ -173,59 +173,36 @@ func buildColumnFromJS(v js.Value) (g.Column, error) {
 
 // ---- Aggregation helpers (JS -> Go) ----
 func aggFromJS(v js.Value) (g.Aggregation, error) {
-    // Accept:
-    //  - { op: "sum"|"max"|"min"|"median"|"mean"|"mode"|"unique"|"first", col: "price" }
-    //  - "sum:price" (string shorthand)
-    if !v.Truthy() {
-        return g.Aggregation{}, fmt.Errorf("invalid aggregation")
-    }
-    if v.Type() == js.TypeObject {
+    if !v.Truthy() { return g.Aggregation{}, fmt.Errorf("invalid aggregation") }
+    if v.Type() == js.TypeObject && v.Get("op").Truthy() && v.Get("col").Truthy() {
         op := strings.ToLower(v.Get("op").String())
         col := v.Get("col").String()
         switch op {
-        case "sum":
-            return g.Sum(col), nil
-        case "max":
-            return g.Max(col), nil
-        case "min":
-            return g.Min(col), nil
-        case "median":
-            return g.Median(col), nil
-        case "mean", "avg", "average":
-            return g.Mean(col), nil
-        case "mode":
-            return g.Mode(col), nil
-        case "unique", "count_distinct":
-            return g.Unique(col), nil
-        case "first":
-            return g.First(col), nil
-        default:
-            return g.Aggregation{}, fmt.Errorf("unknown op %q", op)
+        case "sum":    return g.Sum(col), nil
+        case "max":    return g.Max(col), nil
+        case "min":    return g.Min(col), nil
+        case "median": return g.Median(col), nil
+        case "mean", "avg", "average": return g.Mean(col), nil
+        case "mode":   return g.Mode(col), nil
+        case "unique", "count_distinct": return g.Unique(col), nil
+        case "first":  return g.First(col), nil
+        case "collectlist": return g.CollectList(col), nil
+        case "collectset":  return g.CollectSet(col), nil
+        default: return g.Aggregation{}, fmt.Errorf("unknown op %q", op)
         }
     }
     if v.Type() == js.TypeString {
-        // "op:col" or "op(col)"
         s := strings.TrimSpace(v.String())
-        if i := strings.IndexByte(s, ':'); i > 0 {
-            op := strings.ToLower(strings.TrimSpace(s[:i]))
-            col := strings.TrimSpace(s[i+1:])
-            return aggFromJS(js.ValueOf(map[string]any{"op": op, "col": col}))
-        }
-        if strings.HasSuffix(s, ")") && strings.Contains(s, "(") {
-            i := strings.IndexByte(s, '(')
-            op := strings.ToLower(strings.TrimSpace(s[:i]))
-            col := strings.TrimSuffix(strings.TrimSpace(s[i+1:]), ")")
-            return aggFromJS(js.ValueOf(map[string]any{"op": op, "col": col}))
-        }
+        if s == "" { return g.Aggregation{}, fmt.Errorf("empty aggregation spec") }
+        return g.First(s), nil
     }
     return g.Aggregation{}, fmt.Errorf("unsupported aggregation spec")
 }
-
 func aggsFromJS(args []js.Value) ([]g.Aggregation, error) {
-    // Accept varargs aggs or a single array of aggs
     out := []g.Aggregation{}
     if len(args) == 1 {
-        if arr := js.Global().Get("Array"); arr.Truthy() && args[0].InstanceOf(arr) {
+        arr := js.Global().Get("Array")
+        if arr.Truthy() && args[0].InstanceOf(arr) {
             a := args[0]
             for i := 0; i < a.Length(); i++ {
                 agg, err := aggFromJS(a.Index(i))
@@ -242,7 +219,6 @@ func aggsFromJS(args []js.Value) ([]g.Aggregation, error) {
     }
     return out, nil
 }
-
 // Helper: build a JS DataFrame object with methods bound to an internal handle.
 func dfObject(id int) js.Value {
 	obj := js.Global().Get("Object").New()
@@ -829,23 +805,19 @@ js.Global().Get("console").Call("log", fmt.Sprintf("rows=%d, cols=%d", df.Rows, 
         return dfObject(newID)
     }))
 	// df.GroupBy(key, ...aggs) or df.GroupBy(key, [aggSpec...]) -> returns new DataFrame
-	obj.Set("GroupBy", js.FuncOf(func(this js.Value, args []js.Value) any {
-		df := get(id)
-		if df == nil {
-			return "error: invalid handle"
-		}
-		if len(args) < 2 || args[0].Type() != js.TypeString {
-			return "error: usage GroupBy(key, aggs...)"
-		}
-		key := args[0].String()
-		aggs, err := aggsFromJS(args[1:])
-		if err != nil {
-			return "error: " + err.Error()
-		}
-		out := df.GroupBy(key, aggs...)
-		newID := put(out)
-		return dfObject(newID)
-	}))
+    obj.Set("GroupBy", js.FuncOf(func(this js.Value, args []js.Value) any {
+        df := get(id)
+        if df == nil { return "error: dataframe handle invalid" }
+        if len(args) < 2 || args[0].Type() != js.TypeString {
+            return "error: GroupBy(key, aggs...)"
+        }
+        key := args[0].String()
+        aggs, err := aggsFromJS(args[1:])
+        if err != nil { return "error: " + err.Error() }
+        out := df.GroupBy(key, aggs...)
+        newID := put(out)
+        return dfObject(newID)
+    }))
     // df.Join(otherDf, leftOn, rightOn, joinType?) -> new DataFrame
     // joinType: "inner" | "left" | "right" | "outer" (default "inner")
     obj.Set("Join", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -875,7 +847,13 @@ js.Global().Get("console").Call("log", fmt.Sprintf("rows=%d, cols=%d", df.Rows, 
         rightOn := args[2].String()
         joinType := "inner"
         if len(args) >= 4 && args[3].Type() == js.TypeString {
-            joinType = strings.ToLower(args[3].String())
+            jt := strings.ToLower(args[3].String())
+            switch jt {
+            case "inner", "left", "right", "outer":
+                joinType = jt
+            default:
+                return "error: joinType must be inner|left|right|outer"
+            }
         }
         out := left.Join(right, leftOn, rightOn, joinType)
         if out == nil {
@@ -883,8 +861,7 @@ js.Global().Get("console").Call("log", fmt.Sprintf("rows=%d, cols=%d", df.Rows, 
         }
         newID := put(out)
         return dfObject(newID)
-    }))
-    // df.Union(otherDf[, moreDf...]) -> new DataFrame (vertical append)
+    }))    // df.Union(otherDf[, moreDf...]) -> new DataFrame (vertical append)
     obj.Set("Union", js.FuncOf(func(this js.Value, args []js.Value) any {
         base := get(id)
         if base == nil {
@@ -1687,16 +1664,14 @@ func getAPI(this js.Value, args []js.Value) any {
 func aggCtor(op string) js.Func {
     return js.FuncOf(func(this js.Value, args []js.Value) any {
         if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: usage " + op + "(columnName)"
+            return "error: " + strings.Title(op) + "(column)"
         }
-        // Return a plain JS object descriptor; GroupBy will convert it.
         o := js.Global().Get("Object").New()
         o.Set("op", op)
         o.Set("col", args[0].String())
         return o
     })
 }
-
 // Helpers: detect Blob/File and read text via Promise
 func isBlobOrFile(v js.Value) bool {
     if v.Type() != js.TypeObject || !v.Truthy() {
@@ -2220,6 +2195,36 @@ func main() {
     }))
 
 	// ---------- Aggregations ----------
+    // ...update Agg builder to accept mixed inputs and return JS array of {op,col} objects...
+    api.Set("Agg", js.FuncOf(func(this js.Value, args []js.Value) any {
+        arrCtor := js.Global().Get("Array")
+        out := arrCtor.New()
+        push := func(op, col string) { out.Call("push", js.ValueOf(map[string]any{"op": op, "col": col})) }
+        for _, a := range args {
+            switch a.Type() {
+            case js.TypeObject:
+                if a.Get("op").Truthy() && a.Get("col").Truthy() {
+                    out.Call("push", a) // already a descriptor
+                } else if a.Get("Type").Truthy() && a.Get("Type").String() == "col" {
+                    push("first", a.Get("Name").String())
+                } else if a.Get("Type").Truthy() && a.Get("Type").String() == "collectlist" {
+                    push("collectlist", a.Get("Col").String())
+                } else if a.Get("Type").Truthy() && a.Get("Type").String() == "collectset" {
+                    push("collectset", a.Get("Col").String())
+                }
+            case js.TypeString:
+                s := a.String()
+                if i := strings.IndexByte(s, ':'); i > 0 {
+                    push(strings.ToLower(strings.TrimSpace(s[:i])), strings.TrimSpace(s[i+1:]))
+                } else {
+                    push("first", s)
+                }
+            default:
+                // ignore unsupported
+            }
+        }
+        return out
+    }))
     api.Set("Sum", aggCtor("sum"))
     api.Set("Max", aggCtor("max"))
     api.Set("Min", aggCtor("min"))
@@ -2228,39 +2233,8 @@ func main() {
     api.Set("Mode", aggCtor("mode"))
     api.Set("Unique", aggCtor("unique"))
     api.Set("First", aggCtor("first"))
-	api.Set("Agg", js.FuncOf(func(this js.Value, args []js.Value) any {
-		// Usage: gophers.Agg(gophers.Sum("col2"), gophers.First("col3"))
-		// Each arg should be an object produced by Sum/Max/... or a string shorthand "sum:col"
-		arrCtor := js.Global().Get("Array")
-		out := arrCtor.New()
-		for _, a := range args {
-			switch a.Type() {
-			case js.TypeObject:
-				out.Call("push", a)
-			case js.TypeString:
-				// Accept "op:col" or "op(col)" shorthand
-				s := strings.TrimSpace(a.String())
-				spec := js.Global().Get("Object").New()
-				if i := strings.IndexByte(s, ':'); i > 0 {
-					spec.Set("op", strings.ToLower(strings.TrimSpace(s[:i])))
-					spec.Set("col", strings.TrimSpace(s[i+1:]))
-					out.Call("push", spec)
-					continue
-				}
-				if strings.HasSuffix(s, ")") && strings.Contains(s, "(") {
-					i := strings.IndexByte(s, '(')
-					spec.Set("op", strings.ToLower(strings.TrimSpace(s[:i])))
-					spec.Set("col", strings.TrimSuffix(strings.TrimSpace(s[i+1:]), ")"))
-					out.Call("push", spec)
-					continue
-				}
-				// Fallback: ignore malformed string
-			default:
-				// Ignore unsupported types
-			}
-		}
-		return out
-	}))
+    api.Set("CollectList", aggCtor("collectlist"))
+    api.Set("CollectSet",  aggCtor("collectset"))
 	// ---------- Logic ----------
 
     // ---- Expression builder helpers (mirror pure Go syntax) ----
@@ -2304,7 +2278,285 @@ func main() {
         if len(args) < 1 || args[0].Type() != js.TypeString {
             return "error: Col(name)"
         }
-        return toExpr.Invoke(args[0])
+        expr := toExpr.Invoke(args[0]) // -> { Type:"col", Name:"..." }
+
+        // Col(...).Index(i) -> returns { Type:"index", Expr: <expr>, Index:i }
+        expr.Set("Index", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeNumber {
+                return "error: Index(i)"
+            }
+            idx := a[0].Int()
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "index")
+            o.Set("Expr", expr)
+            o.Set("Index", idx)
+            return o
+        }))
+
+        // IsNull()
+        expr.Set("IsNull", js.FuncOf(func(this js.Value, a []js.Value) any {
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "isnull")
+            o.Set("Expr", expr)
+            return o
+        }))
+        // IsNotNull()
+        expr.Set("IsNotNull", js.FuncOf(func(this js.Value, a []js.Value) any {
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "isnotnull")
+            o.Set("Expr", expr)
+            return o
+        }))
+
+        // Binary helpers: op(right)
+        makeCmp := func(op string) js.Func {
+            return js.FuncOf(func(this js.Value, a []js.Value) any {
+                if len(a) < 1 { return "error: " + op + "(right)" }
+                right := toExpr.Invoke(a[0])
+                o := js.Global().Get("Object").New()
+                o.Set("Type", op)
+                o.Set("Left", expr)
+                o.Set("Right", right)
+                return o
+            })
+        }
+        expr.Set("Gt", makeCmp("gt"))
+        expr.Set("Ge", makeCmp("ge"))
+        expr.Set("Lt", makeCmp("lt"))
+        expr.Set("Le", makeCmp("le"))
+        expr.Set("Eq", makeCmp("eq"))
+        expr.Set("Ne", makeCmp("ne"))
+
+        // Split(delimiter) – keeps existing payload shape: {Type:"split", Col:"name", Delimiter:"..."}
+        expr.Set("Split", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString { return "error: Split(delimiter)" }
+            name := expr.Get("Name").String()
+            if name == "" { return "error: Split only valid on Col(name)" }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "split")
+            o.Set("Col", name)
+            o.Set("Delimiter", a[0].String())
+            return o
+        }))
+
+        // Cast(datatype) – keeps existing payload shape (Col holds JSON of sub-expr)
+        expr.Set("Cast", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: Cast(datatype)"
+            }
+            dtype := a[0].String()
+            jsonStr := js.Global().Get("JSON").Call("stringify", expr).String()
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "cast")
+            o.Set("Col", jsonStr)       // string form expected by Go Compile
+            o.Set("Datatype", dtype)
+            return o
+        }))
+        expr.Set("Contains", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: Contains(substr)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "contains")
+            o.Set("Expr", expr)
+            o.Set("Substr", a[0].String())
+            return o
+        }))
+        expr.Set("IContains", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: IContains(substr)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "icontains")
+            o.Set("Expr", expr)
+            o.Set("Substr", a[0].String())
+            return o
+        }))
+        expr.Set("NotContains", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: NotContains(substr)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "notcontains")
+            o.Set("Expr", expr)
+            o.Set("Substr", a[0].String())
+            return o
+        }))
+        expr.Set("INotContains", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: INotContains(substr)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "inotcontains")
+            o.Set("Expr", expr)
+            o.Set("Substr", a[0].String())
+            return o
+        }))
+        expr.Set("StartsWith", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: StartsWith(prefix)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "startswith")
+            o.Set("Expr", expr)
+            o.Set("Prefix", a[0].String())
+            return o
+        }))
+        expr.Set("EndsWith", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: EndsWith(suffix)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "endswith")
+            o.Set("Expr", expr)
+            o.Set("Suffix", a[0].String())
+            return o
+        }))
+        expr.Set("Like", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: Like(pattern)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "like")
+            o.Set("Expr", expr)
+            o.Set("Pattern", a[0].String())
+            return o
+        }))
+        expr.Set("RLike", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: RLike(pattern)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "rlike")
+            o.Set("Expr", expr)
+            o.Set("Pattern", a[0].String())
+            return o
+        }))
+        expr.Set("NotLike", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: NotLike(pattern)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "notlike")
+            o.Set("Expr", expr)
+            o.Set("Pattern", a[0].String())
+            return o
+        }))
+        expr.Set("NotRLike", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: NotRLike(pattern)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "notrlike")
+            o.Set("Expr", expr)
+            o.Set("Pattern", a[0].String())
+            return o
+        }))        
+        expr.Set("Length", js.FuncOf(func(this js.Value, a []js.Value) any {
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "length")
+            o.Set("Expr", expr)
+            return o
+        }))
+        expr.Set("Index", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeNumber {
+                return "error: Index(i)"
+            }
+            idx := a[0].Int()
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "index")
+            o.Set("Expr", expr)
+            o.Set("Index", idx)
+            return o
+        }))
+        expr.Set("Keys", js.FuncOf(func(this js.Value, a []js.Value) any {
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "keys")
+            o.Set("Expr", expr) // method-style payload
+            return o
+        }))
+        expr.Set("Lookup", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 {
+                return "error: Lookup(keyExpr)"
+            }
+            // Wrap the key into an expr (supports string/number/obj)
+            key := toExpr.Invoke(a[0])
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "lookup")
+            o.Set("Left", key)   // key expr
+            o.Set("Right", expr) // nested map expr (this column)
+            return o
+        }))
+        expr.Set("Replace", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 2 || a[0].Type() != js.TypeString || a[1].Type() != js.TypeString {
+                return "error: Replace(old, new[, count])"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "replace")
+            o.Set("Expr", expr)
+            o.Set("Old", a[0].String())
+            o.Set("New", a[1].String())
+            if len(a) >= 3 && a[2].Type() == js.TypeNumber {
+                o.Set("Index", a[2].Int()) // use Index as count
+            }
+            return o
+        }))
+        expr.Set("ReplaceAll", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 2 || a[0].Type() != js.TypeString || a[1].Type() != js.TypeString {
+                return "error: ReplaceAll(old, new)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "replace_all")
+            o.Set("Expr", expr)
+            o.Set("Old", a[0].String())
+            o.Set("New", a[1].String())
+            return o
+        }))
+        expr.Set("RegexpReplace", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 2 || a[0].Type() != js.TypeString || a[1].Type() != js.TypeString {
+                return "error: RegexpReplace(pattern, replacement)"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "regexp_replace")
+            o.Set("Expr", expr)
+            o.Set("Pattern", a[0].String())
+            o.Set("New", a[1].String())
+            return o
+        }))
+        expr.Set("ArrayJoin", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 || a[0].Type() != js.TypeString {
+                return "error: ArrayJoin(delim[, nullReplacement])"
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "array_join")
+            o.Set("Expr", expr)
+            o.Set("Delimiter", a[0].String())
+            if len(a) >= 2 && a[1].Type() == js.TypeString {
+                o.Set("New", a[1].String()) // optional nullReplacement
+            }
+            return o
+        }))
+        expr.Set("ExtractHTML", js.FuncOf(func(this js.Value, a []js.Value) any {
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "extract_html")
+            o.Set("Expr", expr)
+            if len(a) >= 1 && a[0].Type() == js.TypeString {
+                o.Set("Pattern", a[0].String()) // field name (optional)
+            }
+            return o
+        }))
+        expr.Set("ExtractHTMLTop", js.FuncOf(func(this js.Value, a []js.Value) any {
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "extract_html_top")
+            o.Set("Expr", expr)
+            if len(a) >= 1 && a[0].Type() == js.TypeString {
+                o.Set("Pattern", a[0].String()) // field name (optional)
+            }
+            return o
+        }))
+
+
+        return expr
     }))
 
     api.Set("Lit", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -2332,36 +2584,36 @@ func main() {
         })
     }
 
-    api.Set("Gt", makeBinary("gt"))
-    api.Set("Ge", makeBinary("ge"))
-    api.Set("Lt", makeBinary("lt"))
-    api.Set("Le", makeBinary("le"))
-    api.Set("Eq", makeBinary("eq"))
-    api.Set("Ne", makeBinary("ne"))
-    api.Set("And", makeBinary("and"))
-    api.Set("Or", makeBinary("or"))
+    // api.Set("Gt", makeBinary("gt"))
+    // api.Set("Ge", makeBinary("ge"))
+    // api.Set("Lt", makeBinary("lt"))
+    // api.Set("Le", makeBinary("le"))
+    // api.Set("Eq", makeBinary("eq"))
+    // api.Set("Ne", makeBinary("ne"))
+    // api.Set("And", makeBinary("and"))
+    // api.Set("Or", makeBinary("or"))
 
-    api.Set("IsNull", js.FuncOf(func(this js.Value, args []js.Value) any {
-        if len(args) < 1 {
-            return "error: IsNull(expr)"
-        }
-        ex := toExpr.Invoke(args[0])
-        o := js.Global().Get("Object").New()
-        o.Set("Type", "isnull")
-        o.Set("Expr", ex)
-        return o
-    }))
+    // api.Set("IsNull", js.FuncOf(func(this js.Value, args []js.Value) any {
+    //     if len(args) < 1 {
+    //         return "error: IsNull(expr)"
+    //     }
+    //     ex := toExpr.Invoke(args[0])
+    //     o := js.Global().Get("Object").New()
+    //     o.Set("Type", "isnull")
+    //     o.Set("Expr", ex)
+    //     return o
+    // }))
 
-    api.Set("IsNotNull", js.FuncOf(func(this js.Value, args []js.Value) any {
-        if len(args) < 1 {
-            return "error: IsNotNull(expr)"
-        }
-        ex := toExpr.Invoke(args[0])
-        o := js.Global().Get("Object").New()
-        o.Set("Type", "isnotnull")
-        o.Set("Expr", ex)
-        return o
-    }))
+    // api.Set("IsNotNull", js.FuncOf(func(this js.Value, args []js.Value) any {
+    //     if len(args) < 1 {
+    //         return "error: IsNotNull(expr)"
+    //     }
+    //     ex := toExpr.Invoke(args[0])
+    //     o := js.Global().Get("Object").New()
+    //     o.Set("Type", "isnotnull")
+    //     o.Set("Expr", ex)
+    //     return o
+    // }))
 
     api.Set("If", js.FuncOf(func(this js.Value, args []js.Value) any {
         if len(args) < 3 {
@@ -2407,42 +2659,42 @@ func main() {
         return o
     }))
 
-    // Split(name, delimiter) – name should be a column string (matches pure Go Split)
-    api.Set("Split", js.FuncOf(func(this js.Value, args []js.Value) any {
-        if len(args) < 2 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString {
-            return "error: Split(columnName, delimiter)"
-        }
-        o := js.Global().Get("Object").New()
-        o.Set("Type", "split")
-        o.Set("Col", args[0].String())
-        o.Set("Delimiter", args[1].String())
-        return o
-    }))
+    // // Split(name, delimiter) – name should be a column string (matches pure Go Split)
+    // api.Set("Split", js.FuncOf(func(this js.Value, args []js.Value) any {
+    //     if len(args) < 2 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString {
+    //         return "error: Split(columnName, delimiter)"
+    //     }
+    //     o := js.Global().Get("Object").New()
+    //     o.Set("Type", "split")
+    //     o.Set("Col", args[0].String())
+    //     o.Set("Delimiter", args[1].String())
+    //     return o
+    // }))
 
-    // Keys(name) – name should be a column string
-    api.Set("Keys", js.FuncOf(func(this js.Value, args []js.Value) any {
-        if len(args) < 1 || args[0].Type() != js.TypeString {
-            return "error: Keys(columnName)"
-        }
-        o := js.Global().Get("Object").New()
-        o.Set("Type", "keys")
-        o.Set("Col", args[0].String())
-        return o
-    }))
+    // // Keys(name) – name should be a column string
+    // api.Set("Keys", js.FuncOf(func(this js.Value, args []js.Value) any {
+    //     if len(args) < 1 || args[0].Type() != js.TypeString {
+    //         return "error: Keys(columnName)"
+    //     }
+    //     o := js.Global().Get("Object").New()
+    //     o.Set("Type", "keys")
+    //     o.Set("Col", args[0].String())
+    //     return o
+    // }))
 
-    // Lookup(keyExpr, nestCol) – keyExpr can be string/expr; nestCol is a column string
-    api.Set("Lookup", js.FuncOf(func(this js.Value, args []js.Value) any {
-        if len(args) < 2 || args[1].Type() != js.TypeString {
-            return "error: Lookup(keyExpr, nestedColumnName)"
-        }
-        key := toExpr.Invoke(args[0])
-        nest := toExpr.Invoke(args[1]) // will become a {"Type":"col","Name": "..."}
-        o := js.Global().Get("Object").New()
-        o.Set("Type", "lookup")
-        o.Set("Left", key)
-        o.Set("Right", nest)
-        return o
-    }))
+    // // Lookup(keyExpr, nestCol) – keyExpr can be string/expr; nestCol is a column string
+    // api.Set("Lookup", js.FuncOf(func(this js.Value, args []js.Value) any {
+    //     if len(args) < 2 || args[1].Type() != js.TypeString {
+    //         return "error: Lookup(keyExpr, nestedColumnName)"
+    //     }
+    //     key := toExpr.Invoke(args[0])
+    //     nest := toExpr.Invoke(args[1]) // will become a {"Type":"col","Name": "..."}
+    //     o := js.Global().Get("Object").New()
+    //     o.Set("Type", "lookup")
+    //     o.Set("Left", key)
+    //     o.Set("Right", nest)
+    //     return o
+    // }))
 
     // Concat(delimiter, ...exprs)
     api.Set("Concat", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -2461,24 +2713,25 @@ func main() {
         return o
     }))
 
-    // Cast(expr, datatype) – datatype in {"int","float","string"}
-	api.Set("Cast", js.FuncOf(func(this js.Value, args []js.Value) any {
-		if len(args) < 2 || args[1].Type() != js.TypeString {
-			return "error: Cast(expr, datatype)"
-		}
-		dtype := args[1].String()
-		sub := args[0]
+    // // Cast(expr, datatype) – datatype in {"int","float","string"}
+	// api.Set("Cast", js.FuncOf(func(this js.Value, args []js.Value) any {
+	// 	if len(args) < 2 || args[1].Type() != js.TypeString {
+	// 		return "error: Cast(expr, datatype)"
+	// 	}
+	// 	dtype := args[1].String()
+	// 	sub := args[0]
 
-		// Wrap sub into expr object (always) then stringify into Col
-		subExpr := toExpr.Invoke(sub)
-		jsonStr := js.Global().Get("JSON").Call("stringify", subExpr).String()
+	// 	// Wrap sub into expr object (always) then stringify into Col
+	// 	subExpr := toExpr.Invoke(sub)
+	// 	jsonStr := js.Global().Get("JSON").Call("stringify", subExpr).String()
 
-		o := js.Global().Get("Object").New()
-		o.Set("Type", "cast")
-		o.Set("Col", jsonStr)      // Evaluate expects JSON here
-		o.Set("Datatype", dtype)
-		return o
-	}))
+	// 	o := js.Global().Get("Object").New()
+	// 	o.Set("Type", "cast")
+	// 	o.Set("Col", jsonStr)      // Evaluate expects JSON here
+	// 	o.Set("Datatype", dtype)
+	// 	return o
+	// }))
+
 	// CollectList(name) – name should be a column string
     api.Set("CollectList", js.FuncOf(func(this js.Value, args []js.Value) any {
         if len(args) < 1 || args[0].Type() != js.TypeString {
@@ -2587,5 +2840,7 @@ func main() {
 		})
 		finalReg = fr.New(finalCb)
 	}
+
+
 	select {}
 }

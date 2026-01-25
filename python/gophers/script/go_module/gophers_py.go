@@ -1208,6 +1208,20 @@ func FirstWrapper(name *C.char) *C.char {
 	return C.CString(string(aggJson))
 }
 
+//export CollectListWrapper
+func CollectListWrapper(name *C.char) *C.char {
+    colName := C.GoString(name)
+    aggJson, _ := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "CollectList"})
+    return C.CString(string(aggJson))
+}
+
+//export CollectSetWrapper
+func CollectSetWrapper(name *C.char) *C.char {
+    colName := C.GoString(name)
+    aggJson, _ := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "CollectSet"})
+    return C.CString(string(aggJson))
+}
+
 // LOGIC --------------------------------------------------
 
 // IfWrapper is an exported function that wraps the If function.
@@ -1491,6 +1505,10 @@ func GroupByWrapper(dfJson *C.char, groupCol *C.char, aggsJson *C.char) *C.char 
 			aggregations = append(aggregations, g.Unique(colName))
 		case "First":
 			aggregations = append(aggregations, g.First(colName))
+        case "CollectList":
+            aggregations = append(aggregations, g.CollectList(colName))
+        case "CollectSet":
+            aggregations = append(aggregations, g.CollectSet(colName))
 		}
 	}
 

@@ -38,7 +38,6 @@ gophers.BarChartWrapper.restype = c_void_p
 gophers.ColumnChartWrapper.restype = c_void_p
 gophers.StackedBarChartWrapper.restype = c_void_p
 gophers.StackedPercentChartWrapper.restype = c_void_p
-gophers.GroupByWrapper.restype = c_void_p
 gophers.Explode.restype = c_void_p
 gophers.FilterWrapper.restype = c_void_p
 gophers.SelectWrapper.restype = c_void_p
@@ -62,6 +61,8 @@ gophers.MeanWrapper.restype = c_void_p
 gophers.ModeWrapper.restype = c_void_p
 gophers.UniqueWrapper.restype = c_void_p
 gophers.FirstWrapper.restype = c_void_p
+gophers.CollectListWrapper.restype = c_void_p
+gophers.CollectSetWrapper.restype = c_void_p
 gophers.CreateReportWrapper.restype = c_void_p
 gophers.OpenReportWrapper.restype = c_void_p
 gophers.SaveReportWrapper.restype = c_void_p
@@ -113,8 +114,6 @@ class ColumnExpr:
     Ge(other)
     Gt(other)
     HtmlUnescape()
-    IsBetween(lower, upper)
-    IsIn(values)
     IsNotNull()
     IsNull()
     Le(other)
@@ -131,7 +130,8 @@ class ColumnExpr:
     Substr(start, length)
     Title()
     Trim()
-    Upper()""")
+    Upper()
+""")
         
     def __repr__(self):
         return f"ColumnExpr({self.expr})"
@@ -142,18 +142,19 @@ class ColumnExpr:
     def IsNotNull(self):
         return ColumnExpr({ "type": "isnotnull", "expr": self.expr })
     
-    def IsIn(self, values):
-        return ColumnExpr({ "type": "isin", "expr": self.expr, "values": values })
-    
-    def IsBetween(self, lower, upper):
-        return ColumnExpr({ "type": "isbetween", "expr": self.expr, "lower": lower, "upper": upper })
     
     def Like(self, pattern):
         return ColumnExpr({ "type": "like", "expr": self.expr, "pattern": pattern })
-    
+
     def NotLike(self, pattern):
         return ColumnExpr({ "type": "notlike", "expr": self.expr, "pattern": pattern })
+
+    def RLike(self, pattern: str):
+        return ColumnExpr({ "type": "rlike", "expr": self.expr, "pattern": pattern })
     
+    def NotRLike(self, pattern: str):
+        return ColumnExpr({ "type": "notrlike", "expr": self.expr, "pattern": pattern })
+        
     def StartsWith(self, prefix):
         return ColumnExpr({ "type": "startswith", "expr": self.expr, "prefix": prefix })
     
@@ -163,11 +164,17 @@ class ColumnExpr:
     def Contains(self, substr):
         return ColumnExpr({ "type": "contains", "expr": self.expr, "substr": substr })
     
+    def IContains(self, substr: str):
+        return ColumnExpr({ "type": "icontains", "expr": self.expr, "substr": substr })
+    
     def NotContains(self, substr):
         return ColumnExpr({ "type": "notcontains", "expr": self.expr, "substr": substr })
+
+    def INotContains(self, substr: str):
+        return ColumnExpr({ "type": "inotcontains", "expr": self.expr, "substr": substr })
     
-    def Replace(self, old, new):
-        return ColumnExpr({ "type": "replace", "expr": self.expr, "old": old, "new": new })
+    # def Replace(self, old, new):
+    #     return ColumnExpr({ "type": "replace", "expr": self.expr, "old": old, "new": new })
     
     def Trim(self):
         return ColumnExpr({ "type": "trim", "expr": self.expr })
@@ -177,6 +184,10 @@ class ColumnExpr:
     
     def RTrim(self):
         return ColumnExpr({ "type": "rtrim", "expr": self.expr })
+
+    def Cast(self, datatype: str):
+        # Send sub-expr JSON as a string in "col" (Compile expects string)
+        return ColumnExpr({ "type": "cast", "col": self.to_json(), "datatype": datatype })
     
     def Lower(self):
         return ColumnExpr({ "type": "lower", "expr": self.expr })
@@ -186,6 +197,52 @@ class ColumnExpr:
     
     def HtmlUnescape(self):
         return ColumnExpr({ "type": "html_unescape", "expr": self.expr })
+    
+    def Index(self, i: int):
+        return ColumnExpr({ "type": "index", "expr": self.expr, "index": i })
+    
+    def Length(self):
+        return ColumnExpr({ "type": "length", "expr": self.expr })
+    
+    def Keys(self):
+        return ColumnExpr({ "type": "keys", "expr": self.expr })
+
+    def Lookup(self, key_expr):
+        if not isinstance(key_expr, ColumnExpr):
+            key_expr = Lit(key_expr)
+        return ColumnExpr({ "type": "lookup", "left": key_expr.expr, "right": self.expr })
+    
+    def Replace(self, old, new, count=None):
+        payload = { "type": "replace", "expr": self.expr, "old": old, "new": new }
+        if count is not None:
+            payload["index"] = int(count)  # use index as count
+        return ColumnExpr(payload)
+
+    def ReplaceAll(self, old, new):
+        return ColumnExpr({ "type": "replace_all", "expr": self.expr, "old": old, "new": new })
+
+    def RegexpReplace(self, pattern: str, replacement: str):
+        return ColumnExpr({ "type": "regexp_replace", "expr": self.expr, "pattern": pattern, "new": replacement })
+    
+    def ArrayJoin(self, delim: str, nullReplacement: str = None):
+        payload = { "type": "array_join", "expr": self.expr, "delimiter": delim }
+        if nullReplacement is not None:
+            payload["new"] = nullReplacement
+        return ColumnExpr(payload)
+    
+    def ExtractHTML(self, field: str = None):
+        payload = { "type": "extract_html", "expr": self.expr }
+        if field is not None:
+            payload["pattern"] = field  # optional field name
+        return ColumnExpr(payload)
+
+    def ExtractHTMLTop(self, field: str = None):
+        payload = { "type": "extract_html_top", "expr": self.expr }
+        if field is not None:
+            payload["pattern"] = field  # optional field name
+        return ColumnExpr(payload)
+    
+
     # def Title(self):
     #     return ColumnExpr({ "type": "title", "expr": self.expr })
     
@@ -502,12 +559,46 @@ def Unique(column_name):
     # Parse the JSON string into a Python dict before returning it
     return json.loads(sum_agg_json)
 
-def Agg(*aggregations):
-    # Simply return the list of aggregations
-    return list(aggregations)
+def CollectListAgg(column_name):
+    js = gophers.CollectListWrapper(column_name.encode('utf-8')).decode('utf-8')
+    return json.loads(js)
+
+def CollectSetAgg(column_name):
+    js = gophers.CollectSetWrapper(column_name.encode('utf-8')).decode('utf-8')
+    return json.loads(js)
+
+# def Agg(*aggregations):
+#     # Simply return the list of aggregations
+#     return list(aggregations)
+def Agg(*items):
+    out = []
+    for it in items:
+        if isinstance(it, dict) and "ColumnName" in it and "Fn" in it:
+            out.append(it)
+        elif isinstance(it, ColumnExpr):
+            t = it.expr.get("type")
+            if t == "col":
+                name = it.expr.get("name", "")
+                if name:
+                    out.append(json.loads(gophers.FirstWrapper(name.encode('utf-8')).decode('utf-8')))
+            elif t == "collectlist":
+                col = it.expr.get("col", "")
+                if col:
+                    out.append(json.loads(gophers.CollectListWrapper(col.encode('utf-8')).decode('utf-8')))
+            elif t == "collectset":
+                col = it.expr.get("col", "")
+                if col:
+                    out.append(json.loads(gophers.CollectSetWrapper(col.encode('utf-8')).decode('utf-8')))
+        elif isinstance(it, str):
+            # plain column name -> First
+            out.append(json.loads(gophers.FirstWrapper(it.encode('utf-8')).decode('utf-8')))
+        elif isinstance(it, (list, tuple)):
+            for x in it:
+                out.extend(Agg(x))
+    return out
 
 # Column functions
-def Col(name):
+def Col(name: str):
     return ColumnExpr({ "type": "col", "name": name })
 
 def Lit(value):
@@ -571,28 +662,28 @@ def ArraysZip(*cols):
         "cols": [json.loads(col.to_json()) for col in cols]
     })
 
-def Keys(col_name):
-    return ColumnExpr({ "type": "keys", "col": col_name })
+# def Keys(col_name):
+#     return ColumnExpr({ "type": "keys", "col": col_name })
 
-def Lookup(key_expr, nested_col):
-    """
-    Creates a ColumnExpr for lookup.
+# def Lookup(key_expr, nested_col):
+#     """
+#     Creates a ColumnExpr for lookup.
     
-    Parameters:
-      nested_col: the name of the nested column (will be wrapped with Col())
-      key_expr: a ColumnExpr representing the lookup key (e.g. Col('key') or Lit("some constant"))
+#     Parameters:
+#       nested_col: the name of the nested column (will be wrapped with Col())
+#       key_expr: a ColumnExpr representing the lookup key (e.g. Col('key') or Lit("some constant"))
     
-    Returns:
-      A ColumnExpr with type "lookup".
-    """
-    # If key_expr is not already a ColumnExpr, wrap it.
-    if not isinstance(key_expr, ColumnExpr):
-        key_expr = Lit(key_expr)
-    return ColumnExpr({
-        "type": "lookup",
-        "left": json.loads(key_expr.to_json()),
-        "right": json.loads(Col(nested_col).to_json())
-    })
+#     Returns:
+#       A ColumnExpr with type "lookup".
+#     """
+#     # If key_expr is not already a ColumnExpr, wrap it.
+#     if not isinstance(key_expr, ColumnExpr):
+#         key_expr = Lit(key_expr)
+#     return ColumnExpr({
+#         "type": "lookup",
+#         "left": json.loads(key_expr.to_json()),
+#         "right": json.loads(Col(nested_col).to_json())
+#     })
 
 # Source functions
 def ReadJSON(json_data):
@@ -897,13 +988,17 @@ class DataFrame:
             df2.df_json.encode('utf-8')
         ))
         return self
-    def Join(self, df2, col1, col2, how):
+    def Join(self, df2, col1, col2, how="inner"):
+        jt = str(how).lower()
+        if jt not in ("inner", "left", "right", "outer"):
+            print("Error: how must be one of inner|left|right|outer")
+            return self
         self.df_json = _cstr(gophers.JoinWrapper(
             self.df_json.encode('utf-8'),
             df2.df_json.encode('utf-8'),
             col1.encode('utf-8'),
             col2.encode('utf-8'),
-            how.encode('utf-8')
+            jt.encode('utf-8')
         ))
         return self
     def Sort(self, *cols):
@@ -1068,134 +1163,136 @@ class DataFrame:
     
 # Example usage:
 def main():
-    data = '''
-[
-        {
-            "name": "Julie Skels",
-            "alignment": "Melee Maniac",
-            "health": 90,
-            "max_health": 100,
-            "gold": 100,
-            "background_history": "Works as a mercenary for the Red Company.",
-            "body_appearance": "White woman with several scars etched on her body.",
-            "inventory": [
-                {
-                    "name": "Custom-blade Knife",
-                    "item_id": 2,
-                    "equipped": true,
-                    "description": "A sharp blade",
-                    "estimated_value": 5,
-                    "weight": 3,
-                    "history": [
-                        {
-                            "date": "1st of September, 1069",
-                            "event": "Received from the blacksmith in Anton."
-                        }
-                    ]
-                }
-            ],
-            "stats": {
-                "Strength": 15,
-                "Intelligence": 10,
-                "Dexterity": 12,
-                "Charisma": 8,
-                "Constitution": 14,
-                "Wisdom": 11
-            },
-            "character_id": 0,
-            "player_id": 0,
-            "is_npc": false,
-            "image_filename": "julie_skels.png",
-            "in_party": true,
-            "location_id": 2,
-            "history": [
-                {
-                    "date": "1st of September, 1069",
-                    "event": "Arrived at the marketplace for the festival."
-                }
-            ]
-        },
-        {
-            "name": "Bob",
-            "alignment": "Good",
-            "health": 80,
-            "max_health": 100,
-            "gold": 30,
-            "background_history": "Is the mayor of Anton.",
-            "body_appearance": "Burly white man with a sword-bow.",
-            "inventory": [
-                {
-                    "name": "Bow",
-                    "item_id": 3,
-                    "equipped": true,
-                    "description": "A long bow",
-                    "estimated_value": 3,
-                    "weight": 2,
-                    "history": []
-                }
-            ],
-            "stats": {
-                "Strength": 7,
-                "Intelligence": 12,
-                "Constitution": 10,
-                "Dexterity": 15,
-                "Wisdom": 8,
-                "Charisma": 9
-            },
-            "character_id": 1,
-            "player_id": -1,
-            "is_npc": true,
-            "image_filename": "bob.png",
-            "in_party": true,
-            "location_id": 2,
-            "history": [
-                {
-                    "date": "1st of September, 1069",
-                    "event": "Noticed goblin activity near Anton."
-                }
-            ]
-        },
-        {
-            "name": "Alice",
-            "alignment": "Neutral",
-            "health": 100,
-            "max_health": 100,
-            "gold": 50,
-            "background_history": "Daughter of Wolves.",
-            "body_appearance": "Slim tall body, free of marks or scars.",
-            "inventory": [
-                {
-                    "name": "Sword",
-                    "item_id": 4,
-                    "equipped": true,
-                    "description": "A sharp sword",
-                    "estimated_value": 12,
-                    "weight": 5,
-                    "history": []
-                }
-            ],
-            "stats": {
-                "Strength": 10,
-                "Intelligence": 8,
-                "Constitution": 12,
-                "Dexterity": 13,
-                "Wisdom": 9,
-                "Charisma": 11
-            },
-            "character_id": 2,
-            "player_id": -1,
-            "is_npc": true,
-            "image_filename": "alice.png",
-            "in_party": false,
-            "location_id": 1,
-            "history": []
-        }
-    ]
-'''
-    df = ReadJSON(data)
-    df.Vertical(15,15)
-    df.ToCSVFile("output.csv")
-    df.DisplayBrowser()
+#     data = '''
+# [
+#         {
+#             "name": "Julie Skels",
+#             "alignment": "Melee Maniac",
+#             "health": 90,
+#             "max_health": 100,
+#             "gold": 100,
+#             "background_history": "Works as a mercenary for the Red Company.",
+#             "body_appearance": "White woman with several scars etched on her body.",
+#             "inventory": [
+#                 {
+#                     "name": "Custom-blade Knife",
+#                     "item_id": 2,
+#                     "equipped": true,
+#                     "description": "A sharp blade",
+#                     "estimated_value": 5,
+#                     "weight": 3,
+#                     "history": [
+#                         {
+#                             "date": "1st of September, 1069",
+#                             "event": "Received from the blacksmith in Anton."
+#                         }
+#                     ]
+#                 }
+#             ],
+#             "stats": {
+#                 "Strength": 15,
+#                 "Intelligence": 10,
+#                 "Dexterity": 12,
+#                 "Charisma": 8,
+#                 "Constitution": 14,
+#                 "Wisdom": 11
+#             },
+#             "character_id": 0,
+#             "player_id": 0,
+#             "is_npc": false,
+#             "image_filename": "julie_skels.png",
+#             "in_party": true,
+#             "location_id": 2,
+#             "history": [
+#                 {
+#                     "date": "1st of September, 1069",
+#                     "event": "Arrived at the marketplace for the festival."
+#                 }
+#             ]
+#         },
+#         {
+#             "name": "Bob",
+#             "alignment": "Good",
+#             "health": 80,
+#             "max_health": 100,
+#             "gold": 30,
+#             "background_history": "Is the mayor of Anton.",
+#             "body_appearance": "Burly white man with a sword-bow.",
+#             "inventory": [
+#                 {
+#                     "name": "Bow",
+#                     "item_id": 3,
+#                     "equipped": true,
+#                     "description": "A long bow",
+#                     "estimated_value": 3,
+#                     "weight": 2,
+#                     "history": []
+#                 }
+#             ],
+#             "stats": {
+#                 "Strength": 7,
+#                 "Intelligence": 12,
+#                 "Constitution": 10,
+#                 "Dexterity": 15,
+#                 "Wisdom": 8,
+#                 "Charisma": 9
+#             },
+#             "character_id": 1,
+#             "player_id": -1,
+#             "is_npc": true,
+#             "image_filename": "bob.png",
+#             "in_party": true,
+#             "location_id": 2,
+#             "history": [
+#                 {
+#                     "date": "1st of September, 1069",
+#                     "event": "Noticed goblin activity near Anton."
+#                 }
+#             ]
+#         },
+#         {
+#             "name": "Alice",
+#             "alignment": "Neutral",
+#             "health": 100,
+#             "max_health": 100,
+#             "gold": 50,
+#             "background_history": "Daughter of Wolves.",
+#             "body_appearance": "Slim tall body, free of marks or scars.",
+#             "inventory": [
+#                 {
+#                     "name": "Sword",
+#                     "item_id": 4,
+#                     "equipped": true,
+#                     "description": "A sharp sword",
+#                     "estimated_value": 12,
+#                     "weight": 5,
+#                     "history": []
+#                 }
+#             ],
+#             "stats": {
+#                 "Strength": 10,
+#                 "Intelligence": 8,
+#                 "Constitution": 12,
+#                 "Dexterity": 13,
+#                 "Wisdom": 9,
+#                 "Charisma": 11
+#             },
+#             "character_id": 2,
+#             "player_id": -1,
+#             "is_npc": true,
+#             "image_filename": "alice.png",
+#             "in_party": false,
+#             "location_id": 1,
+#             "history": []
+#         }
+#     ]
+# '''
+#     df = ReadJSON(data)
+#     df.Vertical(15,15)
+#     df.ToCSVFile("output.csv")
+#     df.DisplayBrowser()
+    pass
+
     # df = df.Column("alignment", Col("location_id")).Help()
     # df.Vertical(15,15)
     # df = df.Explode("inventory")

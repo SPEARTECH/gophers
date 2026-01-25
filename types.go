@@ -78,6 +78,7 @@ type ColumnExpr struct {
 	Prefix  interface{} `json:"prefix,omitempty"`
 	Suffix  interface{} `json:"suffix,omitempty"`
 	Pattern interface{} `json:"pattern,omitempty"`
+	Index     int             `json:"index,omitempty"`
 }
 
 func (ce *ColumnExpr) Help() string {
