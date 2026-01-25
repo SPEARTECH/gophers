@@ -464,24 +464,79 @@ func Compile(e ColumnExpr) Column {
         var sub ColumnExpr
         _ = json.Unmarshal(e.Expr, &sub)
         return Compile(sub).IsNotNull()
-    case "gt", "ge", "lt", "le", "eq", "ne":
-        var L, R ColumnExpr
-        _ = json.Unmarshal(e.Left, &L)
-        _ = json.Unmarshal(e.Right, &R)
-        lc, rc := Compile(L), Compile(R)
-        switch e.Type {
-        case "gt":
-            return Column{Name: "gt", Fn: func(row map[string]interface{}) interface{} { return cmpNumbers(lc.Fn(row), rc.Fn(row), "gt") }}
-        case "ge":
-            return Column{Name: "ge", Fn: func(row map[string]interface{}) interface{} { return cmpNumbers(lc.Fn(row), rc.Fn(row), "ge") }}
-        case "lt":
-            return Column{Name: "lt", Fn: func(row map[string]interface{}) interface{} { return cmpNumbers(lc.Fn(row), rc.Fn(row), "lt") }}
-        case "le":
-            return Column{Name: "le", Fn: func(row map[string]interface{}) interface{} { return cmpNumbers(lc.Fn(row), rc.Fn(row), "le") }}
-        case "eq":
-            return Column{Name: "eq", Fn: func(row map[string]interface{}) interface{} { return eqValues(lc.Fn(row), rc.Fn(row)) }}
-        default: // "ne"
-            return Column{Name: "ne", Fn: func(row map[string]interface{}) interface{} { return !eqValues(lc.Fn(row), rc.Fn(row)) }}
+    case "eq":
+        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
+        lc, rc := Compile(l), Compile(r)
+        return Column{
+            Name: fmt.Sprintf("(%s)==(%s)", lc.Name, rc.Name),
+            Fn: func(row map[string]interface{}) interface{} {
+                lv, rv := lc.Fn(row), rc.Fn(row)
+                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
+                if le == nil && re == nil { return lf == rf }
+                ls, _ := toString(lv); rs, _ := toString(rv)
+                return ls == rs
+            },
+        }
+    case "ne":
+        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
+        lc, rc := Compile(l), Compile(r)
+        return Column{
+            Name: fmt.Sprintf("(%s)!=(%s)", lc.Name, rc.Name),
+            Fn: func(row map[string]interface{}) interface{} {
+                lv, rv := lc.Fn(row), rc.Fn(row)
+                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
+                if le == nil && re == nil { return lf != rf }
+                ls, _ := toString(lv); rs, _ := toString(rv)
+                return ls != rs
+            },
+        }
+    case "gt":
+        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
+        lc, rc := Compile(l), Compile(r)
+        return Column{
+            Name: fmt.Sprintf("(%s)>(%s)", lc.Name, rc.Name),
+            Fn: func(row map[string]interface{}) interface{} {
+                lv, rv := lc.Fn(row), rc.Fn(row)
+                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
+                if le != nil || re != nil { return false } // numeric-only
+                return lf > rf
+            },
+        }
+    case "ge":
+        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
+        lc, rc := Compile(l), Compile(r)
+        return Column{
+            Name: fmt.Sprintf("(%s)>=(%s)", lc.Name, rc.Name),
+            Fn: func(row map[string]interface{}) interface{} {
+                lv, rv := lc.Fn(row), rc.Fn(row)
+                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
+                if le != nil || re != nil { return false } // numeric-only
+                return lf >= rf
+            },
+        }
+    case "lt":
+        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
+        lc, rc := Compile(l), Compile(r)
+        return Column{
+            Name: fmt.Sprintf("(%s)<(%s)", lc.Name, rc.Name),
+            Fn: func(row map[string]interface{}) interface{} {
+                lv, rv := lc.Fn(row), rc.Fn(row)
+                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
+                if le != nil || re != nil { return false } // numeric-only
+                return lf < rf
+            },
+        }
+    case "le":
+        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
+        lc, rc := Compile(l), Compile(r)
+        return Column{
+            Name: fmt.Sprintf("(%s)<=(%s)", lc.Name, rc.Name),
+            Fn: func(row map[string]interface{}) interface{} {
+                lv, rv := lc.Fn(row), rc.Fn(row)
+                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
+                if le != nil || re != nil { return false } // numeric-only
+                return lf <= rf
+            },
         }
     case "and", "or":
         var L, R ColumnExpr

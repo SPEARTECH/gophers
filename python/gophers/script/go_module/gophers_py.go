@@ -1097,31 +1097,36 @@ func SumWrapper(name *C.char) *C.char {
 //
 //export AggWrapper
 func AggWrapper(colsJson *C.char) *C.char {
-	var cols []Column
-	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
-		errStr := fmt.Sprintf("AggWrapper: unmarshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    var cols []Column
+    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+        errStr := fmt.Sprintf("AggWrapper: unmarshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
 
-	aggs := g.Agg(cols...)
-	simpleAggs := make([]SimpleAggregation, len(aggs))
-	for i, agg := range aggs {
-		simpleAggs[i] = SimpleAggregation{
-			ColumnName: agg.ColumnName,
-		}
-	}
+    // Convert []Column -> []interface{} for g.Agg(...interface{})
+    items := make([]interface{}, len(cols))
+    for i, c := range cols {
+        items[i] = c
+    }
+    aggs := g.Agg(items...)
 
-	aggsJson, err := json.Marshal(simpleAggs)
-	if err != nil {
-		errStr := fmt.Sprintf("AggWrapper: marshal error: %v", err)
-		log.Fatal(errStr)
-		return C.CString(errStr)
-	}
+    simpleAggs := make([]SimpleAggregation, len(aggs))
+    for i, agg := range aggs {
+        simpleAggs[i] = SimpleAggregation{
+            ColumnName: agg.ColumnName,
+        }
+    }
 
-	return C.CString(string(aggsJson))
+    aggsJson, err := json.Marshal(simpleAggs)
+    if err != nil {
+        errStr := fmt.Sprintf("AggWrapper: marshal error: %v", err)
+        log.Fatal(errStr)
+        return C.CString(errStr)
+    }
+
+    return C.CString(string(aggsJson))
 }
-
 // MaxWrapper is an exported function that wraps the Max function.
 //
 //export MaxWrapper

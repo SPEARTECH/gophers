@@ -251,13 +251,13 @@ class ColumnExpr:
     #     return ColumnExpr({ "type": "substr", "expr": self.expr, "start": start, "length": length })
     
     def _unwrap(self, v):
+        # Always return a ColumnExpr JSON object
         if isinstance(v, ColumnExpr):
             return v.expr
-        if isinstance(v, list):
-            return [self._unwrap(x) for x in v]
-        if isinstance(v, tuple):
-            return [self._unwrap(x) for x in v]
-        return v
+        if isinstance(v, (list, tuple)):
+            # if ever needed, wrap each element as lit
+            return [Lit(x).expr if not isinstance(x, ColumnExpr) else x.expr for x in v]
+        return Lit(v).expr
     
     def Gt(self, other):
         return ColumnExpr({ "type": "gt", "left": self.expr, "right": self._unwrap(other) })
@@ -840,7 +840,8 @@ class DataFrame:
     # Display functions
     def Show(self, chars, record_count=100):
         result = _cstr(gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
-        # print(result)
+        print(result)
+        return result
 
     def Columns(self):
         cols_json = _cstr(gophers.ColumnsWrapper(self.df_json.encode('utf-8')))
@@ -872,15 +873,18 @@ class DataFrame:
     
     def Head(self, chars):
         result = _cstr(gophers.Head(self.df_json.encode('utf-8'), c_int(chars)))
-        # print(result)
+        print(result)
+        return result
 
     def Tail(self, chars):
         result = _cstr(gophers.Tail(self.df_json.encode('utf-8'), c_int(chars)))
-        # print(result)
+        print(result)
+        return result
 
     def Vertical(self, chars, record_count=100):
         result = _cstr(gophers.Vertical(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
-        # print(result)
+        print(result)
+        return result
 
     def DisplayBrowser(self):
         err = _cstr(gophers.DisplayBrowserWrapper(self.df_json.encode('utf-8')))
@@ -1296,7 +1300,6 @@ def main():
 #     df.Vertical(15,15)
 #     df.ToCSVFile("output.csv")
 #     df.DisplayBrowser()
-    pass
 
     # df = df.Column("alignment", Col("location_id")).Help()
     # df.Vertical(15,15)
@@ -1309,7 +1312,7 @@ def main():
     # report.AddHeading("Main Page", "This is the main page of the report", 1)
     # report.AddDataframe("Main Page", df)
     # report.Open()
-    # df = GetAPI("https://poetrydb.org/title/Ozymandias/lines.json","","")
+    # df = GetAPI("https: #poetrydb.org/title/Ozymandias/lines.json","","")
     # df = df.Explode("lines")
     # print(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
     # df = ReadJSON(str(GetSqliteSchema("db.sqlite3", "SCOPS2_Child_App_email")).replace("'", '"').replace(": None,", ': "null",'))
@@ -1323,7 +1326,7 @@ def main():
     # report.AddHeading("Schema Page", "Schema of SCOPS2_Child_App_email Table", 1)
     # report.AddDataframe("Schema Page", df)
     # report.Save("sqlite_schema_report.html").Open()
-    # df = ReadHTML('https://news.search.yahoo.com/search;_ylt=AwrNPpGJ5hNpwTcEW.5XNyoA;_ylu=Y29sbwNiZjEEcG9zAzEEdnRpZAMEc2VjA3BpdnM-?p=aapl+news&fr2=piv-web&type=E210US91088G0&fr=mcafee')
+    # df = ReadHTML('https: #news.search.yahoo.com/search;_ylt=AwrNPpGJ5hNpwTcEW.5XNyoA;_ylu=Y29sbwNiZjEEcG9zAzEEdnRpZAMEc2VjA3BpdnM-?p=aapl+news&fr2=piv-web&type=E210US91088G0&fr=mcafee')
     # df = df.Select('tag')
     # df = df.Filter(Col("tag").Eq(Lit("body")))
     # df = df.Select('outer_html_str')
@@ -1336,6 +1339,57 @@ def main():
     # df.DisplayBrowser()
     # df.Vertical(100, 10)
     # pass
+
+    df = ReadHTMLTop("../gophers/test_data/security_analysis.html")
+    df = df.Filter(Col("tag").Eq("body"))
+    df = df.Select("inner_html_str")
+    df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
+    df = df.Filter(Col("index").Eq(0))
+    df.Vertical(200,15)
+    # df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
+    # df = df.Filter(Col("index").Eq(4)) 
+    # df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
+    # df = df.Filter(Col("tag").Eq("div"))
+    # df = df.Column("extractedhtml", Col("inner_html_str").ExtractHTML("details"))
+    # df = df.Column("summary", Col("extractedhtml").Index(0).ExtractHTML("summary"))
+    # df = df.Column("details", Col("extractedhtml").Index(0).ExtractHTML("div"))
+    # df = df.Column("priority", Col("summary").Index(0).ExtractHTML("span").Index(0).RegexpReplace(r"(?s)^.*Priority:\s*([0-9]+).*$", "$1"))
+    # df = df.Column("bug", Col("summary").Index(0).ExtractHTML("span").Index(1).RegexpReplace(r"(?s)^.*Issue:\s*(.+).*$", "$1"))
+    # df = df.Column("javaclass", Col("summary").Index(0).ExtractHTML("span").Index(2).RegexpReplace(r"(?s)^.*In class:\s*(.+).*$", "$1"))
+    # df = df.Column("line", Col("summary").Index(0).ExtractHTML("span").Index(3).RegexpReplace(r"^L:\s*([0-9]+)$", "$1"))
+    # df = df.Column("message", Col("details").Index(0).ExtractHTML("p").Index(0).RegexpReplace(r"(?i)</?strong>", "").RegexpReplace(r"(?s)^.*Message:\s*(.+).*$", "$1"))
+    # df = df.Column("category", Col("details").Index(0).ExtractHTML("p").Index(1).RegexpReplace(r"(?i)</?strong>", "").RegexpReplace(r"(?s)^.*Category:\s*(.+).*$", "$1"))
+    # df = df.Column("spotbugslink", Col("details").Index(0).ExtractHTMLTop("div").Index(0).RegexpReplace(r'(?is)^.*?<a[^>]+href="([^"]+)".*?<a[^>]+href="([^"]+)".*$', "$2"))
+    # df = df.Column("sourcecode", Col("details").Index(0).ExtractHTML("div").Index(0).RegexpReplace(r'(?is)^.*?<a[^>]+href="([^"]+)".*?$', "$1"))
+    # df = df.Select("priority","bug","javaclass","line","message","category","spotbugslink","sourcecode")
+
+
+
+    # spotdf = ReadHTML(r"C:\Users\tyler\Documents\PROJECTS\gophers\test_data\spotbugs_documentation.html")
+    # spotdf = spotdf.Filter(Col("tag").Eq("body"))
+    # spotdf = ReadHTML(str(spotdf.Collect("inner_html_str")[0]))
+    # spotdf = spotdf.Filter(And(Col("tag").Eq("div"),Col("depth").Eq(5),Col("parent_index").Eq(1130)))
+    # spotdf = spotdf.Column("inner_html_str", Col("inner_html_str").ReplaceAll("<code>"," ").ReplaceAll("</code>"," "))
+    # spotdf = ReadHTML(str(spotdf.Collect("inner_html_str")[0]))
+    # spotdf = spotdf.Filter(And(Col("text").Ne("Bug descriptions"),Col("href").Ne("#bug-descriptions"), Col("text").Ne("This document lists the standard bug patterns reported by SpotBugs.")))
+    
+    # joindf = spotdf.Select("text","parent_index").Column("text", Col("text").RegexpReplace(r"^.*\(([^)]+)\).*$", "$1"))
+
+    # df = df.Join(joindf, "bug", "text", "left")
+    # df = df.Drop("text")
+
+    # spotdf = spotdf.GroupBy("parent_index")
+    # spotdf = spotdf.Select("parent_index","text")
+
+    # df = df.Join(spotdf, "parent_index", "parent_index", "left")
+
+    # df = df.Drop("parent_index_l", "parent_index_r")
+
+    # df = df.Column("text", ArrayJoin(Col("text"), "\n"))
+    # df = df.Rename("text", "description")
+
+    # df.Vertical(1000,10)
+
 
 if __name__ == '__main__':
     main()

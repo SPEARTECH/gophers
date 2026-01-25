@@ -100,6 +100,7 @@ extern __declspec(dllexport) struct ReadSqlite_return ReadSqlite(GoString path, 
 extern __declspec(dllexport) char* GetSqliteTables(char* dbPath);
 extern __declspec(dllexport) char* GetSqliteSchema(char* dbPath, char* table);
 extern __declspec(dllexport) char* ReadHTML(char* htmlInput);
+extern __declspec(dllexport) char* ReadHTMLTop(char* htmlInput);
 extern __declspec(dllexport) char* Clone(char* dfJson);
 
 // Flatten accepts a JSON string for the DataFrame and a JSON array of column names to flatten.
@@ -249,6 +250,8 @@ extern __declspec(dllexport) char* UniqueWrapper(char* name);
 // FirstWrapper is an exported function that wraps the First function.
 //
 extern __declspec(dllexport) char* FirstWrapper(char* name);
+extern __declspec(dllexport) char* CollectListWrapper(char* name);
+extern __declspec(dllexport) char* CollectSetWrapper(char* name);
 
 // IfWrapper is an exported function that wraps the If function.
 // It takes JSON strings representing the condition, fn1, and fn2 Columns, calls If, and returns the resulting Column as a JSON string.

@@ -2636,20 +2636,20 @@ func main() {
         return o
     }))
 
-    makeBinary := func(op string) js.Func {
-        return js.FuncOf(func(this js.Value, args []js.Value) any {
-            if len(args) < 2 {
-                return "error: " + op + "(left, right)"
-            }
-            left := toExpr.Invoke(args[0])
-            right := toExpr.Invoke(args[1])
-            o := js.Global().Get("Object").New()
-            o.Set("Type", op)
-            o.Set("Left", left)
-            o.Set("Right", right)
-            return o
-        })
-    }
+    // makeBinary := func(op string) js.Func {
+    //     return js.FuncOf(func(this js.Value, args []js.Value) any {
+    //         if len(args) < 2 {
+    //             return "error: " + op + "(left, right)"
+    //         }
+    //         left := toExpr.Invoke(args[0])
+    //         right := toExpr.Invoke(args[1])
+    //         o := js.Global().Get("Object").New()
+    //         o.Set("Type", op)
+    //         o.Set("Left", left)
+    //         o.Set("Right", right)
+    //         return o
+    //     })
+    // }
 
     // api.Set("Gt", makeBinary("gt"))
     // api.Set("Ge", makeBinary("ge"))
