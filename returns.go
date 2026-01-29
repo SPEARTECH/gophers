@@ -18,7 +18,9 @@ func (df *DataFrame) Columns() []string {
 
 // count
 func (df *DataFrame) Count() int {
-	return df.Rows
+    cnt := df.Rows
+    fmt.Println(cnt) // print count
+    return cnt
 }
 
 // Parallel CountDuplicates (returns count)

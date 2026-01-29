@@ -804,21 +804,26 @@ func dfObject(id int) js.Value {
         newID := put(out)
         return dfObject(newID)
     }))
-	// df.GroupBy(key, ...aggs) or df.GroupBy(key, [aggSpec...]) -> returns new DataFrame
+    // df.GroupBy(key[, aggs...]) or df.GroupBy(key, [aggSpec...]) -> returns new DataFrame
     obj.Set("GroupBy", js.FuncOf(func(this js.Value, args []js.Value) any {
         df := get(id)
         if df == nil { return "error: dataframe handle invalid" }
-        if len(args) < 2 || args[0].Type() != js.TypeString {
-            return "error: GroupBy(key, aggs...)"
+        if len(args) < 1 || args[0].Type() != js.TypeString {
+            return "error: GroupBy(key[, aggs...])"
         }
         key := args[0].String()
-        aggs, err := aggsFromJS(args[1:])
-        if err != nil { return "error: " + err.Error() }
+
+        var aggs []g.Aggregation
+        if len(args) > 1 {
+            parsed, err := aggsFromJS(args[1:])
+            if err != nil { return "error: " + err.Error() }
+            aggs = parsed
+        }
+
         out := df.GroupBy(key, aggs...)
         newID := put(out)
         return dfObject(newID)
-    }))
-    // df.Join(otherDf, leftOn, rightOn, joinType?) -> new DataFrame
+    }))    // df.Join(otherDf, leftOn, rightOn, joinType?) -> new DataFrame
     // joinType: "inner" | "left" | "right" | "outer" (default "inner")
     obj.Set("Join", js.FuncOf(func(this js.Value, args []js.Value) any {
         left := get(id)
@@ -1004,7 +1009,15 @@ func dfObject(id int) js.Value {
         // js.Global().Get("console").Call("log", out)
         return out
     }))
-
+    obj.Set("Count", js.FuncOf(func(this js.Value, args []js.Value) any {
+        df := get(id)
+        if df == nil {
+            return "error: invalid handle"
+        }
+        n := df.Count()
+        js.Global().Get("console").Call("log", n) // print count
+        return n
+    }))
 	// ---------- Displays ----------
 
 	// df.Display() -> returns helper with .ElementID(id) to mount the generated HTML
@@ -2391,8 +2404,40 @@ func main() {
         expr.Set("Ge", makeCmp("ge"))
         expr.Set("Lt", makeCmp("lt"))
         expr.Set("Le", makeCmp("le"))
-        expr.Set("Eq", makeCmp("eq"))
-        expr.Set("Ne", makeCmp("ne"))
+        expr.Set("Eq", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 { return "error: Eq(right)" }
+            var right js.Value
+            if a[0].Type() == js.TypeString {
+                r := js.Global().Get("Object").New()
+                r.Set("Type", "lit")
+                r.Set("Value", a[0].String())
+                right = r
+            } else {
+                right = toExpr.Invoke(a[0])
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "eq")
+            o.Set("Left", expr)
+            o.Set("Right", right)
+            return o
+        }))
+        expr.Set("Ne", js.FuncOf(func(this js.Value, a []js.Value) any {
+            if len(a) < 1 { return "error: Ne(right)" }
+            var right js.Value
+            if a[0].Type() == js.TypeString {
+                r := js.Global().Get("Object").New()
+                r.Set("Type", "lit")
+                r.Set("Value", a[0].String())
+                right = r
+            } else {
+                right = toExpr.Invoke(a[0])
+            }
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "ne")
+            o.Set("Left", expr)
+            o.Set("Right", right)
+            return o
+        }))
 
         // Split(delimiter) – keeps existing payload shape: {Type:"split", Col:"name", Delimiter:"..."}
         expr.Set("Split", js.FuncOf(func(this js.Value, a []js.Value) any {
@@ -2657,9 +2702,34 @@ func main() {
     // api.Set("Le", makeBinary("le"))
     // api.Set("Eq", makeBinary("eq"))
     // api.Set("Ne", makeBinary("ne"))
-    // api.Set("And", makeBinary("and"))
-    // api.Set("Or", makeBinary("or"))
-
+    
+    expr.Set("And", js.FuncOf(func(this js.Value, a []js.Value) any {
+        if len(a) < 1 { return "error: And(...conds)" }
+        // Start with current expr, then nest: ((expr AND a0) AND a1) ...
+        curr := expr
+        for _, v := range a {
+            right := toExpr.Invoke(v)
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "and")
+            o.Set("Left", curr)
+            o.Set("Right", right)
+            curr = o
+        }
+        return curr
+    }))
+    expr.Set("Or", js.FuncOf(func(this js.Value, a []js.Value) any {
+        if len(a) < 1 { return "error: Or(...conds)" }
+        curr := expr
+        for _, v := range a {
+            right := toExpr.Invoke(v)
+            o := js.Global().Get("Object").New()
+            o.Set("Type", "or")
+            o.Set("Left", curr)
+            o.Set("Right", right)
+            curr = o
+        }
+        return curr
+    }))
     // api.Set("IsNull", js.FuncOf(func(this js.Value, args []js.Value) any {
     //     if len(args) < 1 {
     //         return "error: IsNull(expr)"

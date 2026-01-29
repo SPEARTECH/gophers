@@ -617,11 +617,27 @@ def Cast(col, datatype):
     })
 
 # Logic functions
-def Or(left, right):
-    return ColumnExpr({ "type": "or", "left": json.loads(left.to_json()), "right": json.loads(right.to_json()) })
+def Or(*conds):
+    cs = [c if isinstance(c, ColumnExpr) else Lit(c) for c in conds]
+    if len(cs) == 0:
+        raise TypeError("Or() requires at least one argument")
+    if len(cs) == 1:
+        return cs[0]
+    expr = json.loads(cs[0].to_json())
+    for c in cs[1:]:
+        expr = { "type": "or", "left": expr, "right": json.loads(c.to_json()) }
+    return ColumnExpr(expr)
 
-def And(left, right):
-    return ColumnExpr({ "type": "and", "left": json.loads(left.to_json()), "right": json.loads(right.to_json()) })
+def And(*conds):
+    cs = [c if isinstance(c, ColumnExpr) else Lit(c) for c in conds]
+    if len(cs) == 0:
+        raise TypeError("And() requires at least one argument")
+    if len(cs) == 1:
+        return cs[0]
+    expr = json.loads(cs[0].to_json())
+    for c in cs[1:]:
+        expr = { "type": "and", "left": expr, "right": json.loads(c.to_json()) }
+    return ColumnExpr(expr)
 
 def If(condition, trueExpr, falseExpr):
     return ColumnExpr({ "type": "if", "cond": json.loads(condition.to_json()), "true": json.loads(trueExpr.to_json()), "false": json.loads(falseExpr.to_json()) })
@@ -976,12 +992,18 @@ class DataFrame:
         else:
             print(f"Error running code, cannot run {col_name} within Column function.")
         return self 
-    def GroupBy(self, groupCol, aggs):
-        # aggs should be a list of JSON objects returned by Sum
+    def GroupBy(self, groupCol, aggs=None):
+        # Optional aggs: if None, Go will add CollectList for remaining columns
+        if aggs is None:
+            aggs_payload = []
+        elif isinstance(aggs, (list, tuple)):
+            aggs_payload = list(aggs)
+        else:
+            aggs_payload = [aggs]
         self.df_json = _cstr(gophers.GroupByWrapper(
             self.df_json.encode('utf-8'),
             groupCol.encode('utf-8'),
-            json.dumps(aggs).encode('utf-8')
+            json.dumps(aggs_payload).encode('utf-8')
         ))
         return self
     def Select(self, *cols):
@@ -1340,55 +1362,56 @@ def main():
     # df.Vertical(100, 10)
     # pass
 
-    df = ReadHTMLTop("../gophers/test_data/security_analysis.html")
+    df = ReadHTMLTop(r"C:\Users\tyler\Documents\PROJECTS\gophers\test_data\security_analysis.html")
     df = df.Filter(Col("tag").Eq("body"))
     df = df.Select("inner_html_str")
     df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
     df = df.Filter(Col("index").Eq(0))
-    df.Vertical(200,15)
-    # df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
-    # df = df.Filter(Col("index").Eq(4)) 
-    # df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
-    # df = df.Filter(Col("tag").Eq("div"))
-    # df = df.Column("extractedhtml", Col("inner_html_str").ExtractHTML("details"))
-    # df = df.Column("summary", Col("extractedhtml").Index(0).ExtractHTML("summary"))
-    # df = df.Column("details", Col("extractedhtml").Index(0).ExtractHTML("div"))
-    # df = df.Column("priority", Col("summary").Index(0).ExtractHTML("span").Index(0).RegexpReplace(r"(?s)^.*Priority:\s*([0-9]+).*$", "$1"))
-    # df = df.Column("bug", Col("summary").Index(0).ExtractHTML("span").Index(1).RegexpReplace(r"(?s)^.*Issue:\s*(.+).*$", "$1"))
-    # df = df.Column("javaclass", Col("summary").Index(0).ExtractHTML("span").Index(2).RegexpReplace(r"(?s)^.*In class:\s*(.+).*$", "$1"))
-    # df = df.Column("line", Col("summary").Index(0).ExtractHTML("span").Index(3).RegexpReplace(r"^L:\s*([0-9]+)$", "$1"))
-    # df = df.Column("message", Col("details").Index(0).ExtractHTML("p").Index(0).RegexpReplace(r"(?i)</?strong>", "").RegexpReplace(r"(?s)^.*Message:\s*(.+).*$", "$1"))
-    # df = df.Column("category", Col("details").Index(0).ExtractHTML("p").Index(1).RegexpReplace(r"(?i)</?strong>", "").RegexpReplace(r"(?s)^.*Category:\s*(.+).*$", "$1"))
-    # df = df.Column("spotbugslink", Col("details").Index(0).ExtractHTMLTop("div").Index(0).RegexpReplace(r'(?is)^.*?<a[^>]+href="([^"]+)".*?<a[^>]+href="([^"]+)".*$', "$2"))
-    # df = df.Column("sourcecode", Col("details").Index(0).ExtractHTML("div").Index(0).RegexpReplace(r'(?is)^.*?<a[^>]+href="([^"]+)".*?$', "$1"))
-    # df = df.Select("priority","bug","javaclass","line","message","category","spotbugslink","sourcecode")
+    # df.Vertical(200,15)
+    df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
+    df = df.Filter(Col("index").Eq(4)) 
+    df = ReadHTMLTop(str(df.Collect("inner_html_str")[0]))
+    df = df.Filter(Col("tag").Eq("div"))
+    df = df.Column("extractedhtml", Col("inner_html_str").ExtractHTML("details"))
+    df = df.Column("summary", Col("extractedhtml").Index(0).ExtractHTML("summary"))
+    df = df.Column("details", Col("extractedhtml").Index(0).ExtractHTML("div"))
+    df = df.Column("priority", Col("summary").Index(0).ExtractHTML("span").Index(0).RegexpReplace(r"(?s)^.*Priority:\s*([0-9]+).*$", "$1"))
+    df = df.Column("bug", Col("summary").Index(0).ExtractHTML("span").Index(1).RegexpReplace(r"(?s)^.*Issue:\s*(.+).*$", "$1"))
+    df = df.Column("javaclass", Col("summary").Index(0).ExtractHTML("span").Index(2).RegexpReplace(r"(?s)^.*In class:\s*(.+).*$", "$1"))
+    df = df.Column("line", Col("summary").Index(0).ExtractHTML("span").Index(3).RegexpReplace(r"^L:\s*([0-9]+)$", "$1"))
+    df = df.Column("message", Col("details").Index(0).ExtractHTML("p").Index(0).RegexpReplace(r"(?i)</?strong>", "").RegexpReplace(r"(?s)^.*Message:\s*(.+).*$", "$1"))
+    df = df.Column("category", Col("details").Index(0).ExtractHTML("p").Index(1).RegexpReplace(r"(?i)</?strong>", "").RegexpReplace(r"(?s)^.*Category:\s*(.+).*$", "$1"))
+    df = df.Column("spotbugslink", Col("details").Index(0).ExtractHTMLTop("div").Index(0).RegexpReplace(r'(?is)^.*?<a[^>]+href="([^"]+)".*?<a[^>]+href="([^"]+)".*$', "$2"))
+    df = df.Column("sourcecode", Col("details").Index(0).ExtractHTML("div").Index(0).RegexpReplace(r'(?is)^.*?<a[^>]+href="([^"]+)".*?$', "$1"))
+    df = df.Select("priority","bug","javaclass","line","message","category","spotbugslink","sourcecode")
 
 
 
-    # spotdf = ReadHTML(r"C:\Users\tyler\Documents\PROJECTS\gophers\test_data\spotbugs_documentation.html")
-    # spotdf = spotdf.Filter(Col("tag").Eq("body"))
-    # spotdf = ReadHTML(str(spotdf.Collect("inner_html_str")[0]))
-    # spotdf = spotdf.Filter(And(Col("tag").Eq("div"),Col("depth").Eq(5),Col("parent_index").Eq(1130)))
-    # spotdf = spotdf.Column("inner_html_str", Col("inner_html_str").ReplaceAll("<code>"," ").ReplaceAll("</code>"," "))
-    # spotdf = ReadHTML(str(spotdf.Collect("inner_html_str")[0]))
-    # spotdf = spotdf.Filter(And(Col("text").Ne("Bug descriptions"),Col("href").Ne("#bug-descriptions"), Col("text").Ne("This document lists the standard bug patterns reported by SpotBugs.")))
+    spotdf = ReadHTML(r"C:\Users\tyler\Documents\PROJECTS\gophers\test_data\spotbugs_documentation.html")
+    spotdf = spotdf.Filter(Col("tag").Eq("body"))
+    spotdf = ReadHTML(str(spotdf.Collect("inner_html_str")[0]))
+    spotdf = spotdf.Filter(And(Col("tag").Eq("div"),Col("depth").Eq(5),Col("parent_index").Eq(1130)))
+    spotdf = spotdf.Column("inner_html_str", Col("inner_html_str").ReplaceAll("<code>"," ").ReplaceAll("</code>"," "))
+    spotdf = ReadHTML(str(spotdf.Collect("inner_html_str")[0]))
+    spotdf = spotdf.Filter(And(Col("text").Ne("Bug descriptions"),Col("href").Ne("#bug-descriptions"), Col("text").Ne("This document lists the standard bug patterns reported by SpotBugs.")))
     
-    # joindf = spotdf.Select("text","parent_index").Column("text", Col("text").RegexpReplace(r"^.*\(([^)]+)\).*$", "$1"))
+    joindf = spotdf.Select("text","parent_index").Column("text", Col("text").RegexpReplace(r"^.*\(([^)]+)\).*$", "$1"))
 
-    # df = df.Join(joindf, "bug", "text", "left")
-    # df = df.Drop("text")
+    df = df.Join(joindf, "bug", "text", "left")
+    df = df.Drop("text")
 
-    # spotdf = spotdf.GroupBy("parent_index")
-    # spotdf = spotdf.Select("parent_index","text")
+    spotdf = spotdf.GroupBy("parent_index")
+    spotdf = spotdf.Select("parent_index","text")
 
-    # df = df.Join(spotdf, "parent_index", "parent_index", "left")
+    df = df.Join(spotdf, "parent_index", "parent_index", "left")
 
-    # df = df.Drop("parent_index_l", "parent_index_r")
+    df = df.Drop("parent_index_l", "parent_index_r")
 
-    # df = df.Column("text", ArrayJoin(Col("text"), "\n"))
-    # df = df.Rename("text", "description")
+    df = df.Column("text", Col("text").ArrayJoin("\n"))
+    df = df.Rename("text", "description")
 
-    # df.Vertical(1000,10)
+    df.Vertical(1000,10)
+    df.Count()
 
 
 if __name__ == '__main__':
