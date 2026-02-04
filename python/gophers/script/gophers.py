@@ -85,6 +85,7 @@ gophers.WriteSqlite.restype = c_void_p
 gophers.PostAPI.restype = c_void_p
 gophers.GetSqliteSchema.restype = c_void_p
 gophers.GetSqliteTables.restype = c_void_p
+gophers.SqliteSQLWrapper.restype = c_void_p
 gophers.Clone.restype = c_void_p
 gophers.Free.argtypes = [c_void_p]
 gophers.Free.restype = None
@@ -791,6 +792,14 @@ def GetSqliteSchema(db_path: str, table: str):
     if isinstance(obj, dict) and obj.get("error"):
         raise RuntimeError(obj["error"])
     return obj
+
+def SqliteSQL(db_path: str, sql_text: str):
+    df_json = _cstr(
+        gophers.SqliteSQLWrapper,
+        db_path.encode('utf-8'),
+        sql_text.encode('utf-8')
+    )
+    return DataFrame(df_json)
 
 # Display functions
 def DisplayHTML(html):

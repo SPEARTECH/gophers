@@ -2273,7 +2273,17 @@ func main() {
         }
         return g.CloneJSON(text)
     }))
-
+    api.Set("SqliteSQL", js.FuncOf(func(this js.Value, args []js.Value) any {
+        if len(args) < 2 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString {
+            return "error: Sql(dbPath, sqlText)"
+        }
+        df, err := g.SqliteSQL(args[0].String(), args[1].String())
+        if err != nil {
+            return "error: " + err.Error()
+        }
+        id := put(df)
+        return dfObject(id)
+    }))
 	// ---------- Aggregations ----------
     // ...update Agg builder to accept mixed inputs and return JS array of {op,col} objects...
     api.Set("Agg", js.FuncOf(func(this js.Value, args []js.Value) any {

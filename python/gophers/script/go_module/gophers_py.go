@@ -187,6 +187,19 @@ func GetSqliteSchema(dbPath *C.char, table *C.char) *C.char {
 	return C.CString(js)
 }
 
+//export SqliteSQLWrapper
+func SqliteSQLWrapper(path *C.char, sql *C.char) *C.char {
+    df, err := g.SqliteSQL(C.GoString(path), C.GoString(sql))
+    if err != nil {
+        // Return a one-row DF with error for consistency
+        rows := []map[string]interface{}{{"error": err.Error()}}
+        b, _ := json.Marshal(g.Dataframe(rows))
+        return C.CString(string(b))
+    }
+    b, _ := json.Marshal(df)
+    return C.CString(string(b))
+}
+
 //export ReadHTML
 func ReadHTML(htmlInput *C.char) *C.char {
 	df := g.ReadHTML(C.GoString(htmlInput))

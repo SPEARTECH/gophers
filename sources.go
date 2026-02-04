@@ -1111,3 +1111,90 @@ func ReadHTMLTop(input string) *DataFrame {
     return Dataframe(rows)
 }
 // javascript request source? (django/flask?)
+
+// ListSqliteTables returns the names of all user tables in the SQLite database.
+// It excludes internal SQLite tables (names starting with "sqlite_").
+func ListSqliteTables(dbPath string) ([]string, error) {
+    db, err := sql.Open("sqlite3", dbPath)
+    if err != nil {
+        return nil, fmt.Errorf("ListSqliteTables: open error: %w", err)
+    }
+    defer db.Close()
+
+    rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+    if err != nil {
+        return nil, fmt.Errorf("ListSqliteTables: query error: %w", err)
+    }
+    defer rows.Close()
+
+    var names []string
+    for rows.Next() {
+        var name string
+        if err := rows.Scan(&name); err != nil {
+            return nil, fmt.Errorf("ListSqliteTables: scan error: %w", err)
+        }
+        names = append(names, name)
+    }
+    return names, rows.Err()
+}
+
+// SqliteSQL executes SQL text against a SQLite DB.
+// If the last statement is SELECT, returns its rows.
+// Otherwise returns a one-row DataFrame: {"ok": true, "changes": N}.
+func SqliteSQL(path string, sqlText string) (*DataFrame, error) {
+    db, err := sql.Open("sqlite3", path)
+    if err != nil {
+        return nil, fmt.Errorf("SqliteSQL: open error: %w", err)
+    }
+    defer db.Close()
+
+    // Split into statements; trim and skip empties.
+    stmts := strings.Split(sqlText, ";")
+    filtered := make([]string, 0, len(stmts))
+    for _, s := range stmts {
+        ss := strings.TrimSpace(s)
+        if ss != "" {
+            filtered = append(filtered, ss)
+        }
+    }
+    if len(filtered) == 0 {
+        return Dataframe([]map[string]interface{}{}), nil
+    }
+
+    // Exec all but last if any.
+    var totalChanges int64
+    for i := 0; i < len(filtered)-1; i++ {
+        res, err := db.Exec(filtered[i])
+        if err != nil {
+            return nil, fmt.Errorf("SqliteSQL: exec error: %w", err)
+        }
+        if n, _ := res.RowsAffected(); n > 0 {
+            totalChanges += n
+        }
+    }
+
+    // Last: if SELECT -> query rows; else exec and return status DF.
+    last := filtered[len(filtered)-1]
+    isSelect := func(s string) bool {
+        t := strings.TrimSpace(strings.ToLower(s))
+        return strings.HasPrefix(t, "select")
+    }
+    if isSelect(last) {
+        rows, err := fetchRows(db, last, "")
+        if err != nil {
+            return nil, fmt.Errorf("SqliteSQL: select error: %w", err)
+        }
+        return Dataframe(rows), nil
+    }
+
+    res, err := db.Exec(last)
+    if err != nil {
+        return nil, fmt.Errorf("SqliteSQL: exec last error: %w", err)
+    }
+    if n, _ := res.RowsAffected(); n > 0 {
+        totalChanges += n
+    }
+    return Dataframe([]map[string]interface{}{
+        {"ok": true, "changes": totalChanges},
+    }), nil
+}
