@@ -769,7 +769,7 @@ def GetSqliteTables(db_path: str):
     Return a list of table names in the SQLite database.
     Raises RuntimeError on error.
     """
-    raw = gophers.GetSqliteTables(db_path.encode("utf-8")).decode("utf-8")
+    raw = _cstr(gophers.GetSqliteTables, db_path.encode("utf-8"))
     try:
         obj = json.loads(raw)
     except Exception:
@@ -784,7 +784,7 @@ def GetSqliteSchema(db_path: str, table: str):
       { table, columns:[{cid,name,type,notnull,default,primaryKey}], foreign_keys:[...], indexes:[...] }
     Raises RuntimeError on error.
     """
-    raw = gophers.GetSqliteSchema(db_path.encode("utf-8"), table.encode("utf-8")).decode("utf-8")
+    raw = _cstr(gophers.GetSqliteSchema, db_path.encode("utf-8"), table.encode("utf-8"))
     try:
         obj = json.loads(raw)
     except Exception:

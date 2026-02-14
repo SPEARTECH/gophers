@@ -99,6 +99,7 @@ struct ReadSqlite_return {
 extern __declspec(dllexport) struct ReadSqlite_return ReadSqlite(GoString path, GoString table, GoString query);
 extern __declspec(dllexport) char* GetSqliteTables(char* dbPath);
 extern __declspec(dllexport) char* GetSqliteSchema(char* dbPath, char* table);
+extern __declspec(dllexport) char* SqliteSQLWrapper(char* path, char* sql);
 extern __declspec(dllexport) char* ReadHTML(char* htmlInput);
 extern __declspec(dllexport) char* ReadHTMLTop(char* htmlInput);
 extern __declspec(dllexport) char* Clone(char* dfJson);
