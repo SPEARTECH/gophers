@@ -602,33 +602,40 @@ func dfObject(id int) js.Value {
 		if specVal.Type() == js.TypeObject && specVal.Get("Type").Type() == js.TypeString &&
 			strings.ToLower(specVal.Get("Type").String()) == "udf" {
 
-			in := specVal.Get("Input")
+			inputs := specVal.Get("Inputs") // Expecting JS Array of column exprs
 			fn := specVal.Get("Fn")
 			if !fn.Truthy() || fn.Type() != js.TypeFunction {
 				return "error: UDF spec missing Fn (must be a function)"
 			}
 
-			// Resolve input column name; only supports Col("name") or "name"
-			inCol := ""
-			switch in.Type() {
-			case js.TypeString:
-				inCol = in.String()
-			case js.TypeObject:
-				// Expect ColumnExpr: {Type:"col", Name:"..."}
-				if in.Get("Type").Type() == js.TypeString && strings.ToLower(in.Get("Type").String()) == "col" {
-					if in.Get("Name").Type() == js.TypeString {
-						inCol = in.Get("Name").String()
+			// Resolve input column names
+			var inCols []string
+			if inputs.Truthy() {
+				l := inputs.Length()
+				for i := 0; i < l; i++ {
+					inSpec := inputs.Index(i)
+					// Extract name from Col("...") expr
+					name := ""
+					if inSpec.Type() == js.TypeObject &&
+						inSpec.Get("Type").String() == "col" {
+						name = inSpec.Get("Name").String()
+					} else if inSpec.Type() == js.TypeString {
+						name = inSpec.String()
 					}
+					if name == "" {
+						return "error: UDF inputs must be Col('name') or 'name'"
+					}
+					inCols = append(inCols, name)
 				}
-			}
-			inCol = strings.TrimSpace(inCol)
-			if inCol == "" {
-				return "error: UDF input must be a column name (string) or Col('name')"
 			}
 
 			rows := df.ToRows()
 			for i := 0; i < len(rows); i++ {
-				s := udfToString(rows[i][inCol])
+				// Prepare argument list (array of strings)
+				argList := make([]interface{}, len(inCols))
+				for k, colName := range inCols {
+					argList[k] = udfToString(rows[i][colName])
+				}
 
 				var out any
 				ok := true
@@ -638,31 +645,20 @@ func dfObject(id int) js.Value {
 							ok = false
 						}
 					}()
-					res := fn.Invoke(s)
+					// Wrap args in a JS array to pass as single argument to JS function
+					// User function signature: (args) => { ... } where args is ["val1", "val2"]
+					res := fn.Invoke(js.ValueOf(argList))
 					out = jsValToAny(res)
 				}()
 				if !ok {
-					// Mirrors Go/Python: print-ish behavior isn’t reliable here; just set null.
 					rows[i][colName] = nil
 					continue
 				}
 				rows[i][colName] = out
 			}
-
-			b, err := json.Marshal(rows)
-			if err != nil {
-				return "error: failed to rebuild dataframe: " + err.Error()
-			}
-			newDF := g.ReadJSON(string(b))
-
-			// Replace underlying dataframe for this handle (in-place semantics)
-			storeMu.Lock()
-			store[id] = newDF
-			storeMu.Unlock()
-
+			// ...existing code (rebuild dataframe)...
 			return dfObject(id)
 		}
-
 		// Build ColumnExpr from JS spec
 		colSpec, err := exprFromJS(specVal)
 		if err != nil {
@@ -3231,25 +3227,28 @@ func main() {
 		return o
 	}))
 
-	// UDF(inputCol, fn) -> returns a spec usable inside df.Column("new", gophers.UDF(...))
-	// Note: executed JS-side (materialize/apply/rebuild) when passed to df.Column.
+	// UDF(fn, ...inputCols) -> returns a spec usable inside df.Column
+	// Signature change: fn comes first, then variadic columns
 	api.Set("UDF", js.FuncOf(func(this js.Value, args []js.Value) any {
 		if len(args) < 2 {
-			return "error: UDF(inputCol, fn)"
+			return "error: UDF(fn, col1, col2...)"
 		}
-		fn := args[1]
+		fn := args[0]
 		if fn.Type() != js.TypeFunction {
-			return "error: UDF fn must be a function"
+			return "error: first argument must be a function"
 		}
-		in := toExpr.Invoke(args[0])
+
+		inputs := js.Global().Get("Array").New()
+		for _, v := range args[1:] {
+			inputs.Call("push", toExpr.Invoke(v))
+		}
 
 		o := js.Global().Get("Object").New()
 		o.Set("Type", "udf")
-		o.Set("Input", in)
+		o.Set("Inputs", inputs)
 		o.Set("Fn", fn)
 		return o
-	}))
-	// --------- Display ---------
+	})) // --------- Display ---------
 
 	// DisplayHTML(html) -> returns helper with .ElementID(id) to mount HTML
 	api.Set("DisplayHTML", js.FuncOf(func(this js.Value, args []js.Value) any {

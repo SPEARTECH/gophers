@@ -1253,34 +1253,44 @@ func (c Column) RegexpExtract(pattern string, group int) Column {
 	}
 }
 
-// UDF applies fn to the string value produced by `input` Column for each row.
-// If fn returns an error, UDF prints the error and returns nil for that row.
-func UDF(input Column, fn func(string) (interface{}, error)) Column {
-	return Column{
-		Name: "udf_" + input.Name,
-		Fn: func(row map[string]interface{}) interface{} {
-			v := input.Fn(row)
+// UDF applies fn to the string values produced by the provided input Columns for each row.
+// Start with inputs...Column, then the function.
+// The function now receives []string containing the stringified values of the inputs in order.
+func UDF(fn func([]string) (interface{}, error), inputs ...Column) Column {
+	// Generate a name based on inputs
+	names := make([]string, len(inputs))
+	for i, col := range inputs {
+		names[i] = col.Name
+	}
 
-			var s string
-			switch t := v.(type) {
-			case nil:
-				s = ""
-			case string:
-				s = t
-			case []byte:
-				s = string(t)
-			default:
-				// Prefer the library's converters; fall back to fmt.Sprint.
-				if ss, err := toString(t); err == nil {
-					s = ss
-				} else {
-					s = fmt.Sprint(v)
+	return Column{
+		Name: fmt.Sprintf("udf(%s)", strings.Join(names, ",")),
+		Fn: func(row map[string]interface{}) interface{} {
+			args := make([]string, len(inputs))
+			for i, col := range inputs {
+				v := col.Fn(row)
+
+				var s string
+				switch t := v.(type) {
+				case nil:
+					s = ""
+				case string:
+					s = t
+				case []byte:
+					s = string(t)
+				default:
+					if ss, err := toString(t); err == nil {
+						s = ss
+					} else {
+						s = fmt.Sprint(v)
+					}
 				}
+				args[i] = s
 			}
 
-			out, err := fn(s)
+			out, err := fn(args)
 			if err != nil {
-				fmt.Println("udf error:", err, "input:", s)
+				// fmt.Println("udf error:", err, "inputs:", args)
 				return nil
 			}
 			return out

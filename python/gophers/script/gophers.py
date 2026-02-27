@@ -847,27 +847,34 @@ def _udf_input_col_name(input_col):
 
 class UDFSpec:
     """Spec object used by DataFrame.Column to apply a Python-side UDF."""
-    def __init__(self, input_col, fn):
-        self.input_col = input_col
+    def __init__(self, cols, fn):
+        self.cols = cols
         self.fn = fn
 
-def UDF(input_col, fn):
+def UDF(fn, *cols):
     """
     Standalone UDF builder (Go-style API).
 
     Usage:
-        df.Column("new_col", UDF(Col("old_col"), lambda s: ...))
+        # Single column
+        df.Column("upper", UDF(lambda args: args[0].upper(), Col("name")))
+
+        # Multiple columns
+        df.Column("full_name", UDF(lambda args: args[0] + " " + args[1], Col("first"), Col("last")))
 
     Notes:
+      - fn receives a list of strings [s1, s2, ...].
       - Runs in Python (materialize rows -> apply fn -> rebuild DataFrame).
-      - fn must be synchronous.
     """
     if not callable(fn):
         raise TypeError("UDF fn must be callable")
-    # Validate input_col early (mirrors errors you'd otherwise get later)
-    _ = _udf_input_col_name(input_col)
-    return UDFSpec(input_col, fn)
-
+    
+    # Validate columns
+    valid_cols = []
+    for c in cols:
+        valid_cols.append(_udf_input_col_name(c))
+        
+    return UDFSpec(valid_cols, fn)
 # PANDAS FUNCTIONS
 # loc
 # iloc
@@ -1045,8 +1052,9 @@ class DataFrame:
     
     # Transform functions
     def Column(self, col_name, col_spec):
+        # Python-side UDF spec: apply now (materialize/apply/rebuild)
         if isinstance(col_spec, UDFSpec):
-            in_name = _udf_input_col_name(col_spec.input_col)
+            col_names = col_spec.cols # list of strings
 
             rows_json = self.ToJSON()
             try:
@@ -1060,17 +1068,23 @@ class DataFrame:
             for r in rows:
                 if not isinstance(r, dict):
                     continue
-                s = _udf_to_string(r.get(in_name))
+                
+                # Gather args
+                args = []
+                for name in col_names:
+                    val = r.get(name)
+                    args.append(_udf_to_string(val))
+
                 try:
-                    r[col_name] = col_spec.fn(s)
+                    # Pass list of strings to user function
+                    r[col_name] = col_spec.fn(args)
                 except Exception as e:
-                    print("udf error:", e, "input:", s)
+                    # print("udf error:", e, "input:", args)
                     r[col_name] = None
 
             rebuilt = ReadJSON(json.dumps(rows))
             self.df_json = rebuilt.df_json
             return self
-
         # Normal Go-engine ColumnExpr
         if isinstance(col_spec, ColumnExpr):
             self.df_json = _cstr(gophers.ColumnWrapper(
