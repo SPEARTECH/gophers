@@ -87,16 +87,7 @@ extern __declspec(dllexport) char* ReadNDJSON(char* ndjson);
 // ReadYAML reads a YAML string or file and converts it to a DataFrame.
 //
 extern __declspec(dllexport) char* ReadYAML(char* yamlStr);
-
-/* Return type for ReadSqlite */
-struct ReadSqlite_return {
-	GoString r0;
-	GoInterface r1;
-};
-
-// ReadSqlite is a helper that returns the DataFrame JSON string.
-//
-extern __declspec(dllexport) struct ReadSqlite_return ReadSqlite(GoString path, GoString table, GoString query);
+extern __declspec(dllexport) char* ReadSqlite(char* dbPath, char* table, char* query);
 extern __declspec(dllexport) char* GetSqliteTables(char* dbPath);
 extern __declspec(dllexport) char* GetSqliteSchema(char* dbPath, char* table);
 extern __declspec(dllexport) char* SqliteSQLWrapper(char* path, char* sql);

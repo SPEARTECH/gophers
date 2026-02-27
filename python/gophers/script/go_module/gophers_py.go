@@ -17,8 +17,8 @@ import (
 	"strings"
 	"unsafe"
 
-	g "github.com/speartech/gophers"
 	_ "github.com/mattn/go-sqlite3"
+	g "github.com/speartech/gophers"
 )
 
 // Type aliases to use core types without rewriting code
@@ -136,8 +136,8 @@ func ReadYAML(yamlStr *C.char) *C.char {
 
 // ReadSqlite is a helper that returns the DataFrame JSON string.
 //
-//export ReadSqlite
-func ReadSqlite(path, table, query string) (string, error) {
+// (Replaced non-export helper with an exported C wrapper that returns *C.char)
+func readSqliteGo(path, table, query string) (string, error) {
 	df, err := g.ReadSqlite(path, table, query)
 	if err != nil {
 		return "", err
@@ -147,6 +147,15 @@ func ReadSqlite(path, table, query string) (string, error) {
 		return "", fmt.Errorf("ReadSqliteJSON: marshal error: %w", err)
 	}
 	return string(jsonBytes), nil
+}
+
+//export ReadSqlite
+func ReadSqlite(dbPath *C.char, table *C.char, query *C.char) *C.char {
+	js, err := readSqliteGo(C.GoString(dbPath), C.GoString(table), C.GoString(query))
+	if err != nil {
+		return C.CString(fmt.Sprintf(`{"error":%q}`, err.Error()))
+	}
+	return C.CString(js)
 }
 
 //export GetSqliteTables
@@ -189,15 +198,15 @@ func GetSqliteSchema(dbPath *C.char, table *C.char) *C.char {
 
 //export SqliteSQLWrapper
 func SqliteSQLWrapper(path *C.char, sql *C.char) *C.char {
-    df, err := g.SqliteSQL(C.GoString(path), C.GoString(sql))
-    if err != nil {
-        // Return a one-row DF with error for consistency
-        rows := []map[string]interface{}{{"error": err.Error()}}
-        b, _ := json.Marshal(g.Dataframe(rows))
-        return C.CString(string(b))
-    }
-    b, _ := json.Marshal(df)
-    return C.CString(string(b))
+	df, err := g.SqliteSQL(C.GoString(path), C.GoString(sql))
+	if err != nil {
+		// Return a one-row DF with error for consistency
+		rows := []map[string]interface{}{{"error": err.Error()}}
+		b, _ := json.Marshal(g.Dataframe(rows))
+		return C.CString(string(b))
+	}
+	b, _ := json.Marshal(df)
+	return C.CString(string(b))
 }
 
 //export ReadHTML
@@ -214,14 +223,14 @@ func ReadHTML(htmlInput *C.char) *C.char {
 
 //export ReadHTMLTop
 func ReadHTMLTop(htmlInput *C.char) *C.char {
-    df := g.ReadHTMLTop(C.GoString(htmlInput))
-    js, err := json.Marshal(df)
-    if err != nil {
-        errStr := fmt.Sprintf("ReadHTMLTop: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
-    return C.CString(string(js))
+	df := g.ReadHTMLTop(C.GoString(htmlInput))
+	js, err := json.Marshal(df)
+	if err != nil {
+		errStr := fmt.Sprintf("ReadHTMLTop: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
+	return C.CString(string(js))
 }
 
 //export Clone
@@ -1110,36 +1119,37 @@ func SumWrapper(name *C.char) *C.char {
 //
 //export AggWrapper
 func AggWrapper(colsJson *C.char) *C.char {
-    var cols []Column
-    if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
-        errStr := fmt.Sprintf("AggWrapper: unmarshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	var cols []Column
+	if err := json.Unmarshal([]byte(C.GoString(colsJson)), &cols); err != nil {
+		errStr := fmt.Sprintf("AggWrapper: unmarshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    // Convert []Column -> []interface{} for g.Agg(...interface{})
-    items := make([]interface{}, len(cols))
-    for i, c := range cols {
-        items[i] = c
-    }
-    aggs := g.Agg(items...)
+	// Convert []Column -> []interface{} for g.Agg(...interface{})
+	items := make([]interface{}, len(cols))
+	for i, c := range cols {
+		items[i] = c
+	}
+	aggs := g.Agg(items...)
 
-    simpleAggs := make([]SimpleAggregation, len(aggs))
-    for i, agg := range aggs {
-        simpleAggs[i] = SimpleAggregation{
-            ColumnName: agg.ColumnName,
-        }
-    }
+	simpleAggs := make([]SimpleAggregation, len(aggs))
+	for i, agg := range aggs {
+		simpleAggs[i] = SimpleAggregation{
+			ColumnName: agg.ColumnName,
+		}
+	}
 
-    aggsJson, err := json.Marshal(simpleAggs)
-    if err != nil {
-        errStr := fmt.Sprintf("AggWrapper: marshal error: %v", err)
-        log.Fatal(errStr)
-        return C.CString(errStr)
-    }
+	aggsJson, err := json.Marshal(simpleAggs)
+	if err != nil {
+		errStr := fmt.Sprintf("AggWrapper: marshal error: %v", err)
+		log.Fatal(errStr)
+		return C.CString(errStr)
+	}
 
-    return C.CString(string(aggsJson))
+	return C.CString(string(aggsJson))
 }
+
 // MaxWrapper is an exported function that wraps the Max function.
 //
 //export MaxWrapper
@@ -1240,16 +1250,16 @@ func FirstWrapper(name *C.char) *C.char {
 
 //export CollectListWrapper
 func CollectListWrapper(name *C.char) *C.char {
-    colName := C.GoString(name)
-    aggJson, _ := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "CollectList"})
-    return C.CString(string(aggJson))
+	colName := C.GoString(name)
+	aggJson, _ := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "CollectList"})
+	return C.CString(string(aggJson))
 }
 
 //export CollectSetWrapper
 func CollectSetWrapper(name *C.char) *C.char {
-    colName := C.GoString(name)
-    aggJson, _ := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "CollectSet"})
-    return C.CString(string(aggJson))
+	colName := C.GoString(name)
+	aggJson, _ := json.Marshal(map[string]string{"ColumnName": colName, "Fn": "CollectSet"})
+	return C.CString(string(aggJson))
 }
 
 // LOGIC --------------------------------------------------
@@ -1535,10 +1545,10 @@ func GroupByWrapper(dfJson *C.char, groupCol *C.char, aggsJson *C.char) *C.char 
 			aggregations = append(aggregations, g.Unique(colName))
 		case "First":
 			aggregations = append(aggregations, g.First(colName))
-        case "CollectList":
-            aggregations = append(aggregations, g.CollectList(colName))
-        case "CollectSet":
-            aggregations = append(aggregations, g.CollectSet(colName))
+		case "CollectList":
+			aggregations = append(aggregations, g.CollectList(colName))
+		case "CollectSet":
+			aggregations = append(aggregations, g.CollectSet(colName))
 		}
 	}
 

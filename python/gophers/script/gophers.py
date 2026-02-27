@@ -516,7 +516,9 @@ def Help():
     SHA256(*cols)
     SHA512(*cols)
     Split(col_name, delimiter)
-    Sum(column_name)""")
+    Sum(column_name)
+    UDF(new_col, input_col, fn)
+""")
 
     
 # Aggregate functions
@@ -815,6 +817,57 @@ def CreateReport(title):
     # print("CreateReport: Created report JSON:", report_json)
     return Report(report_json)
 
+def _udf_to_string(v):
+    """Best-effort conversion to string (mirrors the Go UDF behavior)."""
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        try:
+            return bytes(v).decode("utf-8", "replace")
+        except Exception:
+            return str(v)
+    return str(v)
+
+def _udf_input_col_name(input_col):
+    """
+    Accepts either:
+      - a string column name, or
+      - a ColumnExpr of type {"type":"col","name":...}
+    Returns the column name string.
+    """
+    if isinstance(input_col, str):
+        return input_col
+    if isinstance(input_col, ColumnExpr):
+        t = (input_col.expr or {}).get("type")
+        if t == "col":
+            return (input_col.expr or {}).get("name", "")
+    raise TypeError("UDF input_col must be a column name (str) or Col('name') ColumnExpr")
+
+class UDFSpec:
+    """Spec object used by DataFrame.Column to apply a Python-side UDF."""
+    def __init__(self, input_col, fn):
+        self.input_col = input_col
+        self.fn = fn
+
+def UDF(input_col, fn):
+    """
+    Standalone UDF builder (Go-style API).
+
+    Usage:
+        df.Column("new_col", UDF(Col("old_col"), lambda s: ...))
+
+    Notes:
+      - Runs in Python (materialize rows -> apply fn -> rebuild DataFrame).
+      - fn must be synchronous.
+    """
+    if not callable(fn):
+        raise TypeError("UDF fn must be callable")
+    # Validate input_col early (mirrors errors you'd otherwise get later)
+    _ = _udf_input_col_name(input_col)
+    return UDFSpec(input_col, fn)
+
 # PANDAS FUNCTIONS
 # loc
 # iloc
@@ -858,6 +911,7 @@ class DataFrame:
     StringArrayConvert(col_name)
     Tail(chars)
     ToCSVFile(filename)
+    ToJSON()
     Union(df2)
     Vertical(chars, record_count)
     WriteSqlite(db_path, table_name, mode, key_cols)""")
@@ -991,16 +1045,44 @@ class DataFrame:
     
     # Transform functions
     def Column(self, col_name, col_spec):
+        if isinstance(col_spec, UDFSpec):
+            in_name = _udf_input_col_name(col_spec.input_col)
+
+            rows_json = self.ToJSON()
+            try:
+                rows = json.loads(rows_json) if rows_json else []
+            except Exception as e:
+                raise RuntimeError(f"UDF: failed to parse ToJSON() output: {e}")
+
+            if not isinstance(rows, list):
+                raise RuntimeError("UDF: ToJSON() did not return a JSON array of rows")
+
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                s = _udf_to_string(r.get(in_name))
+                try:
+                    r[col_name] = col_spec.fn(s)
+                except Exception as e:
+                    print("udf error:", e, "input:", s)
+                    r[col_name] = None
+
+            rebuilt = ReadJSON(json.dumps(rows))
+            self.df_json = rebuilt.df_json
+            return self
+
+        # Normal Go-engine ColumnExpr
         if isinstance(col_spec, ColumnExpr):
             self.df_json = _cstr(gophers.ColumnWrapper(
                 self.df_json.encode('utf-8'),
                 col_name.encode('utf-8'),
                 col_spec.to_json().encode('utf-8')
             ))
-        # Otherwise, treat col_spec as a literal.        
-        else:
-            print(f"Error running code, cannot run {col_name} within Column function.")
-        return self 
+            return self
+
+        # Otherwise, treat as unsupported
+        print(f"Error running code, cannot run {col_name} within Column function.")
+        return self
     def GroupBy(self, groupCol, aggs=None):
         # Optional aggs: if None, Go will add CollectList for remaining columns
         if aggs is None:
@@ -1172,14 +1254,15 @@ class DataFrame:
         - create_index: create UNIQUE index on key_cols for upsert
         """
         keys_json = json.dumps(list(key_cols or []))
-        res = gophers.WriteSqlite(
+        res = _cstr(
+            gophers.WriteSqlite,
             db_path.encode("utf-8"),
             table.encode("utf-8"),
             self.df_json.encode("utf-8"),
             mode.encode("utf-8"),
             keys_json.encode("utf-8"),
             c_int(1 if create_index else 0),
-        ).decode("utf-8")
+        )
         if res != "success":
             raise RuntimeError(res)
         return self    
@@ -1201,6 +1284,7 @@ class DataFrame:
         )
         return resp
     
+
 # Example usage:
 def main():
     pass
