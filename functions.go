@@ -5,9 +5,9 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
-	"strings"
-	"strconv"
 	"regexp"
+	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -377,7 +377,7 @@ func SHA256(cols ...Column) Column {
 			for _, col := range cols {
 				b.WriteString(fastToString(col.Fn(row)))
 			}
-			hash := sha256.Sum256([]byte(b.String()))			
+			hash := sha256.Sum256([]byte(b.String()))
 			return hex.EncodeToString(hash[:])
 		},
 	}
@@ -425,19 +425,22 @@ func SHA512(cols ...Column) Column {
 // Accepts either a column name (string) or a Column expression.
 // Column method for chaining: Col("x").Split(delim)
 func (c Column) Split(delimiter string) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.Split(%q)", c.Name, delimiter),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil { s = fastToString(val) }
-            if strings.TrimSpace(s) == "" {
-                return []string{}
-            }
-            return strings.Split(s, delimiter)
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.Split(%q)", c.Name, delimiter),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			if strings.TrimSpace(s) == "" {
+				return []string{}
+			}
+			return strings.Split(s, delimiter)
+		},
+	}
 }
+
 // func Split(col interface{}, delimiter string) Column {
 //     var eval func(row map[string]interface{}) interface{}
 //     var label string
@@ -467,60 +470,67 @@ func (c Column) Split(delimiter string) Column {
 //     }
 // }
 
-
-
 // Index picks the i-th element from an array column expression.
 // Returns "" if out of range or not an array.
 func (c Column) Index(i int) Column {
-    return Column{
-        Name: fmt.Sprintf("%s[%d]", c.Name, i),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            switch v := val.(type) {
-            case []string:
-                if i >= 0 && i < len(v) { return v[i] }
-                return ""
-            case []interface{}:
-                if i >= 0 && i < len(v) {
-                    s, err := toString(v[i])
-                    if err != nil { return fastToString(v[i]) }
-                    return s
-                }
-                return ""
-            default:
-                return ""
-            }
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s[%d]", c.Name, i),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			switch v := val.(type) {
+			case []string:
+				if i >= 0 && i < len(v) {
+					return v[i]
+				}
+				return ""
+			case []interface{}:
+				if i >= 0 && i < len(v) {
+					s, err := toString(v[i])
+					if err != nil {
+						return fastToString(v[i])
+					}
+					return s
+				}
+				return ""
+			default:
+				return ""
+			}
+		},
+	}
 }
 
 // Keys returns a Column that extracts the keys from the nested map (top level only)
 // found in the specified column.
 // Column method: Col("x").Keys()
 func (c Column) Keys() Column {
-    return Column{
-        Name: fmt.Sprintf("%s.Keys()", c.Name),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            if val == nil {
-                return []string{}
-            }
-            switch t := val.(type) {
-            case map[string]interface{}:
-                keys := make([]string, 0, len(t))
-                for k := range t { keys = append(keys, k) }
-                return keys
-            case map[interface{}]interface{}:
-                m := convertMapKeysToString(t)
-                keys := make([]string, 0, len(m))
-                for k := range m { keys = append(keys, k) }
-                return keys
-            default:
-                return []string{}
-            }
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.Keys()", c.Name),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			if val == nil {
+				return []string{}
+			}
+			switch t := val.(type) {
+			case map[string]interface{}:
+				keys := make([]string, 0, len(t))
+				for k := range t {
+					keys = append(keys, k)
+				}
+				return keys
+			case map[interface{}]interface{}:
+				m := convertMapKeysToString(t)
+				keys := make([]string, 0, len(m))
+				for k := range m {
+					keys = append(keys, k)
+				}
+				return keys
+			default:
+				return []string{}
+			}
+		},
+	}
 }
+
 // func Keys(name string) Column {
 // 	return Column{
 // 		Name: fmt.Sprintf("Keys(%s)", name),
@@ -551,26 +561,27 @@ func (c Column) Keys() Column {
 // using the string value produced by keyExpr (which can be either a column reference or a literal).
 // Column method: Col("nested").Lookup(Col("key"))
 func (c Column) Lookup(keyExpr Column) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.Lookup(%s)", c.Name, keyExpr.Name),
-        Fn: func(row map[string]interface{}) interface{} {
-            keyVal := fastToString(keyExpr.Fn(row))
-            nestedVal := c.Fn(row)
-            if nestedVal == nil {
-                return nil
-            }
-            switch n := nestedVal.(type) {
-            case map[string]interface{}:
-                return n[keyVal]
-            case map[interface{}]interface{}:
-                m := convertMapKeysToString(n)
-                return m[keyVal]
-            default:
-                return nil
-            }
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.Lookup(%s)", c.Name, keyExpr.Name),
+		Fn: func(row map[string]interface{}) interface{} {
+			keyVal := fastToString(keyExpr.Fn(row))
+			nestedVal := c.Fn(row)
+			if nestedVal == nil {
+				return nil
+			}
+			switch n := nestedVal.(type) {
+			case map[string]interface{}:
+				return n[keyVal]
+			case map[interface{}]interface{}:
+				m := convertMapKeysToString(n)
+				return m[keyVal]
+			default:
+				return nil
+			}
+		},
+	}
 }
+
 // func Lookup(keyExpr Column, nestCol string) Column {
 // 	return Column{
 // 		Name: fmt.Sprintf("Lookup(%s, %s)", nestCol, keyExpr.Name),
@@ -599,51 +610,52 @@ func (c Column) Lookup(keyExpr Column) Column {
 
 // Replace replaces up to n occurrences of old with new in the column's string value.
 func (c Column) Replace(old, new string, n int) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.Replace(%q,%q,%d)", c.Name, old, new, n),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil {
-                s = fastToString(val)
-            }
-            return strings.Replace(s, old, new, n)
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.Replace(%q,%q,%d)", c.Name, old, new, n),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return strings.Replace(s, old, new, n)
+		},
+	}
 }
 
 // ReplaceAll replaces all occurrences of old with new in the column's string value.
 func (c Column) ReplaceAll(old, new string) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.ReplaceAll(%q,%q)", c.Name, old, new),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil {
-                s = fastToString(val)
-            }
-            return strings.ReplaceAll(s, old, new)
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.ReplaceAll(%q,%q)", c.Name, old, new),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return strings.ReplaceAll(s, old, new)
+		},
+	}
 }
 
 // RegexpReplace replaces all matches of pattern with replacement.
 // Accepts either a column name (string) or a Column expression (use Lit(...) for literals).
 // Column method variant
 func (c Column) RegexpReplace(pattern, replacement string) Column {
-    re := regexp.MustCompile(pattern)
-    return Column{
-        Name: fmt.Sprintf("%s.regexp_replace(%q,%q)", c.Name, pattern, replacement),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil {
-                s = fastToString(val)
-            }
-            return re.ReplaceAllString(s, replacement)
-        },
-    }
+	re := regexp.MustCompile(pattern)
+	return Column{
+		Name: fmt.Sprintf("%s.regexp_replace(%q,%q)", c.Name, pattern, replacement),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return re.ReplaceAllString(s, replacement)
+		},
+	}
 }
+
 // func RegexpReplace(input interface{}, pattern, replacement string) Column {
 //     re := regexp.MustCompile(pattern)
 
@@ -690,153 +702,168 @@ func (c Column) RegexpReplace(pattern, replacement string) Column {
 //     }
 // }
 
-
 // Contains (case-sensitive) on Column
 func (c Column) Contains(substr string) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.Contains(%q)", c.Name, substr),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil {
-                s = fastToString(val)
-            }
-            return strings.Contains(s, substr)
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.Contains(%q)", c.Name, substr),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return strings.Contains(s, substr)
+		},
+	}
 }
 
 // Case-insensitive variant
 func (c Column) IContains(substr string) Column {
-    needle := strings.ToLower(substr)
-    return Column{
-        Name: fmt.Sprintf("%s.IContains(%q)", c.Name, substr),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil {
-                s = fastToString(val)
-            }
-            return strings.Contains(strings.ToLower(s), needle)
-        },
-    }
+	needle := strings.ToLower(substr)
+	return Column{
+		Name: fmt.Sprintf("%s.IContains(%q)", c.Name, substr),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return strings.Contains(strings.ToLower(s), needle)
+		},
+	}
 }
 
 func (c Column) NotContains(substr string) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.NotContains(%q)", c.Name, substr),
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row)); if err != nil { s = fastToString(c.Fn(row)) }
-            return !strings.Contains(s, substr)
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.NotContains(%q)", c.Name, substr),
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return !strings.Contains(s, substr)
+		},
+	}
 }
 func (c Column) INotContains(substr string) Column {
-    needle := strings.ToLower(substr)
-    return Column{
-        Name: fmt.Sprintf("%s.INotContains(%q)", c.Name, substr),
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row)); if err != nil { s = fastToString(c.Fn(row)) }
-            return !strings.Contains(strings.ToLower(s), needle)
-        },
-    }
+	needle := strings.ToLower(substr)
+	return Column{
+		Name: fmt.Sprintf("%s.INotContains(%q)", c.Name, substr),
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return !strings.Contains(strings.ToLower(s), needle)
+		},
+	}
 }
 
 // StartsWith returns a Column that checks if input starts with prefix.
 func (c Column) StartsWith(prefix string) Column {
-    return Column{
-        Name: c.Name + ".startswith",
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row))
-            if err != nil { s = fastToString(c.Fn(row)) }
-            return strings.HasPrefix(s, prefix)
-        },
-    }
+	return Column{
+		Name: c.Name + ".startswith",
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return strings.HasPrefix(s, prefix)
+		},
+	}
 }
 
 // EndsWith returns a Column that checks if input ends with suffix.
 func (c Column) EndsWith(suffix string) Column {
-    return Column{
-        Name: c.Name + ".endswith",
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row))
-            if err != nil { s = fastToString(c.Fn(row)) }
-            return strings.HasSuffix(s, suffix)
-        },
-    }
+	return Column{
+		Name: c.Name + ".endswith",
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return strings.HasSuffix(s, suffix)
+		},
+	}
 }
-
-
 
 // Like (SQL-style) with % (any) and _ (single) wildcards.
 func (c Column) Like(pattern string) Column {
-    re := regexp.MustCompile(sqlLikeToRegex(pattern))
-    return Column{
-        Name: fmt.Sprintf("%s.like", c.Name),
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row))
-            if err != nil { s = fastToString(c.Fn(row)) }
-            return re.MatchString(s)
-        },
-    }
+	re := regexp.MustCompile(sqlLikeToRegex(pattern))
+	return Column{
+		Name: fmt.Sprintf("%s.like", c.Name),
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return re.MatchString(s)
+		},
+	}
 }
 
 func (c Column) NotLike(pattern string) Column {
-    re := regexp.MustCompile(sqlLikeToRegex(pattern))
-    return Column{
-        Name: fmt.Sprintf("%s.notlike", c.Name),
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row))
-            if err != nil { s = fastToString(c.Fn(row)) }
-            return !re.MatchString(s)
-        },
-    }
+	re := regexp.MustCompile(sqlLikeToRegex(pattern))
+	return Column{
+		Name: fmt.Sprintf("%s.notlike", c.Name),
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return !re.MatchString(s)
+		},
+	}
 }
 
 // RLike (regex). Pass (?i) in pattern for case-insensitive.
 func (c Column) RLike(pattern string) Column {
-    re := regexp.MustCompile(pattern)
-    return Column{
-        Name: c.Name + ".rlike",
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row))
-            if err != nil { s = fastToString(c.Fn(row)) }
-            return re.MatchString(s)
-        },
-    }
+	re := regexp.MustCompile(pattern)
+	return Column{
+		Name: c.Name + ".rlike",
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return re.MatchString(s)
+		},
+	}
 }
 
 func (c Column) NotRLike(pattern string) Column {
-    re := regexp.MustCompile(pattern)
-    return Column{
-        Name: c.Name + ".notrlike",
-        Fn: func(row map[string]interface{}) interface{} {
-            s, err := toString(c.Fn(row))
-            if err != nil { s = fastToString(c.Fn(row)) }
-            return !re.MatchString(s)
-        },
-    }
+	re := regexp.MustCompile(pattern)
+	return Column{
+		Name: c.Name + ".notrlike",
+		Fn: func(row map[string]interface{}) interface{} {
+			s, err := toString(c.Fn(row))
+			if err != nil {
+				s = fastToString(c.Fn(row))
+			}
+			return !re.MatchString(s)
+		},
+	}
 }
 
 // helper: convert SQL LIKE to anchored regex
 func sqlLikeToRegex(pat string) string {
-    var b strings.Builder
-    b.WriteString("^")
-    for _, r := range pat {
-        switch r {
-        case '%':
-            b.WriteString(".*")
-        case '_':
-            b.WriteString(".")
-        case '.', '+', '*', '?', '^', '$', '(', ')', '[', ']', '{', '}', '|', '\\':
-            b.WriteByte('\\')
-            b.WriteRune(r)
-        default:
-            b.WriteRune(r)
-        }
-    }
-    b.WriteString("$")
-    return b.String()
+	var b strings.Builder
+	b.WriteString("^")
+	for _, r := range pat {
+		switch r {
+		case '%':
+			b.WriteString(".*")
+		case '_':
+			b.WriteString(".")
+		case '.', '+', '*', '?', '^', '$', '(', ')', '[', ']', '{', '}', '|', '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString("$")
+	return b.String()
 }
 
 // regexp
@@ -871,28 +898,32 @@ func sqlLikeToRegex(pat string) string {
 
 // Lower returns a Column that lowercases the input (column or expression).
 func (c Column) Lower() Column {
-    return Column{
-        Name: c.Name + ".lower",
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil { s = fastToString(val) }
-            return strings.ToLower(s)
-        },
-    }
+	return Column{
+		Name: c.Name + ".lower",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return strings.ToLower(s)
+		},
+	}
 }
 
 // Upper returns a Column that uppercases the input (column or expression).
 func (c Column) Upper() Column {
-    return Column{
-        Name: c.Name + ".upper",
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil { s = fastToString(val) }
-            return strings.ToUpper(s)
-        },
-    }
+	return Column{
+		Name: c.Name + ".upper",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return strings.ToUpper(s)
+		},
+	}
 }
 
 // Concat returns a Column that, when applied to a row,
@@ -919,41 +950,47 @@ func Concat(delim string, cols ...Column) Column {
 // Cast takes in an existing Column and a desired datatype ("int", "float", "string"),
 // and returns a new Column that casts the value returned by the original Column to that datatype.
 func (c Column) Cast(datatype string) Column {
-    return Column{
-        Name: c.Name + "_cast",
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            switch datatype {
-            case "int":
-                if val == nil { return 0 }
-                casted, err := toInt(val)
-                if err != nil {
-                    fmt.Printf("cast to int error: %v\n", err)
-                    return nil
-                }
-                return casted
-            case "float":
-                if val == nil { return 0.0 }
-                casted, err := toFloat64(val)
-                if err != nil {
-                    fmt.Printf("cast to float error: %v\n", err)
-                    return nil
-                }
-                return casted
-            case "string":
-                if val == nil { return "" }
-                casted, err := toString(val)
-                if err != nil {
-                    fmt.Printf("cast to string error: %v\n", err)
-                    return nil
-                }
-                return casted
-            default:
-                fmt.Printf("unsupported cast type: %s\n", datatype)
-                return nil
-            }
-        },
-    }
+	return Column{
+		Name: c.Name + "_cast",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			switch datatype {
+			case "int":
+				if val == nil {
+					return 0
+				}
+				casted, err := toInt(val)
+				if err != nil {
+					fmt.Printf("cast to int error: %v\n", err)
+					return nil
+				}
+				return casted
+			case "float":
+				if val == nil {
+					return 0.0
+				}
+				casted, err := toFloat64(val)
+				if err != nil {
+					fmt.Printf("cast to float error: %v\n", err)
+					return nil
+				}
+				return casted
+			case "string":
+				if val == nil {
+					return ""
+				}
+				casted, err := toString(val)
+				if err != nil {
+					fmt.Printf("cast to string error: %v\n", err)
+					return nil
+				}
+				return casted
+			default:
+				fmt.Printf("unsupported cast type: %s\n", datatype)
+				return nil
+			}
+		},
+	}
 }
 
 // toFloat64 attempts to convert an interface{} to a float64.
@@ -999,7 +1036,6 @@ func toInt(val interface{}) (int, error) {
 	}
 }
 
-
 // toString attempts to convert an interface{} to a string.
 // It supports string, int, int32, int64, float32, and float64.
 func toString(val interface{}) (string, error) {
@@ -1023,49 +1059,55 @@ func toString(val interface{}) (string, error) {
 
 // Length returns the character count of a column/expression (Unicode-aware).
 func (c Column) Length() Column {
-    return Column{
-        Name: c.Name + ".length",
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil { s = fastToString(val) }
-            return utf8.RuneCountInString(s)
-        },
-    }
+	return Column{
+		Name: c.Name + ".length",
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			return utf8.RuneCountInString(s)
+		},
+	}
 }
 
 // ArrayJoin joins elements of an array column with a delimiter.
 // If nullReplacement is provided, nulls are replaced with it; otherwise nulls are skipped.
 func (c Column) ArrayJoin(delim string, nullReplacement ...string) Column {
-    return Column{
-        Name: fmt.Sprintf("%s.array_join(%q)", c.Name, delim),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            switch arr := val.(type) {
-            case []string:
-                return strings.Join(arr, delim)
-            case []interface{}:
-                parts := make([]string, 0, len(arr))
-                for _, x := range arr {
-                    if x == nil {
-                        if len(nullReplacement) > 0 {
-                            parts = append(parts, nullReplacement[0])
-                        }
-                        // skip nil if no replacement
-                        continue
-                    }
-                    s, err := toString(x)
-                    if err != nil { s = fastToString(x) }
-                    parts = append(parts, s)
-                }
-                return strings.Join(parts, delim)
-            default:
-                s, err := toString(val)
-                if err != nil { s = fastToString(val) }
-                return s
-            }
-        },
-    }
+	return Column{
+		Name: fmt.Sprintf("%s.array_join(%q)", c.Name, delim),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			switch arr := val.(type) {
+			case []string:
+				return strings.Join(arr, delim)
+			case []interface{}:
+				parts := make([]string, 0, len(arr))
+				for _, x := range arr {
+					if x == nil {
+						if len(nullReplacement) > 0 {
+							parts = append(parts, nullReplacement[0])
+						}
+						// skip nil if no replacement
+						continue
+					}
+					s, err := toString(x)
+					if err != nil {
+						s = fastToString(x)
+					}
+					parts = append(parts, s)
+				}
+				return strings.Join(parts, delim)
+			default:
+				s, err := toString(val)
+				if err != nil {
+					s = fastToString(val)
+				}
+				return s
+			}
+		},
+	}
 }
 
 // ExtractHTML parses the HTML in a column/expression and returns []string:
@@ -1073,57 +1115,59 @@ func (c Column) ArrayJoin(delim string, nullReplacement ...string) Column {
 // - Otherwise, treats field as a tag name and returns inner_html_str for matching elements.
 // Column method: parse HTML and extract values
 func (c Column) ExtractHTML(field string) Column {
-    known := map[string]struct{}{
-        "outer_html_str": {}, "inner_html_str": {}, "text": {}, "tag": {},
-        "href": {}, "src": {}, "href_abs": {}, "src_abs": {},
-    }
-    if field == "" {
-        field = "inner_html_str"
-    }
+	known := map[string]struct{}{
+		"outer_html_str": {}, "inner_html_str": {}, "text": {}, "tag": {},
+		"href": {}, "src": {}, "href_abs": {}, "src_abs": {},
+	}
+	if field == "" {
+		field = "inner_html_str"
+	}
 
-    return Column{
-        Name: fmt.Sprintf("%s.ExtractHTML(%s)", c.Name, field),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            htmlStr, err := toString(val)
-            if err != nil || strings.TrimSpace(htmlStr) == "" {
-                return []string{}
-            }
+	return Column{
+		Name: fmt.Sprintf("%s.ExtractHTML(%s)", c.Name, field),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			htmlStr, err := toString(val)
+			if err != nil || strings.TrimSpace(htmlStr) == "" {
+				return []string{}
+			}
 
-            df := ReadHTML(htmlStr)
+			df := ReadHTML(htmlStr)
 
-            // Direct column return if field is known
-            if _, ok := known[field]; ok {
-                col := df.Data[field]
-                if col == nil {
-                    return []string{}
-                }
-                out := make([]string, len(col))
-                for i := range col {
-                    s, err := toString(col[i])
-                    if err != nil { s = fastToString(col[i]) }
-                    out[i] = s
-                }
-                return out
-            }
+			// Direct column return if field is known
+			if _, ok := known[field]; ok {
+				col := df.Data[field]
+				if col == nil {
+					return []string{}
+				}
+				out := make([]string, len(col))
+				for i := range col {
+					s, err := toString(col[i])
+					if err != nil {
+						s = fastToString(col[i])
+					}
+					out[i] = s
+				}
+				return out
+			}
 
-            // Otherwise, field is a tag filter; return inner_html_str of matching tag
-            tags := df.Data["tag"]
-            inn := df.Data["inner_html_str"]
-            if tags == nil || inn == nil {
-                return []string{}
-            }
-            out := make([]string, 0, df.Rows)
-            for i := 0; i < df.Rows; i++ {
-                ts, _ := toString(tags[i])
-                if ts == field {
-                    s, _ := toString(inn[i])
-                    out = append(out, s)
-                }
-            }
-            return out
-        },
-    }
+			// Otherwise, field is a tag filter; return inner_html_str of matching tag
+			tags := df.Data["tag"]
+			inn := df.Data["inner_html_str"]
+			if tags == nil || inn == nil {
+				return []string{}
+			}
+			out := make([]string, 0, df.Rows)
+			for i := 0; i < df.Rows; i++ {
+				ts, _ := toString(tags[i])
+				if ts == field {
+					s, _ := toString(inn[i])
+					out = append(out, s)
+				}
+			}
+			return out
+		},
+	}
 }
 
 // ExtractHTMLTop parses only top-level elements and returns []string:
@@ -1131,71 +1175,115 @@ func (c Column) ExtractHTML(field string) Column {
 // - Otherwise, treats field as a tag name and returns inner_html_str for matching top-level tag.
 // Column method: top-level elements only
 func (c Column) ExtractHTMLTop(field string) Column {
-    known := map[string]struct{}{
-        "outer_html_str": {}, "inner_html_str": {}, "text": {}, "tag": {},
-        "href": {}, "src": {}, "href_abs": {}, "src_abs": {},
-    }
-    if field == "" {
-        field = "inner_html_str"
-    }
+	known := map[string]struct{}{
+		"outer_html_str": {}, "inner_html_str": {}, "text": {}, "tag": {},
+		"href": {}, "src": {}, "href_abs": {}, "src_abs": {},
+	}
+	if field == "" {
+		field = "inner_html_str"
+	}
 
-    return Column{
-        Name: fmt.Sprintf("%s.ExtractHTMLTop(%s)", c.Name, field),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            htmlStr, err := toString(val)
-            if err != nil || strings.TrimSpace(htmlStr) == "" {
-                return []string{}
-            }
+	return Column{
+		Name: fmt.Sprintf("%s.ExtractHTMLTop(%s)", c.Name, field),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			htmlStr, err := toString(val)
+			if err != nil || strings.TrimSpace(htmlStr) == "" {
+				return []string{}
+			}
 
-            df := ReadHTMLTop(htmlStr)
+			df := ReadHTMLTop(htmlStr)
 
-            if _, ok := known[field]; ok {
-                col := df.Data[field]
-                if col == nil {
-                    return []string{}
-                }
-                out := make([]string, len(col))
-                for i := range col {
-                    s, err := toString(col[i])
-                    if err != nil { s = fastToString(col[i]) }
-                    out[i] = s
-                }
-                return out
-            }
+			if _, ok := known[field]; ok {
+				col := df.Data[field]
+				if col == nil {
+					return []string{}
+				}
+				out := make([]string, len(col))
+				for i := range col {
+					s, err := toString(col[i])
+					if err != nil {
+						s = fastToString(col[i])
+					}
+					out[i] = s
+				}
+				return out
+			}
 
-            tags := df.Data["tag"]
-            inn := df.Data["inner_html_str"]
-            if tags == nil || inn == nil {
-                return []string{}
-            }
-            out := make([]string, 0, df.Rows)
-            for i := 0; i < df.Rows; i++ {
-                ts, _ := toString(tags[i])
-                if ts == field {
-                    s, _ := toString(inn[i])
-                    out = append(out, s)
-                }
-            }
-            return out
-        },
-    }
+			tags := df.Data["tag"]
+			inn := df.Data["inner_html_str"]
+			if tags == nil || inn == nil {
+				return []string{}
+			}
+			out := make([]string, 0, df.Rows)
+			for i := 0; i < df.Rows; i++ {
+				ts, _ := toString(tags[i])
+				if ts == field {
+					s, _ := toString(inn[i])
+					out = append(out, s)
+				}
+			}
+			return out
+		},
+	}
 }
+
 // RegexpExtract extracts the specified capture group from the first regex match.
 // group = 0 returns the entire match; >0 returns that capture group.
 // If no match or group out of range, returns "".
 func (c Column) RegexpExtract(pattern string, group int) Column {
-    re := regexp.MustCompile(pattern)
-    return Column{
-        Name: fmt.Sprintf("%s.regexp_extract(%q,%d)", c.Name, pattern, group),
-        Fn: func(row map[string]interface{}) interface{} {
-            val := c.Fn(row)
-            s, err := toString(val)
-            if err != nil { s = fastToString(val) }
-            m := re.FindStringSubmatch(s)
-            if len(m) == 0 { return "" }
-            if group < 0 || group >= len(m) { return "" }
-            return m[group]
-        },
-    }
+	re := regexp.MustCompile(pattern)
+	return Column{
+		Name: fmt.Sprintf("%s.regexp_extract(%q,%d)", c.Name, pattern, group),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				s = fastToString(val)
+			}
+			m := re.FindStringSubmatch(s)
+			if len(m) == 0 {
+				return ""
+			}
+			if group < 0 || group >= len(m) {
+				return ""
+			}
+			return m[group]
+		},
+	}
+}
+
+// UDF applies fn to the string value produced by `input` Column for each row.
+// If fn returns an error, UDF prints the error and returns nil for that row.
+func UDF(input Column, fn func(string) (interface{}, error)) Column {
+	return Column{
+		Name: "udf_" + input.Name,
+		Fn: func(row map[string]interface{}) interface{} {
+			v := input.Fn(row)
+
+			var s string
+			switch t := v.(type) {
+			case nil:
+				s = ""
+			case string:
+				s = t
+			case []byte:
+				s = string(t)
+			default:
+				// Prefer the library's converters; fall back to fmt.Sprint.
+				if ss, err := toString(t); err == nil {
+					s = ss
+				} else {
+					s = fmt.Sprint(v)
+				}
+			}
+
+			out, err := fn(s)
+			if err != nil {
+				fmt.Println("udf error:", err, "input:", s)
+				return nil
+			}
+			return out
+		},
+	}
 }
