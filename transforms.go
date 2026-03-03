@@ -1774,3 +1774,42 @@ func (df *DataFrame) ExceptAll(other *DataFrame, columns ...string) *DataFrame {
 	}
 	return &DataFrame{Cols: append([]string(nil), df.Cols...), Data: newData, Rows: kept}
 }
+
+// ConnectLLM creates a configuration object for LLM calls.
+func ConnectLLM(provider, model, apiKey string, endpoint ...string) LLM {
+	ep := ""
+	if len(endpoint) > 0 {
+		ep = endpoint[0]
+	}
+	return LLM{
+		Provider: provider,
+		Model:    model,
+		APIKey:   apiKey,
+		Endpoint: ep,
+	}
+}
+
+// CustomLLM creates an LLM connection for any arbitrary API endpoint.
+//
+// endpoint: URL of your API.
+// headers: Extra HTTP headers (e.g. {"Authorization": "Bearer..."}).
+// inputMap: Maps your API's expected JSON keys to value placeholders.
+//
+//	Use "{{.Prompt}}" for the prompt text and "{{.Model}}" for the model name.
+//	Example: {"input_text": "{{.Prompt}}", "model_version": "{{.Model}}"}
+//
+// outputSelector: JSON path to the response string (e.g. "data.response" or "choices.0.text").
+func CustomLLM(endpoint string, model string, headers map[string]string, inputMap map[string]string, outputSelector string) LLM {
+	// Defalt input map if nil
+	if inputMap == nil {
+		inputMap = map[string]string{"prompt": "{{.Prompt}}", "model": "{{.Model}}"}
+	}
+	return LLM{
+		Provider:       "custom",
+		Model:          model,
+		Endpoint:       endpoint,
+		Headers:        headers,
+		InputMap:       inputMap,
+		OutputSelector: outputSelector,
+	}
+}

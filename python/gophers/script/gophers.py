@@ -89,6 +89,68 @@ gophers.SqliteSQLWrapper.restype = c_void_p
 gophers.Clone.restype = c_void_p
 gophers.Free.argtypes = [c_void_p]
 gophers.Free.restype = None
+gophers.LLMQueryWrapper.restype = c_void_p
+gophers.LLMQueryWrapper.argtypes = [c_void_p, c_void_p, c_void_p]
+
+class LLM:
+    def __init__(self, provider, model, api_key, endpoint="", headers=None, input_map=None, output_selector=""):
+        self.provider = provider
+        self.model = model
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.headers = headers or {}
+        self.input_map = input_map or {}
+        self.output_selector = output_selector
+
+    def Gen(self, prompt_template, *inputs):
+        """
+        Returns a ColumnExpr that sends a prompt to the LLM for every row.
+        - prompt_template: String with placeholders (e.g., "{{.}}" for single input).
+        - inputs: ColumnExpr instances (e.g., Col("text")).
+        Usage: df.Column("response", llm.Gen("Summarize: {{.}}", Col("review")))
+        """
+        if not inputs:
+            raise ValueError("At least one input column required")
+        return ColumnExpr({
+            "type": "gen",
+            "data": json.dumps({  # Use "data" for the payload (requires ColumnExpr.Data field)
+                "llm": self.__dict__,
+                "prompt_template": prompt_template,
+                "inputs": [col.expr for col in inputs]
+            })
+        })
+
+    def Query(self, df, question):
+        """
+        Sends the entire DataFrame as context to the LLM for a high-level question.
+        Returns the LLM's response string.
+        Warning: Large DataFrames consume many tokens.
+        """
+        llm_json = json.dumps(self.__dict__)
+        result = _cstr(gophers.LLMQueryWrapper, llm_json.encode('utf-8'), df.df_json.encode('utf-8'), question.encode('utf-8'))
+        return result
+
+def ConnectLLM(provider, model, api_key, endpoint=""):
+    """
+    Creates an LLM connection for standard providers (e.g., "openai", "gemini").
+    - provider: "openai", "gemini", etc.
+    - model: Model name (e.g., "gpt-4").
+    - api_key: Your API key.
+    - endpoint: Optional custom endpoint.
+    """
+    return LLM(provider, model, api_key, endpoint)
+
+def CustomLLM(endpoint, model, headers, input_map, output_selector):
+    """
+    Creates an LLM connection for custom APIs.
+    - endpoint: API URL.
+    - model: Model name.
+    - headers: Dict of HTTP headers (e.g., {"Authorization": "Bearer..."}).
+    - input_map: Dict mapping API keys to placeholders (e.g., {"input_text": "{{.Prompt}}"}).
+    - output_selector: JSON path for response (e.g., "data.response").
+    """
+    return LLM("custom", model, "", endpoint, headers, input_map, output_selector)
+
 
 def _cstr(ptr_or_func, *args):
     """Accepts either a ctypes function and its args, or a raw pointer.
@@ -111,8 +173,12 @@ class ColumnExpr:
     def Help(self):
         print("""Column Help:
     Contains(substr)
+    CurrentDate()
+    CurrentTimestamp()
+    DateDiff(endDate, startDate, format)
     EndsWith(suffix)
     Eq(other)
+    FromEpoch(format)
     Ge(other)
     Gt(other)
     HtmlUnescape()
@@ -131,6 +197,7 @@ class ColumnExpr:
     StartsWith(prefix)
     Substr(start, length)
     Title()
+    ToEpoch(format)
     Trim()
     Upper()
 """)
@@ -277,6 +344,59 @@ class ColumnExpr:
     
     def Ne(self, other):
         return ColumnExpr({ "type": "ne", "left": self.expr, "right": self._unwrap(other) })
+
+    # Date functions (added to ColumnExpr class)
+    def CurrentTimestamp(self):
+        """
+        Returns a ColumnExpr that generates the current local time in "yyyy-MM-dd hh:mm:ss" format for every row.
+        """
+        return ColumnExpr({"type": "current_timestamp"})
+
+    def CurrentDate(self):
+        """
+        Returns a ColumnExpr that generates the current local date in "yyyy-MM-dd" format for every row.
+        """
+        return ColumnExpr({"type": "current_date"})
+
+    def DateDiff(self, endDate, startDate, format=None):
+        """
+        Returns a ColumnExpr that computes the number of days between two date columns.
+        - endDate, startDate: ColumnExpr instances (e.g., Col("end_date")).
+        - format: Optional user-friendly format string (e.g., "yyyy-MM-dd"). Default: "yyyy-MM-dd hh:mm:ss.SSSS".
+        """
+        if not isinstance(endDate, ColumnExpr) or not isinstance(startDate, ColumnExpr):
+            raise TypeError("endDate and startDate must be ColumnExpr instances")
+        fmt = format if format else "yyyy-MM-dd hh:mm:ss.SSSS"
+        return ColumnExpr({
+            "type": "datediff",
+            "end": endDate.expr,
+            "start": startDate.expr,
+            "format": fmt
+        })
+
+    def ToEpoch(self, format=None):
+        """
+        Returns a ColumnExpr that converts a date string column to Unix timestamp (int64).
+        - format: Optional Go time layout (e.g., "2006-01-02 15:04:05.0000"). Default: "2006-01-02 15:04:05.0000".
+        """
+        fmt = format if format else "2006-01-02 15:04:05.0000"
+        return ColumnExpr({
+            "type": "to_epoch",
+            "expr": self.expr,
+            "format": fmt
+        })
+
+    def FromEpoch(self, format=None):
+        """
+        Returns a ColumnExpr that converts a Unix timestamp column to date string.
+        - format: Optional Go time layout (e.g., "2006-01-02 15:04:05.0000"). Default: "2006-01-02 15:04:05.0000".
+        """
+        fmt = format if format else "2006-01-02 15:04:05.0000"
+        return ColumnExpr({
+            "type": "from_epoch",
+            "expr": self.expr,
+            "format": fmt
+        })
 
 # class SplitColumn:
 #     """Helper for function-based column operations.

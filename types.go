@@ -56,7 +56,6 @@ func (df *DataFrame) Help() string {
 	return help
 }
 
-
 type ColumnExpr struct {
 	Type      string          `json:"type"`
 	Name      string          `json:"name,omitempty"`
@@ -78,7 +77,11 @@ type ColumnExpr struct {
 	Prefix  interface{} `json:"prefix,omitempty"`
 	Suffix  interface{} `json:"suffix,omitempty"`
 	Pattern interface{} `json:"pattern,omitempty"`
-	Index     int             `json:"index,omitempty"`
+	Index   int         `json:"index,omitempty"`
+	// Add these for date functions
+	End    json.RawMessage `json:"end,omitempty"`    // For DateDiff (end date expression)
+	Start  json.RawMessage `json:"start,omitempty"`  // For DateDiff (start date expression)
+	Format string          `json:"format,omitempty"` // For DateDiff, ToEpoch, FromEpoch (date format string)
 }
 
 func (ce *ColumnExpr) Help() string {
@@ -111,7 +114,6 @@ func (ce *ColumnExpr) Help() string {
 	fmt.Println(help)
 	return help
 }
-
 
 // add other methods that modify the chart (no menu icon, no horizontal lines, highcharts vs apexcharts, colors, etc)?
 type Chart struct {
@@ -183,8 +185,6 @@ func (report *Report) Help() string {
 	return help
 }
 
-
-
 // ColumnFunc is a function type that takes a row and returns a value.
 // type Column func(row map[string]interface{}) interface{}
 // Column represents a column in the DataFrame.
@@ -212,7 +212,20 @@ type rendered struct {
 }
 
 type ColumnSchema struct {
-    Name     string `json:"name"`
-    Type     string `json:"type"`
-    Nullable bool   `json:"nullable"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Nullable bool   `json:"nullable"`
+}
+
+// LLM represents a connection to a Large Language Model provider.
+type LLM struct {
+	Provider string
+	Model    string
+	APIKey   string
+	Endpoint string
+
+	// Custom configuration for CustomLLM
+	Headers        map[string]string // HTTP Headers
+	InputMap       map[string]string // specific JSON keys for the request
+	OutputSelector string            // dot-notation path to the response string
 }

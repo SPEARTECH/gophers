@@ -1,14 +1,25 @@
 package gophers
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/responses"
+
+	"time"
 )
 
 // fastToString avoids fmt.Sprint for common types.
@@ -361,9 +372,163 @@ func Lit(value interface{}) Column {
 //         },
 //     }
 // }
-// datetime
+// date functions
 
-// epoch
+// CurrentTimestamp returns a Column that generates the current local time
+// in "yyyy-MM-dd HH:mm:ss" format for every row.
+func CurrentTimestamp() Column {
+	return Column{
+		Name: "current_timestamp()",
+		Fn: func(row map[string]interface{}) interface{} {
+			return time.Now().Format("2006-01-02 15:04:05")
+		},
+	}
+}
+
+// CurrentDate returns a Column that generates the current local date
+// in "yyyy-MM-dd" format for every row (pyspark current_date()-style).
+func CurrentDate() Column {
+	return Column{
+		Name: "current_date()",
+		Fn: func(row map[string]interface{}) interface{} {
+			return time.Now().Format("2006-01-02")
+		},
+	}
+}
+
+// convertFormat converts user-friendly format strings (e.g., "yyyy-MM-dd hh:mm:ss.SSSS")
+// to Go's reference time layout (e.g., "2006-01-02 15:04:05.0000").
+func convertFormat(userFmt string) string {
+	replacements := map[string]string{
+		"yyyy": "2006",
+		"MM":   "01",
+		"dd":   "02",
+		"hh":   "15",
+		"mm":   "04",
+		"ss":   "05",
+		"SSSS": "0000",
+	}
+	result := userFmt
+	for k, v := range replacements {
+		result = strings.ReplaceAll(result, k, v)
+	}
+	return result
+}
+
+// DateDiff returns a Column that computes the number of days between two date columns.
+// Supports both date strings (parsed with the provided format) and Unix timestamps (int/int64/float64).
+// Default format: "yyyy-MM-dd hh:mm:ss.SSSS" (converted to Go layout).
+// Pass a custom format as the third argument (e.g., "yyyy-MM-dd").
+// Returns 0 if parsing fails or dates are invalid.
+// Usage: DateDiff(Col("end_date"), Col("start_date")) or DateDiff(Col("end_date"), Col("start_date"), "yyyy-MM-dd")
+func DateDiff(endDate, startDate Column, format ...string) Column {
+	fmtStr := "yyyy-MM-dd hh:mm:ss.SSSS" // Default user-friendly format
+	if len(format) > 0 {
+		fmtStr = format[0]
+	}
+	goFmt := convertFormat(fmtStr) // Convert to Go layout
+
+	return Column{
+		Name: fmt.Sprintf("datediff(%s, %s)", endDate.Name, startDate.Name),
+		Fn: func(row map[string]interface{}) interface{} {
+			endVal := endDate.Fn(row)
+			startVal := startDate.Fn(row)
+
+			var endTime, startTime time.Time
+			var err error
+
+			// Helper to parse value as date or epoch
+			parseTime := func(val interface{}) (time.Time, error) {
+				switch v := val.(type) {
+				case string:
+					// Use the converted Go format for strings
+					return time.Parse(goFmt, v)
+				case int:
+					return time.Unix(int64(v), 0), nil
+				case int64:
+					return time.Unix(v, 0), nil
+				case float64:
+					return time.Unix(int64(v), 0), nil
+				default:
+					return time.Time{}, fmt.Errorf("unsupported type %T", v)
+				}
+			}
+
+			endTime, err = parseTime(endVal)
+			if err != nil {
+				return 0
+			}
+			startTime, err = parseTime(startVal)
+			if err != nil {
+				return 0
+			}
+
+			duration := endTime.Sub(startTime)
+			days := int(duration.Hours() / 24)
+			return days
+		},
+	}
+}
+
+// ToEpoch converts a date string column to Unix timestamp (int64).
+// Default format: "2006-01-02 15:04:05.0000" (yyyy-MM-dd hh:mm:ss.SSSS).
+// Pass a custom format as the second argument if needed.
+func (c Column) ToEpoch(format ...string) Column {
+	fmtStr := "2006-01-02 15:04:05.0000"
+	if len(format) > 0 {
+		fmtStr = format[0]
+	}
+	return Column{
+		Name: fmt.Sprintf("%s.ToEpoch(%q)", c.Name, fmtStr),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			s, err := toString(val)
+			if err != nil {
+				return int64(0)
+			}
+			t, err := time.Parse(fmtStr, s)
+			if err != nil {
+				return int64(0)
+			}
+			return t.Unix()
+		},
+	}
+}
+
+// FromEpoch converts a Unix timestamp column to date string.
+// Default format: "2006-01-02 15:04:05.0000" (yyyy-MM-dd hh:mm:ss.SSSS).
+// Pass a custom format as the second argument if needed.
+func (c Column) FromEpoch(format ...string) Column {
+	fmtStr := "2006-01-02 15:04:05.0000"
+	if len(format) > 0 {
+		fmtStr = format[0]
+	}
+	return Column{
+		Name: fmt.Sprintf("%s.FromEpoch(%q)", c.Name, fmtStr),
+		Fn: func(row map[string]interface{}) interface{} {
+			val := c.Fn(row)
+			var ts int64
+			switch v := val.(type) {
+			case int:
+				ts = int64(v)
+			case int64:
+				ts = v
+			case float64:
+				ts = int64(v)
+			case string:
+				if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+					ts = parsed
+				} else {
+					return ""
+				}
+			default:
+				return ""
+			}
+			t := time.Unix(ts, 0)
+			return t.Format(fmtStr)
+		},
+	}
+}
 
 // SHA256 returns a Column that concatenates the values of the specified columns,
 // computes the SHA-256 checksum of the concatenated string, and returns it as a string.
@@ -882,13 +1047,7 @@ func sqlLikeToRegex(pat string) string {
 
 // astype()
 
-// ToDatetime() *
-
 // DateFormat() ? *
-
-// ToDate() *
-
-// DateDiff() *
 
 // ToEpoch() *
 
@@ -1296,4 +1455,193 @@ func UDF(fn func([]string) (interface{}, error), inputs ...Column) Column {
 			return out
 		},
 	}
+}
+
+// Gen creates a Column that sends a prompt to the LLM for every row.
+//
+// Template Syntax:
+// Uses Go's text/template syntax, but simplified:
+// - If you pass one column, {{.}} will be the value.
+// - If you pass multiple, access them by index: {{index . 0}}, {{index . 1}}
+//
+// Usage:
+//
+//	llm.Gen("Summarize: {{.}}", Col("review_body"))
+//	llm.Gen("Translate {{index . 0}} to {{index . 1}}", Col("text"), Col("target_lang"))
+func (l LLM) Gen(promptTemplate string, inputs ...Column) Column {
+	// Parse template once (fail early if invalid)
+	// simple implementation: we will do simple string injection for performance
+	// unless strictly required, but let's stick to the requested logic.
+
+	// Create a unique name
+	colNames := make([]string, len(inputs))
+	for i, c := range inputs {
+		colNames[i] = c.Name
+	}
+
+	return Column{
+		Name: fmt.Sprintf("Gen(%s)", strings.Join(colNames, ",")),
+		Fn: func(row map[string]interface{}) interface{} {
+			// 1. Gather input values
+			args := make([]string, len(inputs))
+			for i, col := range inputs {
+				v := col.Fn(row)
+				s, _ := toString(v) // helper from your functions.go
+				args[i] = s
+			}
+
+			// 2. Interpolate Prompt
+			// Simple approach: replace {{.}} with args[0] if single,
+			// or use simple text replacement for indexes.
+			finalPrompt := promptTemplate
+			if len(args) == 1 {
+				finalPrompt = strings.ReplaceAll(finalPrompt, "{{.}}", args[0])
+				// Also support {{.colName}} if implied? No, stick to explicit args.
+			}
+			for i, val := range args {
+				placeholder := fmt.Sprintf("{{index . %d}}", i)
+				finalPrompt = strings.ReplaceAll(finalPrompt, placeholder, val)
+			}
+
+			// 3. Call LLM (Pseudo-code placeholder - implementation depends on specific API)
+			response, err := l.callLLM(finalPrompt)
+			if err != nil {
+				fmt.Printf("LLM Error: %v\n", err)
+				return "" // or null
+			}
+			return response
+		},
+	}
+}
+
+// Internal helper to route to specific providers
+func (l LLM) callLLM(prompt string) (string, error) {
+	switch strings.ToLower(l.Provider) {
+	case "openai":
+		// Construct options
+		opts := []option.RequestOption{
+			option.WithAPIKey(l.APIKey),
+		}
+		if l.Endpoint != "" {
+			opts = append(opts, option.WithBaseURL(l.Endpoint))
+		}
+
+		client := openai.NewClient(opts...)
+
+		// Using defaults directly from user's snippet.
+		// Note: The 'responses' package handles the new high-level API for certain OAI models.
+		resp, err := client.Responses.New(context.Background(), responses.ResponseNewParams{
+			Model: l.Model,
+			Input: responses.ResponseNewParamsInputUnion{
+				OfString: openai.String(prompt),
+			},
+		})
+		if err != nil {
+			return "", err
+		}
+
+		// Helper to extract text from the opaque Response object
+		return resp.OutputText(), nil
+
+	case "custom":
+		// 1. Build Payload based on InputMap
+		payload := make(map[string]interface{})
+		for k, v := range l.InputMap {
+			// Simple template replacement
+			val := strings.ReplaceAll(v, "{{.Prompt}}", prompt)
+			val = strings.ReplaceAll(val, "{{.Model}}", l.Model)
+			payload[k] = val
+		}
+
+		jsonBytes, err := json.Marshal(payload)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal custom payload: %v", err)
+		}
+
+		// 2. Prepare Request
+		req, err := http.NewRequest("POST", l.Endpoint, bytes.NewBuffer(jsonBytes))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		// Add custom headers
+		for k, v := range l.Headers {
+			req.Header.Set(k, v)
+		}
+
+		// 3. Send
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			body, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		}
+
+		// 4. Decode and Select Output
+		var result interface{} // generic holder
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", err
+		}
+
+		// Traverse outputSelector (e.g. "metrics.0.score")
+		parts := strings.Split(l.OutputSelector, ".")
+		current := result
+
+		for _, part := range parts {
+			// Handle map
+			if m, ok := current.(map[string]interface{}); ok {
+				if val, exists := m[part]; exists {
+					current = val
+					continue
+				}
+			}
+			// Handle array index
+			if idx, err := strconv.Atoi(part); err == nil {
+				if arr, ok := current.([]interface{}); ok && idx >= 0 && idx < len(arr) {
+					current = arr[idx]
+					continue
+				}
+			}
+			return "", fmt.Errorf("could not find path element '%s' in response", part)
+		}
+
+		return fmt.Sprintf("%v", current), nil
+
+	case "gemini":
+		// TODO: Implement Google Generative AI client
+		// client, err := genai.NewClient(...)
+		return "Gemini placeholder response for: " + prompt, nil
+
+	case "grok":
+		// TODO: Implement xAI / Grok client
+		return "Grok placeholder response for: " + prompt, nil
+
+	case "claude":
+		// TODO: Implement Anthropic client
+		return "Claude placeholder response for: " + prompt, nil
+
+	default:
+		return "", fmt.Errorf("unsupported LLM provider: %s", l.Provider)
+	}
+}
+
+// Query sends the entire DataFrame (as context) to ask a high-level question.
+// Warning: Large DataFrames will consume massive tokens.
+func (l LLM) Query(df *DataFrame, question string) string {
+	// Serializing first 100 rows as context (safety limit)
+	preview := df.Head(2000) // Head returns string representation
+
+	prompt := fmt.Sprintf("Context:\n%s\n\nQuestion: %s", preview, question)
+
+	resp, err := l.callLLM(prompt)
+	if err != nil {
+		return "Error: " + err.Error()
+	}
+	return resp
 }

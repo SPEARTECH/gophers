@@ -31,6 +31,7 @@ type (
 	Report            = g.Report
 	SimpleAggregation = g.SimpleAggregation
 	Column            = g.Column
+	LLM               = g.LLM // Add this alias for the LLM type
 )
 
 //export Free
@@ -1309,6 +1310,20 @@ func IfWrapper(conditionJson *C.char, fn1Json *C.char, fn2Json *C.char) *C.char 
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
 // The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
 //
+//export LLMQueryWrapper
+func LLMQueryWrapper(llmJson *C.char, dfJson *C.char, question *C.char) *C.char {
+	var llm LLM
+	if err := json.Unmarshal([]byte(C.GoString(llmJson)), &llm); err != nil {
+		return C.CString(fmt.Sprintf("error unmarshaling LLM: %v", err))
+	}
+	var df DataFrame
+	if err := json.Unmarshal([]byte(C.GoString(dfJson)), &df); err != nil {
+		return C.CString(fmt.Sprintf("error unmarshaling DataFrame: %v", err))
+	}
+	result := llm.Query(&df, C.GoString(question))
+	return C.CString(result)
+}
+
 //export ColumnWrapper
 func ColumnWrapper(dfJson *C.char, newCol *C.char, colSpecJson *C.char) *C.char {
 	var df DataFrame

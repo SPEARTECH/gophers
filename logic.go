@@ -434,300 +434,423 @@ func cmpNumbers(a, b interface{}, op string) bool {
 // per-row json.Unmarshal done by Evaluate(expr, row). This is the fast path
 // and the single source of truth for expression semantics.
 func Compile(e ColumnExpr) Column {
-    switch e.Type {
-    case "col":
-        return Col(e.Name)
-    case "lit":
-        return Lit(e.Value)
-    case "index":
-        // Compile sub-expression, then apply Column.Index(i)
-        var sub ColumnExpr
-        if len(e.Expr) > 0 {
-            _ = json.Unmarshal(e.Expr, &sub)
-            return Compile(sub).Index(e.Index)
-        }
-        // Fallback: index a plain column by name
-        base := e.Name
-        if base == "" { base = e.Col }
-        return Col(base).Index(e.Index)
-    case "isnull":
-        if len(e.Expr) == 0 {
-            return Lit(true)
-        }
-        var sub ColumnExpr
-        _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).IsNull()
-    case "isnotnull":
-        if len(e.Expr) == 0 {
-            return Lit(false)
-        }
-        var sub ColumnExpr
-        _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).IsNotNull()
-    case "eq":
-        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
-        lc, rc := Compile(l), Compile(r)
-        return Column{
-            Name: fmt.Sprintf("(%s)==(%s)", lc.Name, rc.Name),
-            Fn: func(row map[string]interface{}) interface{} {
-                lv, rv := lc.Fn(row), rc.Fn(row)
-                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
-                if le == nil && re == nil { return lf == rf }
-                ls, _ := toString(lv); rs, _ := toString(rv)
-                return ls == rs
-            },
-        }
-    case "ne":
-        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
-        lc, rc := Compile(l), Compile(r)
-        return Column{
-            Name: fmt.Sprintf("(%s)!=(%s)", lc.Name, rc.Name),
-            Fn: func(row map[string]interface{}) interface{} {
-                lv, rv := lc.Fn(row), rc.Fn(row)
-                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
-                if le == nil && re == nil { return lf != rf }
-                ls, _ := toString(lv); rs, _ := toString(rv)
-                return ls != rs
-            },
-        }
-    case "gt":
-        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
-        lc, rc := Compile(l), Compile(r)
-        return Column{
-            Name: fmt.Sprintf("(%s)>(%s)", lc.Name, rc.Name),
-            Fn: func(row map[string]interface{}) interface{} {
-                lv, rv := lc.Fn(row), rc.Fn(row)
-                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
-                if le != nil || re != nil { return false } // numeric-only
-                return lf > rf
-            },
-        }
-    case "ge":
-        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
-        lc, rc := Compile(l), Compile(r)
-        return Column{
-            Name: fmt.Sprintf("(%s)>=(%s)", lc.Name, rc.Name),
-            Fn: func(row map[string]interface{}) interface{} {
-                lv, rv := lc.Fn(row), rc.Fn(row)
-                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
-                if le != nil || re != nil { return false } // numeric-only
-                return lf >= rf
-            },
-        }
-    case "lt":
-        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
-        lc, rc := Compile(l), Compile(r)
-        return Column{
-            Name: fmt.Sprintf("(%s)<(%s)", lc.Name, rc.Name),
-            Fn: func(row map[string]interface{}) interface{} {
-                lv, rv := lc.Fn(row), rc.Fn(row)
-                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
-                if le != nil || re != nil { return false } // numeric-only
-                return lf < rf
-            },
-        }
-    case "le":
-        var l, r ColumnExpr; _ = json.Unmarshal(e.Left, &l); _ = json.Unmarshal(e.Right, &r)
-        lc, rc := Compile(l), Compile(r)
-        return Column{
-            Name: fmt.Sprintf("(%s)<=(%s)", lc.Name, rc.Name),
-            Fn: func(row map[string]interface{}) interface{} {
-                lv, rv := lc.Fn(row), rc.Fn(row)
-                lf, le := toFloat64(lv); rf, re := toFloat64(rv)
-                if le != nil || re != nil { return false } // numeric-only
-                return lf <= rf
-            },
-        }
-    case "and", "or":
-        var L, R ColumnExpr
-        _ = json.Unmarshal(e.Left, &L)
-        _ = json.Unmarshal(e.Right, &R)
-        lc, rc := Compile(L), Compile(R)
-        if e.Type == "and" {
-            return And(lc, rc)
-        }
-        return Or(lc, rc)
-    case "if":
-        var C, T, F ColumnExpr
-        _ = json.Unmarshal(e.Cond, &C)
-        _ = json.Unmarshal(e.True, &T)
-        _ = json.Unmarshal(e.False, &F)
-        return If(Compile(C), Compile(T), Compile(F))
-    case "sha256":
-        var cols []ColumnExpr
-        _ = json.Unmarshal(e.Cols, &cols)
-        cs := make([]Column, len(cols))
-        for i := range cols { cs[i] = Compile(cols[i]) }
-        return Column{Name: "sha256", Fn: func(row map[string]interface{}) interface{} {
-            parts := make([]string, len(cs))
-            for i, c := range cs { parts[i] = fmt.Sprint(c.Fn(row)) }
-            return fmt.Sprintf("%x", sha256Sum(strings.Join(parts, "")))
-        }}
-    case "sha512":
-        var cols []ColumnExpr
-        _ = json.Unmarshal(e.Cols, &cols)
-        cs := make([]Column, len(cols))
-        for i := range cols { cs[i] = Compile(cols[i]) }
-        return Column{Name: "sha512", Fn: func(row map[string]interface{}) interface{} {
-            parts := make([]string, len(cs))
-            for i, c := range cs { parts[i] = fmt.Sprint(c.Fn(row)) }
-            return fmt.Sprintf("%x", sha512Sum(strings.Join(parts, "")))
-        }}
-    case "collectlist", "collectset":
-        // Row-wise returns the value; aggregation handled elsewhere.
-        return Col(e.Col)
-    case "split":
-        // Support method payload (Expr) and legacy (Col)
-        if len(e.Expr) > 0 {
-            var sub ColumnExpr
-            _ = json.Unmarshal(e.Expr, &sub)
-            return Compile(sub).Split(e.Delimiter)
-        }
-        return Col(e.Col).Split(e.Delimiter)
-    case "concat":
-        var cols []ColumnExpr
-        _ = json.Unmarshal(e.Cols, &cols)
-        cs := make([]Column, len(cols))
-        for i := range cols { cs[i] = Compile(cols[i]) }
-        return Concat(e.Delimiter, cs...)
-    case "cast":
-        // Legacy payload stores sub-expression JSON as string in Col
-        var sub ColumnExpr
-        _ = json.Unmarshal([]byte(e.Col), &sub)
-        return Compile(sub).Cast(e.Datatype)
-    case "arrays_zip":
-        var cols []ColumnExpr
-        _ = json.Unmarshal(e.Cols, &cols)
-        cs := make([]Column, len(cols))
-        for i := range cols { cs[i] = Compile(cols[i]) }
-        return Column{Name: "arrays_zip", Fn: func(row map[string]interface{}) interface{} {
-            out := make([]interface{}, len(cs))
-            for i, c := range cs { out[i] = c.Fn(row) }
-            return out
-        }}
-    case "keys":
-        // Prefer method-style Expr; fallback to legacy Col
-        if len(e.Expr) > 0 {
-            var sub ColumnExpr
-            _ = json.Unmarshal(e.Expr, &sub)
-            return Compile(sub).Keys()
-        }
-        return Column{Name: "keys(" + e.Col + ")", Fn: func(row map[string]interface{}) interface{} {
-            val := row[e.Col]
-            switch t := val.(type) {
-            case map[string]interface{}:
-                keys := make([]string, 0, len(t))
-                for k := range t { keys = append(keys, k) }
-                return keys
-            case map[interface{}]interface{}:
-                m := convertMapKeysToString(t)
-                keys := make([]string, 0, len(m))
-                for k := range m { keys = append(keys, k) }
-                return keys
-            default:
-                return []string{}
-            }
-        }}
-    case "lookup":
-        // Method form: nested.Lookup(key)
-        var left, right ColumnExpr
-        _ = json.Unmarshal(e.Left, &left)   // key expr
-        _ = json.Unmarshal(e.Right, &right) // nested map expr
-        return Compile(right).Lookup(Compile(left))
-    case "lower":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).Lower()
-    case "upper":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).Upper()
-    case "trim":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        c := Compile(sub)
-        return Column{Name: "trim", Fn: func(row map[string]interface{}) interface{} { return strings.TrimSpace(fmt.Sprint(c.Fn(row))) }}
-    case "ltrim":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        c := Compile(sub)
-        return Column{Name: "ltrim", Fn: func(row map[string]interface{}) interface{} { return strings.TrimLeft(fmt.Sprint(c.Fn(row)), " \t\r\n") }}
-    case "rtrim":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        c := Compile(sub)
-        return Column{Name: "rtrim", Fn: func(row map[string]interface{}) interface{} { return strings.TrimRight(fmt.Sprint(c.Fn(row)), " \t\r\n") }}
-    case "replace":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        // If Index (count) is provided and >0, use Replace; else ReplaceAll
-        oldV, newV := fmt.Sprint(e.Old), fmt.Sprint(e.New)
-        if e.Index > 0 {
-            return Compile(sub).Replace(oldV, newV, e.Index)
-        }
-        return Compile(sub).ReplaceAll(oldV, newV)
-    case "replace_all":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).ReplaceAll(fmt.Sprint(e.Old), fmt.Sprint(e.New))
-    case "contains":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).Contains(fmt.Sprint(e.Substr))
-    case "notcontains":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).NotContains(fmt.Sprint(e.Substr))
-    case "icontains":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).IContains(fmt.Sprint(e.Substr))
-    case "inotcontains":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).INotContains(fmt.Sprint(e.Substr))
-    case "startswith":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).StartsWith(fmt.Sprint(e.Prefix))
-    case "endswith":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).EndsWith(fmt.Sprint(e.Suffix))
-    case "like":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).Like(fmt.Sprint(e.Pattern))
-    case "notlike":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).NotLike(fmt.Sprint(e.Pattern))
-    case "rlike":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).RLike(fmt.Sprint(e.Pattern))
-    case "notrlike":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).NotRLike(fmt.Sprint(e.Pattern))
-    case "regexp_replace":
-        // pattern in e.Pattern, replacement in e.New (reuse existing field)
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).RegexpReplace(fmt.Sprint(e.Pattern), fmt.Sprint(e.New))
-    case "regexp_extract":
-        // pattern in e.Pattern, group index reuses e.Index to avoid types change
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).RegexpExtract(fmt.Sprint(e.Pattern), e.Index)
-    case "length":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        return Compile(sub).Length()
-    case "html_unescape":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        c := Compile(sub)
-        return Column{Name: "html_unescape", Fn: func(row map[string]interface{}) interface{} { return html.UnescapeString(fmt.Sprint(c.Fn(row))) }}  
-    case "array_join":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        if e.New != nil {
-            return Compile(sub).ArrayJoin(e.Delimiter, fmt.Sprint(e.New))
-        }
-        return Compile(sub).ArrayJoin(e.Delimiter)  
-    case "extract_html":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        var field string
-        if e.Pattern != nil { field = fmt.Sprint(e.Pattern) } // optional
-        return Compile(sub).ExtractHTML(field)
-    case "extract_html_top":
-        var sub ColumnExpr; _ = json.Unmarshal(e.Expr, &sub)
-        var field string
-        if e.Pattern != nil { field = fmt.Sprint(e.Pattern) } // optional
-        return Compile(sub).ExtractHTMLTop(field)
-    default:
-        // Unknown -> literal nil
-        return Lit(nil)
-    }
+	switch e.Type {
+	case "col":
+		return Col(e.Name)
+	case "lit":
+		return Lit(e.Value)
+	case "index":
+		// Compile sub-expression, then apply Column.Index(i)
+		var sub ColumnExpr
+		if len(e.Expr) > 0 {
+			_ = json.Unmarshal(e.Expr, &sub)
+			return Compile(sub).Index(e.Index)
+		}
+		// Fallback: index a plain column by name
+		base := e.Name
+		if base == "" {
+			base = e.Col
+		}
+		return Col(base).Index(e.Index)
+	case "isnull":
+		if len(e.Expr) == 0 {
+			return Lit(true)
+		}
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).IsNull()
+	case "isnotnull":
+		if len(e.Expr) == 0 {
+			return Lit(false)
+		}
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).IsNotNull()
+	case "eq":
+		var l, r ColumnExpr
+		_ = json.Unmarshal(e.Left, &l)
+		_ = json.Unmarshal(e.Right, &r)
+		lc, rc := Compile(l), Compile(r)
+		return Column{
+			Name: fmt.Sprintf("(%s)==(%s)", lc.Name, rc.Name),
+			Fn: func(row map[string]interface{}) interface{} {
+				lv, rv := lc.Fn(row), rc.Fn(row)
+				lf, le := toFloat64(lv)
+				rf, re := toFloat64(rv)
+				if le == nil && re == nil {
+					return lf == rf
+				}
+				ls, _ := toString(lv)
+				rs, _ := toString(rv)
+				return ls == rs
+			},
+		}
+	case "ne":
+		var l, r ColumnExpr
+		_ = json.Unmarshal(e.Left, &l)
+		_ = json.Unmarshal(e.Right, &r)
+		lc, rc := Compile(l), Compile(r)
+		return Column{
+			Name: fmt.Sprintf("(%s)!=(%s)", lc.Name, rc.Name),
+			Fn: func(row map[string]interface{}) interface{} {
+				lv, rv := lc.Fn(row), rc.Fn(row)
+				lf, le := toFloat64(lv)
+				rf, re := toFloat64(rv)
+				if le == nil && re == nil {
+					return lf != rf
+				}
+				ls, _ := toString(lv)
+				rs, _ := toString(rv)
+				return ls != rs
+			},
+		}
+	case "gt":
+		var l, r ColumnExpr
+		_ = json.Unmarshal(e.Left, &l)
+		_ = json.Unmarshal(e.Right, &r)
+		lc, rc := Compile(l), Compile(r)
+		return Column{
+			Name: fmt.Sprintf("(%s)>(%s)", lc.Name, rc.Name),
+			Fn: func(row map[string]interface{}) interface{} {
+				lv, rv := lc.Fn(row), rc.Fn(row)
+				lf, le := toFloat64(lv)
+				rf, re := toFloat64(rv)
+				if le != nil || re != nil {
+					return false
+				} // numeric-only
+				return lf > rf
+			},
+		}
+	case "ge":
+		var l, r ColumnExpr
+		_ = json.Unmarshal(e.Left, &l)
+		_ = json.Unmarshal(e.Right, &r)
+		lc, rc := Compile(l), Compile(r)
+		return Column{
+			Name: fmt.Sprintf("(%s)>=(%s)", lc.Name, rc.Name),
+			Fn: func(row map[string]interface{}) interface{} {
+				lv, rv := lc.Fn(row), rc.Fn(row)
+				lf, le := toFloat64(lv)
+				rf, re := toFloat64(rv)
+				if le != nil || re != nil {
+					return false
+				} // numeric-only
+				return lf >= rf
+			},
+		}
+	case "lt":
+		var l, r ColumnExpr
+		_ = json.Unmarshal(e.Left, &l)
+		_ = json.Unmarshal(e.Right, &r)
+		lc, rc := Compile(l), Compile(r)
+		return Column{
+			Name: fmt.Sprintf("(%s)<(%s)", lc.Name, rc.Name),
+			Fn: func(row map[string]interface{}) interface{} {
+				lv, rv := lc.Fn(row), rc.Fn(row)
+				lf, le := toFloat64(lv)
+				rf, re := toFloat64(rv)
+				if le != nil || re != nil {
+					return false
+				} // numeric-only
+				return lf < rf
+			},
+		}
+	case "le":
+		var l, r ColumnExpr
+		_ = json.Unmarshal(e.Left, &l)
+		_ = json.Unmarshal(e.Right, &r)
+		lc, rc := Compile(l), Compile(r)
+		return Column{
+			Name: fmt.Sprintf("(%s)<=(%s)", lc.Name, rc.Name),
+			Fn: func(row map[string]interface{}) interface{} {
+				lv, rv := lc.Fn(row), rc.Fn(row)
+				lf, le := toFloat64(lv)
+				rf, re := toFloat64(rv)
+				if le != nil || re != nil {
+					return false
+				} // numeric-only
+				return lf <= rf
+			},
+		}
+	case "and", "or":
+		var L, R ColumnExpr
+		_ = json.Unmarshal(e.Left, &L)
+		_ = json.Unmarshal(e.Right, &R)
+		lc, rc := Compile(L), Compile(R)
+		if e.Type == "and" {
+			return And(lc, rc)
+		}
+		return Or(lc, rc)
+	case "if":
+		var C, T, F ColumnExpr
+		_ = json.Unmarshal(e.Cond, &C)
+		_ = json.Unmarshal(e.True, &T)
+		_ = json.Unmarshal(e.False, &F)
+		return If(Compile(C), Compile(T), Compile(F))
+	case "sha256":
+		var cols []ColumnExpr
+		_ = json.Unmarshal(e.Cols, &cols)
+		cs := make([]Column, len(cols))
+		for i := range cols {
+			cs[i] = Compile(cols[i])
+		}
+		return Column{Name: "sha256", Fn: func(row map[string]interface{}) interface{} {
+			parts := make([]string, len(cs))
+			for i, c := range cs {
+				parts[i] = fmt.Sprint(c.Fn(row))
+			}
+			return fmt.Sprintf("%x", sha256Sum(strings.Join(parts, "")))
+		}}
+	case "sha512":
+		var cols []ColumnExpr
+		_ = json.Unmarshal(e.Cols, &cols)
+		cs := make([]Column, len(cols))
+		for i := range cols {
+			cs[i] = Compile(cols[i])
+		}
+		return Column{Name: "sha512", Fn: func(row map[string]interface{}) interface{} {
+			parts := make([]string, len(cs))
+			for i, c := range cs {
+				parts[i] = fmt.Sprint(c.Fn(row))
+			}
+			return fmt.Sprintf("%x", sha512Sum(strings.Join(parts, "")))
+		}}
+	case "collectlist", "collectset":
+		// Row-wise returns the value; aggregation handled elsewhere.
+		return Col(e.Col)
+	case "split":
+		// Support method payload (Expr) and legacy (Col)
+		if len(e.Expr) > 0 {
+			var sub ColumnExpr
+			_ = json.Unmarshal(e.Expr, &sub)
+			return Compile(sub).Split(e.Delimiter)
+		}
+		return Col(e.Col).Split(e.Delimiter)
+	case "concat":
+		var cols []ColumnExpr
+		_ = json.Unmarshal(e.Cols, &cols)
+		cs := make([]Column, len(cols))
+		for i := range cols {
+			cs[i] = Compile(cols[i])
+		}
+		return Concat(e.Delimiter, cs...)
+	case "cast":
+		// Legacy payload stores sub-expression JSON as string in Col
+		var sub ColumnExpr
+		_ = json.Unmarshal([]byte(e.Col), &sub)
+		return Compile(sub).Cast(e.Datatype)
+	case "arrays_zip":
+		var cols []ColumnExpr
+		_ = json.Unmarshal(e.Cols, &cols)
+		cs := make([]Column, len(cols))
+		for i := range cols {
+			cs[i] = Compile(cols[i])
+		}
+		return Column{Name: "arrays_zip", Fn: func(row map[string]interface{}) interface{} {
+			out := make([]interface{}, len(cs))
+			for i, c := range cs {
+				out[i] = c.Fn(row)
+			}
+			return out
+		}}
+	case "keys":
+		// Prefer method-style Expr; fallback to legacy Col
+		if len(e.Expr) > 0 {
+			var sub ColumnExpr
+			_ = json.Unmarshal(e.Expr, &sub)
+			return Compile(sub).Keys()
+		}
+		return Column{Name: "keys(" + e.Col + ")", Fn: func(row map[string]interface{}) interface{} {
+			val := row[e.Col]
+			switch t := val.(type) {
+			case map[string]interface{}:
+				keys := make([]string, 0, len(t))
+				for k := range t {
+					keys = append(keys, k)
+				}
+				return keys
+			case map[interface{}]interface{}:
+				m := convertMapKeysToString(t)
+				keys := make([]string, 0, len(m))
+				for k := range m {
+					keys = append(keys, k)
+				}
+				return keys
+			default:
+				return []string{}
+			}
+		}}
+	case "lookup":
+		// Method form: nested.Lookup(key)
+		var left, right ColumnExpr
+		_ = json.Unmarshal(e.Left, &left)   // key expr
+		_ = json.Unmarshal(e.Right, &right) // nested map expr
+		return Compile(right).Lookup(Compile(left))
+	case "lower":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).Lower()
+	case "upper":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).Upper()
+	case "trim":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		c := Compile(sub)
+		return Column{Name: "trim", Fn: func(row map[string]interface{}) interface{} { return strings.TrimSpace(fmt.Sprint(c.Fn(row))) }}
+	case "ltrim":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		c := Compile(sub)
+		return Column{Name: "ltrim", Fn: func(row map[string]interface{}) interface{} {
+			return strings.TrimLeft(fmt.Sprint(c.Fn(row)), " \t\r\n")
+		}}
+	case "rtrim":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		c := Compile(sub)
+		return Column{Name: "rtrim", Fn: func(row map[string]interface{}) interface{} {
+			return strings.TrimRight(fmt.Sprint(c.Fn(row)), " \t\r\n")
+		}}
+	case "replace":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		// If Index (count) is provided and >0, use Replace; else ReplaceAll
+		oldV, newV := fmt.Sprint(e.Old), fmt.Sprint(e.New)
+		if e.Index > 0 {
+			return Compile(sub).Replace(oldV, newV, e.Index)
+		}
+		return Compile(sub).ReplaceAll(oldV, newV)
+	case "replace_all":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).ReplaceAll(fmt.Sprint(e.Old), fmt.Sprint(e.New))
+	case "contains":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).Contains(fmt.Sprint(e.Substr))
+	case "notcontains":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).NotContains(fmt.Sprint(e.Substr))
+	case "icontains":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).IContains(fmt.Sprint(e.Substr))
+	case "inotcontains":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).INotContains(fmt.Sprint(e.Substr))
+	case "startswith":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).StartsWith(fmt.Sprint(e.Prefix))
+	case "endswith":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).EndsWith(fmt.Sprint(e.Suffix))
+	case "like":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).Like(fmt.Sprint(e.Pattern))
+	case "notlike":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).NotLike(fmt.Sprint(e.Pattern))
+	case "rlike":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).RLike(fmt.Sprint(e.Pattern))
+	case "notrlike":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).NotRLike(fmt.Sprint(e.Pattern))
+	case "regexp_replace":
+		// pattern in e.Pattern, replacement in e.New (reuse existing field)
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).RegexpReplace(fmt.Sprint(e.Pattern), fmt.Sprint(e.New))
+	case "regexp_extract":
+		// pattern in e.Pattern, group index reuses e.Index to avoid types change
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).RegexpExtract(fmt.Sprint(e.Pattern), e.Index)
+	case "length":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		return Compile(sub).Length()
+	case "html_unescape":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		c := Compile(sub)
+		return Column{Name: "html_unescape", Fn: func(row map[string]interface{}) interface{} { return html.UnescapeString(fmt.Sprint(c.Fn(row))) }}
+	case "array_join":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		if e.New != nil {
+			return Compile(sub).ArrayJoin(e.Delimiter, fmt.Sprint(e.New))
+		}
+		return Compile(sub).ArrayJoin(e.Delimiter)
+	case "extract_html":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		var field string
+		if e.Pattern != nil {
+			field = fmt.Sprint(e.Pattern)
+		} // optional
+		return Compile(sub).ExtractHTML(field)
+	case "extract_html_top":
+		var sub ColumnExpr
+		_ = json.Unmarshal(e.Expr, &sub)
+		var field string
+		if e.Pattern != nil {
+			field = fmt.Sprint(e.Pattern)
+		} // optional
+		return Compile(sub).ExtractHTMLTop(field)
+	case "current_timestamp":
+		return CurrentTimestamp() // Call the function from functions.go (same package)
+
+	case "current_date":
+		return CurrentDate() // Call the function from functions.go (same package)
+
+	case "datediff":
+		var endExpr, startExpr ColumnExpr
+		json.Unmarshal(e.End, &endExpr)     // Use e.End (new field)
+		json.Unmarshal(e.Start, &startExpr) // Use e.Start (new field)
+		endCol := Compile(endExpr)
+		startCol := Compile(startExpr)
+		return DateDiff(endCol, startCol, e.Format) // Call DateDiff from functions.go, use e.Format (new field)
+
+	case "to_epoch":
+		var subExpr ColumnExpr
+		json.Unmarshal(e.Expr, &subExpr)
+		col := Compile(subExpr)
+		return col.ToEpoch(e.Format) // ToEpoch is a method on Column (from functions.go), use e.Format
+
+	case "from_epoch":
+		var subExpr ColumnExpr
+		json.Unmarshal(e.Expr, &subExpr)
+		col := Compile(subExpr)
+		return col.FromEpoch(e.Format) // FromEpoch is a method on Column (from functions.go), use e.Format
+	case "gen":
+		var genData struct {
+			LLM            LLM          `json:"llm"`
+			PromptTemplate string       `json:"prompt_template"`
+			Inputs         []ColumnExpr `json:"inputs"`
+		}
+		// Assuming you add a "data" field to ColumnExpr for arbitrary payloads
+		json.Unmarshal([]byte(e.Data), &genData) // e.Data would be a new json.RawMessage field
+		// Compile inputs
+		compiledInputs := make([]Column, len(genData.Inputs))
+		for i, inp := range genData.Inputs {
+			compiledInputs[i] = Compile(inp)
+		}
+		return genData.LLM.Gen(genData.PromptTemplate, compiledInputs...)
+	default:
+		// Unknown -> literal nil
+		return Lit(nil)
+	}
 }
 
 // tiny wrappers to avoid importing crypto here if you prefer; or reuse directly
@@ -920,32 +1043,32 @@ func (c Column) Ne(threshold interface{}) Column {
 
 // Or returns true if any of the provided conditions is true.
 func Or(conds ...Column) Column {
-    return Column{
-        Name: "or",
-        Fn: func(row map[string]interface{}) interface{} {
-            for _, c := range conds {
-                v, ok := c.Fn(row).(bool)
-                if ok && v {
-                    return true
-                }
-            }
-            return false
-        },
-    }
+	return Column{
+		Name: "or",
+		Fn: func(row map[string]interface{}) interface{} {
+			for _, c := range conds {
+				v, ok := c.Fn(row).(bool)
+				if ok && v {
+					return true
+				}
+			}
+			return false
+		},
+	}
 }
 
 // And returns true if all provided conditions are true.
 func And(conds ...Column) Column {
-    return Column{
-        Name: "and",
-        Fn: func(row map[string]interface{}) interface{} {
-            for _, c := range conds {
-                v, ok := c.Fn(row).(bool)
-                if !ok || !v {
-                    return false
-                }
-            }
-            return true
-        },
-    }
+	return Column{
+		Name: "and",
+		Fn: func(row map[string]interface{}) interface{} {
+			for _, c := range conds {
+				v, ok := c.Fn(row).(bool)
+				if !ok || !v {
+					return false
+				}
+			}
+			return true
+		},
+	}
 }
