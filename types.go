@@ -82,6 +82,8 @@ type ColumnExpr struct {
 	End    json.RawMessage `json:"end,omitempty"`    // For DateDiff (end date expression)
 	Start  json.RawMessage `json:"start,omitempty"`  // For DateDiff (start date expression)
 	Format string          `json:"format,omitempty"` // For DateDiff, ToEpoch, FromEpoch (date format string)
+	// Add this for LLM Gen (arbitrary payload data)
+	Data json.RawMessage `json:"data,omitempty"` // For Gen (LLM config and inputs)
 }
 
 func (ce *ColumnExpr) Help() string {
