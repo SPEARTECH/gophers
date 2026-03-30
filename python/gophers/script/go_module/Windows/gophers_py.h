@@ -254,6 +254,7 @@ extern __declspec(dllexport) char* IfWrapper(char* conditionJson, char* fn1Json,
 // specified in colsJson (a JSON array of strings) and stores the result in newCol.
 // The supported opName cases here are "SHA256" and "SHA512". You can add more operations as needed.
 //
+extern __declspec(dllexport) char* LLMQueryWrapper(char* llmJson, char* dfJson, char* question);
 extern __declspec(dllexport) char* ColumnWrapper(char* dfJson, char* newCol, char* colSpecJson);
 
 // FilterWrapper is an exported function that wraps the Filter method.

@@ -7,8 +7,8 @@ github.com/mattn/go-sqlite3 v1.14.32 h1:JD12Ag3oLy1zQA+BNn74xRgaBbdhbNIDYvQUEuuE
 github.com/mattn/go-sqlite3 v1.14.32/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/openai/openai-go/v3 v3.24.0 h1:08x6GnYiB+AAejTo6yzPY8RkZMJQ8NpreiOyM5QfyYU=
 github.com/openai/openai-go/v3 v3.24.0/go.mod h1:cdufnVK14cWcT9qA1rRtrXx4FTRsgbDPW7Ia7SS5cZo=
-github.com/speartech/gophers v0.4.6 h1:84i7X601TssY7QHHyb362wcfJRLjfCRqOO8ovjHkUfk=
-github.com/speartech/gophers v0.4.6/go.mod h1:pTiyNpqsQ1IAQUfGXS4/6/Ywy0iGyXseYZ90NyYA7yM=
+github.com/speartech/gophers v0.4.7 h1:nUqtWgTr9TsxPyRSmct3xbo9PlmVwxKl8NgKwdyIbtk=
+github.com/speartech/gophers v0.4.7/go.mod h1:pTiyNpqsQ1IAQUfGXS4/6/Ywy0iGyXseYZ90NyYA7yM=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=

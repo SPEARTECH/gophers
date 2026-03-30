@@ -1,18 +1,20 @@
 package gophers
 
 import (
+	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
-	"encoding/json"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 // Show returns a plain-text table representation of the DataFrame.
-// Pure Go: no cgo. Used by c-shared wrapper and Go callers.
+// Uses the lipgloss/table renderer to produce the output string (no printing).
 func (df *DataFrame) Show(chars, recordCount int) string {
 	if df == nil {
 		return ""
@@ -29,48 +31,80 @@ func (df *DataFrame) Show(chars, recordCount int) string {
 		records = recordCount
 	}
 
-	var b strings.Builder
-
-	// headers
-	for _, col := range df.Cols {
-		name := col
-		if len(name) > chars {
-			name = name[:chars-3] + "..."
-		}
-		fmt.Fprintf(&b, "%-15s", name)
-	}
-	b.WriteString("\n")
-
-	// rows
+	// Build rows as [][]string compatible with the renderer
+	cols := df.Cols
+	rows := make([][]string, 0, records)
 	for i := 0; i < records; i++ {
-		for _, col := range df.Cols {
-			if i >= len(df.Data[col]) {
-				log.Fatalf("Show: index out of range: row %d, column %s", i, col)
-			}
-			val := df.Data[col][i]
+		row := make([]string, len(cols))
+		for j, col := range cols {
 			var s string
-			switch v := val.(type) {
-			case int:
-				s = strconv.Itoa(v)
-			case float64:
-				s = strconv.FormatFloat(v, 'f', 2, 64)
-			case bool:
-				s = strconv.FormatBool(v)
-			case string:
-				s = v
-			default:
-				s = fmt.Sprintf("%v", v)
+			values := df.Data[col]
+			if i >= len(values) {
+				s = ""
+			} else {
+				switch v := values[i].(type) {
+				case int:
+					s = strconv.Itoa(v)
+				case int32:
+					s = strconv.Itoa(int(v))
+				case int64:
+					s = strconv.FormatInt(v, 10)
+				case float32:
+					s = strconv.FormatFloat(float64(v), 'f', 2, 32)
+				case float64:
+					s = strconv.FormatFloat(v, 'f', 2, 64)
+				case bool:
+					s = strconv.FormatBool(v)
+				case string:
+					s = v
+				default:
+					s = fmt.Sprintf("%v", v)
+				}
 			}
 			if len(s) > chars {
-				fmt.Fprintf(&b, "%-15s", s[:chars-3]+"...")
-			} else {
-				fmt.Fprintf(&b, "%-15s", s)
+				s = s[:chars-3] + "..."
 			}
+			row[j] = s
 		}
-		b.WriteString("\n")
+		rows = append(rows, row)
 	}
-	fmt.Print(b.String())
-	return b.String()
+
+	// Build a styled table using lipgloss/table (same style as dataframe_display.go)
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("74"))).
+		Headers(cols...)
+
+	// Add rows
+	t.Rows(rows...)
+
+	// Styles
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("236")).
+		Background(lipgloss.Color("74")).
+		Padding(0, 1).
+		Align(lipgloss.Center)
+
+	cellStyle := lipgloss.NewStyle().
+		Padding(0, 1)
+
+	evenRowStyle := cellStyle
+	oddRowStyle := cellStyle.Background(lipgloss.Color("235"))
+
+	t.StyleFunc(func(row, col int) lipgloss.Style {
+		if row == table.HeaderRow {
+			return headerStyle
+		}
+		if row%2 == 0 {
+			return evenRowStyle
+		}
+		return oddRowStyle
+	})
+
+	out := t.Render()
+	fmt.Print(out) // print as a side-effect
+	return out
 }
 
 // HeadText returns a plain-text table of the first 5 rows.
@@ -327,23 +361,23 @@ func mapToString(data map[string][]interface{}) string {
 
 // rowsJSONString marshals the DataFrame into an array of row objects (JSON).
 func rowsJSONString(df *DataFrame) string {
-    rows := make([]map[string]interface{}, df.Rows)
-    for i := 0; i < df.Rows; i++ {
-        row := make(map[string]interface{}, len(df.Cols))
-        for _, col := range df.Cols {
-            vals := df.Data[col]
-            var v interface{}
-            if i < len(vals) {
-                v = vals[i]
-            } else {
-                v = nil
-            }
-            row[col] = v
-        }
-        rows[i] = row
-    }
-    b, _ := json.Marshal(rows)
-    return string(b)
+	rows := make([]map[string]interface{}, df.Rows)
+	for i := 0; i < df.Rows; i++ {
+		row := make(map[string]interface{}, len(df.Cols))
+		for _, col := range df.Cols {
+			vals := df.Data[col]
+			var v interface{}
+			if i < len(vals) {
+				v = vals[i]
+			} else {
+				v = nil
+			}
+			row[col] = v
+		}
+		rows[i] = row
+	}
+	b, _ := json.Marshal(rows)
+	return string(b)
 }
 
 // DisplayHTML returns a value that gophernotes recognizes as rich HTML output.
@@ -393,7 +427,7 @@ func (df *DataFrame) DisplayBrowser() error {
                     </ul>
                 </details>
                 </li> -->
-            </ul>            
+            </ul>
         </div>
 
         <!-- center, fixed; container ignores pointer events -->
@@ -424,7 +458,7 @@ func (df *DataFrame) DisplayBrowser() error {
                 <button class="btn btn-ghost btn-sm join-item" @click="last_page"><span class="material-symbols-outlined">last_page</span></button>
                 </div>
             </div>
-        </div>	
+        </div>
 
           <table class="table table-xs table-pin-rows w-full">
             <thead>
@@ -615,7 +649,7 @@ func (df *DataFrame) DisplayBrowser() error {
 
 // Display an html table of the data
 func (df *DataFrame) Display() map[string]interface{} {
-    html := `
+	html := `
     <!DOCTYPE html>
     <html>
       <head>
@@ -659,7 +693,7 @@ func (df *DataFrame) Display() map[string]interface{} {
                     </ul>
                 </details>
                 </li> -->
-            </ul>            
+            </ul>
         </div>
 
         <!-- center, fixed; container ignores pointer events -->
@@ -690,7 +724,7 @@ func (df *DataFrame) Display() map[string]interface{} {
                 <button class="btn btn-ghost btn-sm join-item" @click="last_page"><span class="material-symbols-outlined">last_page</span></button>
                 </div>
             </div>
-        </div>	
+        </div>
 
           <table class="table table-xs table-pin-rows w-full">
             <thead>
@@ -849,10 +883,8 @@ func (df *DataFrame) Display() map[string]interface{} {
     </html>
 
 `
-    return map[string]interface{}{"text/html": html}
+	return map[string]interface{}{"text/html": html}
 }
-
-
 
 // write an html display, chart, or report to a file
 func (df *DataFrame) DisplayToFile(path string) error {

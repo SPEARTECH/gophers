@@ -1352,14 +1352,28 @@ func (left *DataFrame) Join(right *DataFrame, leftOn, rightOn, joinType string) 
 	go func() {
 		defer wg.Done()
 		for i := 0; i < left.Rows; i++ {
-			k := canonicalKey(left.Data[leftOn][i])
+			v := left.Data[leftOn][i]
+			var k string
+			if v == nil {
+				// special marker so left NULLs never match right NULLs
+				k = "__JOIN_LEFT_NIL__"
+			} else {
+				k = canonicalKey(v)
+			}
 			leftIndex[k] = append(leftIndex[k], i)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		for i := 0; i < right.Rows; i++ {
-			k := canonicalKey(right.Data[rightOn][i])
+			v := right.Data[rightOn][i]
+			var k string
+			if v == nil {
+				// special marker so right NULLs never match left NULLs
+				k = "__JOIN_RIGHT_NIL__"
+			} else {
+				k = canonicalKey(v)
+			}
 			rightIndex[k] = append(rightIndex[k], i)
 		}
 	}()
@@ -1812,4 +1826,50 @@ func CustomLLM(endpoint string, model string, headers map[string]string, inputMa
 		InputMap:       inputMap,
 		OutputSelector: outputSelector,
 	}
+}
+
+func (df *DataFrame) AddConsecID(column string, start int) *DataFrame {
+	if df == nil {
+		return df
+	}
+	if df.Data == nil {
+		df.Data = make(map[string][]interface{})
+	}
+	// If there are zero rows, create an empty slice
+	if df.Rows == 0 {
+		df.Data[column] = make([]interface{}, 0)
+		// ensure column is listed
+		found := false
+		for _, c := range df.Cols {
+			if c == column {
+				found = true
+				break
+			}
+		}
+		if !found {
+			df.Cols = append(df.Cols, column)
+		}
+		return df
+	}
+
+	values := make([]interface{}, df.Rows)
+	val := start
+	for i := 0; i < df.Rows; i++ {
+		values[i] = val
+		val++
+	}
+	df.Data[column] = values
+
+	// add to columns list if missing
+	found := false
+	for _, c := range df.Cols {
+		if c == column {
+			found = true
+			break
+		}
+	}
+	if !found {
+		df.Cols = append(df.Cols, column)
+	}
+	return df
 }
