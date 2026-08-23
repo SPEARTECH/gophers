@@ -201,17 +201,17 @@ class ColumnExpr:
     Trim()
     Upper()
 """)
-        
+
     def __repr__(self):
         return f"ColumnExpr({self.expr})"
 
     def IsNull(self):
         return ColumnExpr({ "type": "isnull", "expr": self.expr })
-    
+
     def IsNotNull(self):
         return ColumnExpr({ "type": "isnotnull", "expr": self.expr })
-    
-    
+
+
     def Like(self, pattern):
         return ColumnExpr({ "type": "like", "expr": self.expr, "pattern": pattern })
 
@@ -220,59 +220,59 @@ class ColumnExpr:
 
     def RLike(self, pattern: str):
         return ColumnExpr({ "type": "rlike", "expr": self.expr, "pattern": pattern })
-    
+
     def NotRLike(self, pattern: str):
         return ColumnExpr({ "type": "notrlike", "expr": self.expr, "pattern": pattern })
-        
+
     def StartsWith(self, prefix):
         return ColumnExpr({ "type": "startswith", "expr": self.expr, "prefix": prefix })
-    
+
     def EndsWith(self, suffix):
         return ColumnExpr({ "type": "endswith", "expr": self.expr, "suffix": suffix })
-    
+
     def Contains(self, substr):
         return ColumnExpr({ "type": "contains", "expr": self.expr, "substr": substr })
-    
+
     def IContains(self, substr: str):
         return ColumnExpr({ "type": "icontains", "expr": self.expr, "substr": substr })
-    
+
     def NotContains(self, substr):
         return ColumnExpr({ "type": "notcontains", "expr": self.expr, "substr": substr })
 
     def INotContains(self, substr: str):
         return ColumnExpr({ "type": "inotcontains", "expr": self.expr, "substr": substr })
-    
+
     # def Replace(self, old, new):
     #     return ColumnExpr({ "type": "replace", "expr": self.expr, "old": old, "new": new })
-    
+
     def Trim(self):
         return ColumnExpr({ "type": "trim", "expr": self.expr })
-    
+
     def LTrim(self):
         return ColumnExpr({ "type": "ltrim", "expr": self.expr })
-    
+
     def RTrim(self):
         return ColumnExpr({ "type": "rtrim", "expr": self.expr })
 
     def Cast(self, datatype: str):
         # Send sub-expr JSON as a string in "col" (Compile expects string)
         return ColumnExpr({ "type": "cast", "col": self.to_json(), "datatype": datatype })
-    
+
     def Lower(self):
         return ColumnExpr({ "type": "lower", "expr": self.expr })
-    
+
     def Upper(self):
         return ColumnExpr({ "type": "upper", "expr": self.expr })
-    
+
     def HtmlUnescape(self):
         return ColumnExpr({ "type": "html_unescape", "expr": self.expr })
-    
+
     def Index(self, i: int):
         return ColumnExpr({ "type": "index", "expr": self.expr, "index": i })
-    
+
     def Length(self):
         return ColumnExpr({ "type": "length", "expr": self.expr })
-    
+
     def Keys(self):
         return ColumnExpr({ "type": "keys", "expr": self.expr })
 
@@ -280,7 +280,7 @@ class ColumnExpr:
         if not isinstance(key_expr, ColumnExpr):
             key_expr = Lit(key_expr)
         return ColumnExpr({ "type": "lookup", "left": key_expr.expr, "right": self.expr })
-    
+
     def Replace(self, old, new, count=None):
         payload = { "type": "replace", "expr": self.expr, "old": old, "new": new }
         if count is not None:
@@ -292,13 +292,13 @@ class ColumnExpr:
 
     def RegexpReplace(self, pattern: str, replacement: str):
         return ColumnExpr({ "type": "regexp_replace", "expr": self.expr, "pattern": pattern, "new": replacement })
-    
+
     def ArrayJoin(self, delim: str, nullReplacement: str = None):
         payload = { "type": "array_join", "expr": self.expr, "delimiter": delim }
         if nullReplacement is not None:
             payload["new"] = nullReplacement
         return ColumnExpr(payload)
-    
+
     def ExtractHTML(self, field: str = None):
         payload = { "type": "extract_html", "expr": self.expr }
         if field is not None:
@@ -310,14 +310,14 @@ class ColumnExpr:
         if field is not None:
             payload["pattern"] = field  # optional field name
         return ColumnExpr(payload)
-    
+
 
     # def Title(self):
     #     return ColumnExpr({ "type": "title", "expr": self.expr })
-    
+
     # def Substr(self, start, length):
     #     return ColumnExpr({ "type": "substr", "expr": self.expr, "start": start, "length": length })
-    
+
     def _unwrap(self, v):
         # Always return a ColumnExpr JSON object
         if isinstance(v, ColumnExpr):
@@ -326,22 +326,22 @@ class ColumnExpr:
             # if ever needed, wrap each element as lit
             return [Lit(x).expr if not isinstance(x, ColumnExpr) else x.expr for x in v]
         return Lit(v).expr
-    
+
     def Gt(self, other):
         return ColumnExpr({ "type": "gt", "left": self.expr, "right": self._unwrap(other) })
-    
+
     def Lt(self, other):
         return ColumnExpr({ "type": "lt", "left": self.expr, "right": self._unwrap(other) })
-    
+
     def Ge(self, other):
         return ColumnExpr({ "type": "ge", "left": self.expr, "right": self._unwrap(other) })
-    
+
     def Le(self, other):
         return ColumnExpr({ "type": "le", "left": self.expr, "right": self._unwrap(other) })
-    
+
     def Eq(self, other):
         return ColumnExpr({ "type": "eq", "left": self.expr, "right": self._unwrap(other) })
-    
+
     def Ne(self, other):
         return ColumnExpr({ "type": "ne", "left": self.expr, "right": self._unwrap(other) })
 
@@ -438,7 +438,7 @@ class Report:
     Warning(color)
     Open()
     Save(filename)""")
-        
+
     def Accent(self, color):
         result = _cstr(gophers.Accent(self.report_json.encode('utf-8'), color.encode('utf-8')))
         if result:
@@ -492,7 +492,7 @@ class Report:
         else:
             print("Error adding info color:", result)
         return self
-    
+
     def Neutral(self, color):
         result = _cstr(gophers.Neutral(self.report_json.encode('utf-8'), color.encode('utf-8')))
         if result:
@@ -501,7 +501,7 @@ class Report:
         else:
             print("Error adding neutral color:", result)
         return self
-    
+
     def Base100(self, color):
         result = _cstr(gophers.Base100(self.report_json.encode('utf-8'), color.encode('utf-8')))
         if result:
@@ -510,7 +510,7 @@ class Report:
         else:
             print("Error adding base100 color:", result)
         return self
-    
+
     def Err(self, color):
         result = _cstr(gophers.Err(self.report_json.encode('utf-8'), color.encode('utf-8')))
         if result:
@@ -519,7 +519,7 @@ class Report:
         else:
             print("Error adding err color:", result)
         return self
-    
+
     def Open(self):
         # print("")
         # print("printing open report:"+self.report_json)
@@ -640,7 +640,7 @@ def Help():
     UDF(new_col, input_col, fn)
 """)
 
-    
+
 # Aggregate functions
 def Sum(column_name):
     # Call the Go SumWrapper function with only the column name
@@ -808,11 +808,11 @@ def ArraysZip(*cols):
 # def Lookup(key_expr, nested_col):
 #     """
 #     Creates a ColumnExpr for lookup.
-    
+
 #     Parameters:
 #       nested_col: the name of the nested column (will be wrapped with Col())
 #       key_expr: a ColumnExpr representing the lookup key (e.g. Col('key') or Lit("some constant"))
-    
+
 #     Returns:
 #       A ColumnExpr with type "lookup".
 #     """
@@ -868,8 +868,8 @@ def ReadParquet(parquet_input):
 def GetAPI(endpoint, headers, query_params):
     # Store the JSON representation of DataFrame from Go.
     df_json = _cstr(
-        gophers.GetAPI(endpoint.encode('utf-8'), 
-            headers.encode('utf-8'), 
+        gophers.GetAPI(endpoint.encode('utf-8'),
+            headers.encode('utf-8'),
             query_params.encode('utf-8'))
     )
     return DataFrame(df_json)
@@ -988,12 +988,12 @@ def UDF(fn, *cols):
     """
     if not callable(fn):
         raise TypeError("UDF fn must be callable")
-    
+
     # Validate columns
     valid_cols = []
     for c in cols:
         valid_cols.append(_udf_input_col_name(c))
-        
+
     return UDFSpec(valid_cols, fn)
 # PANDAS FUNCTIONS
 # loc
@@ -1042,7 +1042,7 @@ class DataFrame:
     Union(df2)
     Vertical(chars, record_count)
     WriteSqlite(db_path, table_name, mode, key_cols)""")
-        
+
     # Display functions
     def Show(self, chars, record_count=100):
         result = _cstr(gophers.Show(self.df_json.encode('utf-8'), c_int(chars), c_int(record_count)))
@@ -1076,7 +1076,7 @@ class DataFrame:
         collected = _cstr(gophers.CollectWrapper(self.df_json.encode('utf-8'),
                                            col_name.encode('utf-8')))
         return json.loads(collected)
-    
+
     def Head(self, chars):
         result = _cstr(gophers.Head(self.df_json.encode('utf-8'), c_int(chars)))
         print(result)
@@ -1097,79 +1097,79 @@ class DataFrame:
         if err:
             print("Error displaying in browser:", err)
         return self
-    
+
     def Display(self):
         html = _cstr(gophers.DisplayWrapper(self.df_json.encode('utf-8')))
         # print(html)
         display(HTML(html))
         # return self
-    
+
     def DisplayToFile(self, file_path):
         err = gophers.DisplayToFileWrapper(self.df_json.encode('utf-8'), file_path.encode('utf-8')).decode('utf-8')
         if err:
             print("Error writing to file:", err)
         return self
-        
+
     # Chart methods
     def BarChart(self, title, subtitle, groupcol, aggs):
         # Make sure aggs is a list
         if not isinstance(aggs, list):
             aggs = [aggs]
-        
+
         aggs_json = json.dumps(aggs)
         html = gophers.BarChartWrapper(
-            self.df_json.encode('utf-8'), 
-            title.encode('utf-8'), 
-            subtitle.encode('utf-8'), 
-            groupcol.encode('utf-8'), 
+            self.df_json.encode('utf-8'),
+            title.encode('utf-8'),
+            subtitle.encode('utf-8'),
+            groupcol.encode('utf-8'),
             aggs_json.encode('utf-8')
         ).decode('utf-8')
-        
+
         # Create a Chart object
         chart = Chart(html)
         # print(html)
-        
+
         # Display the chart
         # display(HTML(html))
-        
+
         # Return the Chart object
         return chart
-    
+
     def ColumnChart(self, title, subtitle, groupcol, aggs):
         # Make sure aggs is a list
         if not isinstance(aggs, list):
             aggs = [aggs]
-        
+
         aggs_json = json.dumps(aggs)
         html = gophers.ColumnChartWrapper(
-            self.df_json.encode('utf-8'), 
-            title.encode('utf-8'), 
-            subtitle.encode('utf-8'), 
-            groupcol.encode('utf-8'), 
+            self.df_json.encode('utf-8'),
+            title.encode('utf-8'),
+            subtitle.encode('utf-8'),
+            groupcol.encode('utf-8'),
             aggs_json.encode('utf-8')
         ).decode('utf-8')
-        
+
         # Create a Chart object
         chart = Chart(html)
-        
+
         # Display the chart
         # display(HTML(html))
-        
+
         # Return the Chart object
         return chart
-    
+
     def StackedBarChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps([agg.__dict__ for agg in aggs])
         html = gophers.StackedBarChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
-    
+
     def StackedPercentChart(self, title, subtitle, groupcol, aggs):
         aggs_json = json.dumps([agg.__dict__ for agg in aggs])
         html = gophers.StackedPercentChartWrapper(self.df_json.encode('utf-8'), title.encode('utf-8'), subtitle.encode('utf-8'), groupcol.encode('utf-8'), aggs_json.encode('utf-8')).decode('utf-8')
         display(HTML(html))
         return self
-    
+
     # Transform functions
     def Column(self, col_name, col_spec):
         # Python-side UDF spec: apply now (materialize/apply/rebuild)
@@ -1188,7 +1188,7 @@ class DataFrame:
             for r in rows:
                 if not isinstance(r, dict):
                     continue
-                
+
                 # Gather args
                 args = []
                 for name in col_names:
@@ -1282,7 +1282,7 @@ class DataFrame:
             condition.to_json().encode('utf-8')
         ))
         return self
-    
+
     def OrderBy(self, col, asc):
         self.df_json = _cstr(gophers.OrderByWrapper(
             self.df_json.encode('utf-8'),
@@ -1294,7 +1294,7 @@ class DataFrame:
         self.df_json = _cstr(gophers.DropWrapper(
             self.df_json.encode('utf-8'),
             json.dumps([col for col in cols]).encode('utf-8')
-        ))       
+        ))
         return self
     def DropDuplicates(self, cols=None):
         if cols is None:
@@ -1347,39 +1347,39 @@ class DataFrame:
             json.dumps([col for col in cols]).encode('utf-8')
         ))
         return self
-    
+
     def KeysToCols(self, col):
         self.df_json = _cstr(gophers.KeysToCols(
             self.df_json.encode('utf-8'),
             col.encode('utf-8')
         ))
         return self
-    
+
     def StringArrayConvert(self, col_name):
         self.df_json = _cstr(gophers.StringArrayConvert(
             self.df_json.encode('utf-8'),
             col_name.encode('utf-8')
         ))
         return self
-    
+
     def Clone(self):
         """Return a new DataFrame copied from this one (deep copy)."""
         new_json = _cstr(gophers.Clone(self.df_json.encode('utf-8')))
         return DataFrame(new_json)
-    
+
     # Sink Functions
     def ToCSVFile(self, filename):
         gophers.ToCSVFile(self.df_json.encode('utf-8'), filename.encode('utf-8'))
         # add output giving file name/location
         return self
-    
+
     def ToJSON(self):
         """
         format: JSON array of row objects
         """
         s = _cstr(gophers.ToJSON(self.df_json.encode('utf-8')))
         return s
-    
+
     def WriteSqlite(self, db_path: str, table: str, mode: str = "upsert", key_cols=None, create_index: bool = True):
         """
         Standard write to SQLite for this DataFrame.
@@ -1399,8 +1399,8 @@ class DataFrame:
         )
         if res != "success":
             raise RuntimeError(res)
-        return self    
-    
+        return self
+
     def PostAPI(self, endpoint, headers="", query_params=""):
         """
         POST this DataFrame as JSON rows to an API endpoint.
@@ -1417,7 +1417,7 @@ class DataFrame:
             )
         )
         return resp
-    
+
 
 # Example usage:
 def main():
